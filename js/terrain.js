@@ -8,6 +8,39 @@ const SKIRT_DEPTH = 30;
 const channel = new MessageChannel();
 const yieldToUi = () => new Promise((resolve) => { channel.port1.onmessage = resolve; channel.port2.postMessage(0); });
 
+
+// Simulierter Boden: Wiese, Waldboden, Fels und befestigte Flächen werden aus der Luftbildfarbe klassiert und mit prozeduralem Detail überzogen.
+const SIM_GROUND = `
+float h21( vec2 p ) { p = fract( p * vec2( 123.34, 456.21 ) ); p += dot( p, p + 45.32 ); return fract( p.x * p.y ); }
+float vnoise( vec2 p ) {
+  vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+  return mix( mix( h21( i ), h21( i + vec2( 1.0, 0.0 ) ), f.x ), mix( h21( i + vec2( 0.0, 1.0 ) ), h21( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
+}
+float fbm( vec2 p ) { float a = 0.5, s = 0.0; for ( int i = 0; i < 4; i++ ) { s += a * vnoise( p ); p = p * 2.03 + vec2( 17.1, 9.2 ); a *= 0.5; } return s; }
+vec3 simGround( vec3 aerial, vec2 xz, float dist, float nY ) {
+  float lum = dot( aerial, vec3( 0.2126, 0.7152, 0.0722 ) );
+  float greenRatio = aerial.g / max( 1e-4, aerial.r + aerial.b );
+  float veg = smoothstep( 0.72, 1.0, greenRatio );
+  float fine = 1.0 - smoothstep( 40.0, 320.0, dist );
+  float n1 = fbm( xz * 0.22 ), n3 = fbm( xz * 0.025 ), n2 = vnoise( xz * 2.6 ), n4 = vnoise( xz * 11.0 );
+  vec3 g1 = vec3( 0.060, 0.155, 0.028 ), g2 = vec3( 0.135, 0.265, 0.050 ), g3 = vec3( 0.23, 0.29, 0.085 );
+  vec3 grass = mix( g1, g2, smoothstep( 0.25, 0.75, n1 * 0.75 + n3 * 0.6 ) );
+  grass = mix( grass, g3, smoothstep( 0.62, 0.95, n3 ) * 0.55 );
+  grass *= 0.82 + 0.30 * n2 * fine + 0.14 * ( n4 - 0.5 ) * fine;
+  float shade = clamp( lum / 0.12, 0.72, 1.3 );
+  grass *= mix( 1.0, shade, 0.55 );
+  float forest = 1.0 - smoothstep( 0.02, 0.055, lum );
+  vec3 floorColor = mix( vec3( 0.13, 0.15, 0.06 ), vec3( 0.22, 0.18, 0.095 ), smoothstep( 0.3, 0.8, n1 ) ) * ( 0.8 + 0.45 * n2 * fine );
+  vec3 ground = mix( grass, floorColor, forest * 0.7 );
+  vec3 evened = aerial / max( lum, 1e-3 ) * clamp( lum, 0.075, 0.4 );
+  vec3 other = mix( aerial, evened, 0.7 ) * ( 0.88 + 0.22 * vnoise( xz * 5.0 ) * fine + 0.1 * ( n4 - 0.5 ) * fine );
+  vec3 col = mix( other, ground, veg );
+  float rock = smoothstep( 0.66, 0.45, nY ) * ( 1.0 - 0.6 * veg );
+  vec3 rockColor = mix( vec3( 0.10, 0.095, 0.085 ), vec3( 0.19, 0.175, 0.155 ), fbm( xz * 0.45 ) ) * ( 0.8 + 0.4 * n4 * fine );
+  return mix( col, rockColor, rock * 0.85 );
+}
+`;
+
 export class Terrain {
   constructor(dem, frame) {
     this.dem = dem;
@@ -30,12 +63,12 @@ export class Terrain {
     blank.needsUpdate = true;
     this.uniforms = {
       uHistory: { value: blank }, uSplit: { value: 0 }, uResolution: { value: new THREE.Vector2(1, 1) },
-      uHires: { value: blank }, uHiresRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uHiresMix: { value: 0 },
+      uHires: { value: blank }, uHiresRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uHiresMix: { value: 0 }, uGroundMode: { value: 0 },
     };
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms);
-      shader.vertexShader = "varying vec2 vTerrXZ;\n" + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvTerrXZ = position.xz;");
-      shader.fragmentShader = "uniform sampler2D uHistory; uniform float uSplit; uniform vec2 uResolution; uniform sampler2D uHires; uniform vec4 uHiresRect; uniform float uHiresMix; varying vec2 vTerrXZ;\n"
+      shader.vertexShader = "varying vec2 vTerrXZ; varying vec3 vTerrN;\n" + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvTerrXZ = position.xz; vTerrN = normal;");
+      shader.fragmentShader = "uniform sampler2D uHistory; uniform float uSplit; uniform vec2 uResolution; uniform sampler2D uHires; uniform vec4 uHiresRect; uniform float uHiresMix; uniform float uGroundMode; varying vec2 vTerrXZ; varying vec3 vTerrN;\n" + SIM_GROUND
         + shader.fragmentShader.replace("#include <map_fragment>", `#ifdef USE_MAP
         vec4 sampledDiffuseColor = texture2D( map, vMapUv );
         vec2 hu = (vTerrXZ - uHiresRect.xy) / uHiresRect.zw;
@@ -43,11 +76,12 @@ export class Terrain {
           float edge = min( min( hu.x, 1.0 - hu.x ), min( hu.y, 1.0 - hu.y ) );
           sampledDiffuseColor = mix( sampledDiffuseColor, texture2D( uHires, hu ), uHiresMix * smoothstep( 0.0, 0.06, edge ) );
         }
+        if ( uGroundMode < 0.5 ) sampledDiffuseColor.rgb = simGround( sampledDiffuseColor.rgb, vTerrXZ, length( vViewPosition ), normalize( vTerrN ).y );
         if ( uSplit > 0.0 && gl_FragCoord.x < uSplit * uResolution.x ) sampledDiffuseColor = texture2D( uHistory, vMapUv );
         diffuseColor *= sampledDiffuseColor;
       #endif`);
     };
-    this.material.customProgramCacheKey = () => "terrain-overlays";
+    this.material.customProgramCacheKey = () => "terrain-overlays-sim";
   }
 
   gridHeight(i, j) {

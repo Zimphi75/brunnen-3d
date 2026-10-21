@@ -20,6 +20,7 @@ import { initAnalysis } from "./analysis.js";
 import { initWeather } from "./weather.js";
 import { initHistory } from "./history.js";
 import { initHires } from "./hires.js";
+import { initGround } from "./ground.js";
 import { initAlmanac } from "./almanac.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -138,7 +139,6 @@ async function setupUi(ctx) {
   const layers = createLayerManager($("#layer-list"));
   ctx.layers = layers;
   layers.add({ id: "terrain", label: "Gelände", color: "#8a9a73", apply: (v) => { terrain.group.visible = v; } });
-  layers.add({ id: "aerial", label: "Luftbild", color: "#4f6f4a", available: Boolean(ctx.orthoTexture), note: "ortho.jpg fehlt", apply: (v) => terrain.setTexture(v ? ctx.orthoTexture : null) });
   layers.add({
     id: "buildings", label: "Gebäude", color: "#d8cfc0", available: Boolean(buildings), note: "buildings3d.bin fehlt",
     count: buildings ? (buildings.data.count - buildings.stats().hiddenDemolished).toLocaleString("de-CH") : "", apply: (v) => { if (buildings) buildings.mesh.visible = v; },
@@ -265,6 +265,7 @@ async function setupUi(ctx) {
   await initSearch(ctx);
   initAnalysis(ctx);
   initHires(ctx);
+  initGround(ctx);
   initHistory(ctx);
 
   // Wetter: Vorgaben als Auswahl, Anzeige im Zeitfeld

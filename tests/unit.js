@@ -5,6 +5,7 @@ import { buildYear, typeGroup, Buildings, COLOR_MODES, facadeStyle, roofColor, f
 import { createSegmentIndex } from "../js/roadindex.js";
 import { model } from "../js/models.js";
 import { moduleWatt, extractRoofFaces, layoutModules } from "../js/pv.js";
+import { parseTrees, buildTrees } from "../js/trees.js";
 import { parseDem, parseBuildings } from "../js/api.js";
 import { weatherCondition, PRESETS, LIVE_WINDOW_MS } from "../js/weather.js";
 import { esc } from "../js/inspector.js";
@@ -213,6 +214,32 @@ test("Echte Daten: pv.json passt zu den Gebäuden und liefert Module", async () 
   assert(withEgid.every((p) => json.buildings[p.b].egid), "EGID-Treffer gehören zu Gebäuden mit EGID");
   const total = pv.plants.slice(0, 40).reduce((sum, plant) => sum + layoutModules(extractRoofFaces(data, plant.b), plant).placed, 0);
   assert(total > 100, `Module: ${total}`);
+});
+
+test("Bäume: Datei lässt sich lesen, Falsches Format wird abgelehnt", async () => {
+  const buffer = await fetch("../public/data/trees.bin").then((r) => r.arrayBuffer());
+  const trees = parseTrees(buffer);
+  assert(trees.count > 10000 && trees.x.length === trees.count && trees.height.length === trees.count);
+  let failed = false;
+  try { parseTrees(new Uint32Array(8).buffer); } catch { failed = true; }
+  assert(failed);
+});
+
+test("Bäume: Laub- und Nadelbaum in zwei Detailstufen, Kronenbreite aus Höhe, Instanzen teilen Matrizen", () => {
+  const trees = { count: 4, x: new Float32Array([5, 20, 40, 60]), z: new Float32Array([-5, -20, -40, -60]), height: new Uint8Array([40, 60, 12, 80]), radius: new Uint8Array([8, 12, 4, 20]) };
+  const terrain = { minX: 0, maxZ: 0, width: 100, depth: 100, heightAt: () => 10 };
+  const frames = [];
+  const layer = buildTrees({ trees, terrain, ortho: null, scene3d: { onFrame: (fn) => frames.push(fn), controls: { target: { x: 0, z: 0 } } }, ctx: {} });
+  assert(layer.count === 4 && layer.group.children.length >= 2 && layer.group.children.length % 2 === 0);
+  for (let i = 0; i < layer.group.children.length; i += 2) {
+    const [high, low] = layer.group.children.slice(i, i + 2);
+    assert(high.instanceMatrix === low.instanceMatrix && high.instanceColor === low.instanceColor, "Detailstufen teilen Daten");
+    const triangles = (mesh) => (mesh.geometry.index ? mesh.geometry.index.count : mesh.geometry.attributes.position.count) / 3;
+    assert(triangles(high) > triangles(low) && triangles(high) < 400 && triangles(low) < 60, `Dreiecke ${triangles(high)}/${triangles(low)}`);
+    assert(high.geometry.getAttribute("aCrown") && high.geometry.getAttribute("color"));
+  }
+  frames.forEach((fn) => fn(0.016, 1000));
+  assert(layer.group.children.some((mesh) => mesh.visible), "nahe Bäume werden gezeichnet");
 });
 
 test("Echte Daten: Höhenraster entspricht metadata.json", async () => {

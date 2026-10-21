@@ -1,9 +1,9 @@
 // Datenebenen aus public/data: Strassen, Wege, Bahn, Gewässer, Bäume, Gemeindegrenze.
 import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { buildRibbons, buildPolygonMesh, buildCurtain } from "./draped.js";
 import { loadOptionalJson, loadOptionalBinary } from "./api.js";
 import { createSegmentIndex } from "./roadindex.js";
+import { parseTrees, buildTrees } from "./trees.js";
 
 const ROAD_STYLE = {
   motorway: { width: 11, color: "#7a7f86" }, primary: { width: 8, color: "#8a8f95" }, secondary: { width: 7, color: "#969a9f" },
@@ -80,69 +80,6 @@ function buildWater(water, terrain) {
   return group;
 }
 
-// Format siehe pipeline/process_trees.py ("TRE1")
-function parseTrees(buffer) {
-  const header = new Uint32Array(buffer, 0, 4);
-  if (String.fromCharCode(...new Uint8Array(buffer, 0, 4)) !== "TRE1") throw new Error("trees.bin: unbekanntes Format");
-  const count = header[2];
-  const pad = (n) => n + ((4 - (n % 4)) % 4);
-  let offset = 16;
-  const x = new Float32Array(buffer, offset, count); offset += count * 4;
-  const z = new Float32Array(buffer, offset, count); offset += count * 4;
-  const height = new Uint8Array(buffer, offset, count); offset += pad(count);
-  const radius = new Uint8Array(buffer, offset, count);
-  return { count, x, z, height, radius };
-}
-
-function treeGeometry() {
-  const trunk = new THREE.CylinderGeometry(0.08, 0.12, 0.35, 5).translate(0, 0.175, 0);
-  const crown = new THREE.ConeGeometry(1, 0.85, 6).translate(0, 0.35 + 0.425, 0);
-  const paint = (geometry, hex) => {
-    const color = new THREE.Color(hex);
-    const colors = new Float32Array(geometry.attributes.position.count * 3);
-    for (let i = 0; i < colors.length; i += 3) colors.set([color.r, color.g, color.b], i);
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    return geometry.toNonIndexed();
-  };
-  return mergeGeometries([paint(trunk, "#6b4a2e"), paint(crown, "#ffffff")]);
-}
-
-function buildTrees(trees, terrain) {
-  const group = new THREE.Group();
-  group.name = "trees";
-  const geometry = treeGeometry();
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
-  const cellSize = 500;
-  const cells = new Map();
-  for (let i = 0; i < trees.count; i++) {
-    const key = `${Math.floor(trees.x[i] / cellSize)}:${Math.floor(trees.z[i] / cellSize)}`;
-    if (!cells.has(key)) cells.set(key, []);
-    cells.get(key).push(i);
-  }
-  const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), color = new THREE.Color();
-  const meshes = [];
-  for (const members of cells.values()) {
-    const mesh = new THREE.InstancedMesh(geometry, material, members.length);
-    members.forEach((tree, slot) => {
-      const h = trees.height[tree] / 2, r = trees.radius[tree] / 4;
-      const ground = terrain.heightAt(trees.x[tree], trees.z[tree]) ?? 0;
-      matrix.compose(new THREE.Vector3(trees.x[tree], ground, trees.z[tree]), quaternion, new THREE.Vector3(r, h, r));
-      mesh.setMatrixAt(slot, matrix);
-      // deterministische leichte Farbvariation aus der Position (rein gestalterisch)
-      const jitter = ((Math.sin(trees.x[tree] * 12.9898 + trees.z[tree] * 78.233) * 43758.5453) % 1 + 1) % 1;
-      color.setHSL(0.26 + 0.05 * jitter, 0.38, 0.1 + 0.07 * jitter);
-      mesh.setColorAt(slot, color);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-    mesh.castShadow = false;
-    mesh.receiveShadow = true;
-    group.add(mesh);
-    meshes.push(mesh);
-  }
-  return { group, meshes };
-}
-
 export async function initDataLayers(ctx) {
   const { terrain, scene3d, layers, reportError } = ctx;
   const scene = scene3d.scene;
@@ -173,26 +110,12 @@ export async function initDataLayers(ctx) {
     apply: (v) => { if (!waterGroup) return; waterGroup.visible = v; if (v && !waterGroup.parent) scene.add(waterGroup); },
   });
 
-  const treeLayer = treeBuffer ? safe("Bäume", () => buildTrees(parseTrees(treeBuffer), terrain)) : null;
+  const treeLayer = treeBuffer ? safe("Bäume", () => buildTrees({ trees: parseTrees(treeBuffer), terrain, ortho: ctx.orthoTexture, scene3d, ctx })) : null;
   layers.add({
     id: "trees", label: "Bäume", color: "#3f7a3a", available: Boolean(treeLayer), note: "trees.bin fehlt (Pipeline: process_trees)",
-    count: treeLayer ? treeLayer.meshes.reduce((s, m) => s + m.count, 0).toLocaleString("de-CH") : "",
+    count: treeLayer ? treeLayer.count.toLocaleString("de-CH") : "",
     apply: (v) => { if (!treeLayer) return; treeLayer.group.visible = v; if (v && !treeLayer.group.parent) scene.add(treeLayer.group); },
   });
-  if (treeLayer) {
-    // nur Baumzellen in Blicknähe zeichnen
-    let last = 0;
-    scene3d.onFrame((_, now) => {
-      if (now - last < 400 || !treeLayer.group.visible) return;
-      last = now;
-      const target = scene3d.controls.target;
-      for (const mesh of treeLayer.meshes) {
-        const sphere = mesh.boundingSphere;
-        mesh.visible = sphere.center.distanceTo(target) - sphere.radius < 3800;
-      }
-    });
-  }
-
   const curtain = municipality ? safe("Gemeindegrenze", () => {
     const rings = municipality.polygons.map((rings) => rings[0]);
     return buildCurtain(rings, { terrain, height: 120, color: "#ff5a36" });

@@ -12,7 +12,7 @@ export function initHires(ctx) {
   const loader = new THREE.TextureLoader();
   loader.setCrossOrigin("anonymous");
   const cache = new Map();
-  const state = { enabled: true, failed: false, current: null, loading: null };
+  const state = { enabled: true, failed: false, current: null, loading: null, layer: "ch.swisstopo.swissimage", format: "image/jpeg" };
 
   function rectFor(key) {
     const [gx, gz] = key.split(":").map(Number);
@@ -20,19 +20,20 @@ export function initHires(ctx) {
   }
 
   async function load(key) {
-    if (cache.has(key)) return cache.get(key);
+    const cacheKey = `${state.layer}|${key}`;
+    if (cache.has(cacheKey)) return cache.get(cacheKey);
     const { minX, minZ } = rectFor(key);
     const minE = minX + frame.originE, maxE = minE + SIZE;
     const maxN = frame.originN - minZ, minN = maxN - SIZE;
     const params = new URLSearchParams({
-      SERVICE: "WMS", VERSION: "1.1.1", REQUEST: "GetMap", LAYERS: "ch.swisstopo.swissimage", STYLES: "", SRS: "EPSG:2056",
-      BBOX: `${minE},${minN},${maxE},${maxN}`, WIDTH: String(PIXELS), HEIGHT: String(PIXELS), FORMAT: "image/jpeg",
+      SERVICE: "WMS", VERSION: "1.1.1", REQUEST: "GetMap", LAYERS: state.layer, STYLES: "", SRS: "EPSG:2056",
+      BBOX: `${minE},${minN},${maxE},${maxN}`, WIDTH: String(PIXELS), HEIGHT: String(PIXELS), FORMAT: state.format,
     });
     const texture = await loader.loadAsync(`https://wms.geo.admin.ch/?${params}`);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.flipY = false; // Zeile 0 = Norden = kleinstes z
     texture.anisotropy = scene3d.renderer.capabilities.getMaxAnisotropy();
-    cache.set(key, texture);
+    cache.set(cacheKey, texture);
     while (cache.size > MAX_CACHE) {
       const [oldKey, oldTexture] = cache.entries().next().value;
       if (oldTexture !== state.current?.texture) { oldTexture.dispose(); cache.delete(oldKey); } else break;
@@ -62,7 +63,8 @@ export function initHires(ctx) {
       const inside = target.x > minX + SIZE * 0.2 && target.x < minX + SIZE * 0.8 && target.z > minZ + SIZE * 0.2 && target.z < minZ + SIZE * 0.8;
       if (inside) return;
     }
-    state.loading = load(key).then((texture) => apply(key, texture)).catch((error) => {
+    const requested = state.layer;
+    state.loading = load(key).then((texture) => { if (requested === state.layer) apply(key, texture); }).catch((error) => {
       state.failed = true;
       console.warn("Hochauflösendes Luftbild:", error);
       reportError("Hochauflösendes Luftbild (swisstopo-WMS) nicht erreichbar; es bleibt beim 2-m-Luftbild.", error);
@@ -73,5 +75,10 @@ export function initHires(ctx) {
     id: "hires", label: "Luftbild scharf (Nähe)", color: "#4f6f4a", visible: true,
     apply: (v) => { state.enabled = v; },
   });
+  /** Wechselt die WMS-Ebene der Nahkachel (Luftbild oder Landeskarte). */
+  state.setSource = (layer, format) => {
+    state.layer = layer; state.format = format; state.failed = false; state.current = null; last = 0;
+    terrain.uniforms.uHiresMix.value = 0;
+  };
   ctx.hires = state;
 }

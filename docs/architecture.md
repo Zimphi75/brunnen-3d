@@ -62,7 +62,8 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | Nachtbeleuchtung ohne Lichtflut | Leuchtende Fenster im Gebäude-Shader, Laternenköpfe und Lichtflecken als additive Instanzen, nur 8 echte Punktlichter nahe am Blickpunkt, Bloom bei Dunkelheit |
 | Gelände in 64×64-Zellen-Kacheln mit statischer Auflösung (5/10/20 m), Schürzen, flache Kacheln (See) grob | Frustum Culling pro Kachel, wenige Dreiecke, keine Risse |
 | `fiona` statt GeoPandas/pyogrio für swissBUILDINGS3D | Die FileGDB enthält TIN-Z-Geometrien (Typ 1016), die pyogrio nicht liest |
-| Bäume als `InstancedMesh` je 500-m-Zelle | Wenige Draw-Calls, Distanzfilter pro Zelle |
+| Bäume als `InstancedMesh` je 500-m-Zelle und Art, Detailstufen mit gemeinsamen Instanzdaten | Hohe Stufe (rund 150 Dreiecke Laub, 90 Nadel) unter 380 m Abstand mit Schattenwurf, niedrige Stufe (rund 30 Dreiecke) bis 3.8 km; Wind per `onBeforeCompile` ohne CPU-Aufwand |
+| Boden als Shader-Simulation | Das Luftbild (global 2 m, nah 0.3 m) liefert nur die Klasse und die grobe Helligkeit; Wiese, Waldboden und Fels entstehen aus mehrstufigem Rauschen im Fragment-Shader, mit Abstandsüberblendung gegen Flimmern. Keine zusätzlichen Daten oder Texturen |
 | Keine Datenbank | Alles statisch; PostGIS wäre für spätere Abfragen (Parzellen, Statistik) möglich |
 
 ## Frontend-Module (`js/`)
@@ -73,7 +74,9 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | `api.js` | Laden und Parsen der Dateien (`dem.bin`, `buildings3d.bin` v2), Fortschritt |
 | `geo.js` | LV95, lokale Koordinaten, WGS84 (swisstopo-Näherungsformeln) |
 | `scene.js` | Renderer, Kamera, OrbitControls (linke Taste verschiebt, Grenzen), EffectComposer (GTAO, Bloom), AO-Ausschlussliste |
-| `terrain.js` | Gelände-Kacheln, Höhenabfrage, Strahltest; Shader für historische Karte und scharfes Luftbild |
+| `terrain.js` | Gelände-Kacheln, Höhenabfrage, Strahltest; Shader für simulierten Boden, historische Karte und scharfe Nahkachel |
+| `ground.js` | Bodenansicht wählen: Simulation (Vorgabe), Luftbild, Landeskarte (WMS, global und als Nahkachel über `hires.js`) |
+| `trees.js` | Bäume: Laub-/Nadelbaum-Geometrie, Art und Farbe aus dem Luftbild, Wind im Vertex-Shader, zwei Detailstufen je 500-m-Zelle |
 | `buildings.js` | Gebäudemesh und -shader, Dorfbild (Fassade, Dach, Fenster), Farbmodi, Filter, Picker |
 | `models.js` | Bausatz: Haltestellen, Bahnsteig, Schiffsteg, Postauto, SBB-Zug, Kursschiff, Laternen |
 | `lighting.js` | Strassenlaternen, Nachtbeleuchtung, Leuchteffekt |

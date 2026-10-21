@@ -4,7 +4,7 @@ Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit
 
 ## Funktionen
 
-- Gelände (swissALTI3D), Luftbild (SWISSIMAGE, in Blicknähe zusätzlich scharf nachgeladen), 2316 Gebäude (swissBUILDINGS3D 3.0 beta, mit GWR-Attributen), Strassen, Wege, Bahn, Gewässer, 54'000 Bäume, Gemeindegrenze, Points of Interest, Ortsnamen
+- Gelände (swissALTI3D) mit **simuliertem Boden** (Vorgabe: Wiese, Waldboden, Fels und befestigte Flächen aus der Luftbildfarbe klassiert, mit prozeduralem Detail); wählbar im Panel «Darstellung»: Luftbild (SWISSIMAGE) oder Landeskarte (swisstopo), beide in Blicknähe scharf nachgeladen, 2316 Gebäude (swissBUILDINGS3D 3.0 beta, mit GWR-Attributen), Strassen, Wege, Bahn, Gewässer, 54'000 **Bäume** (Laub- und Nadelbäume mit unregelmässigen Kronen, Kronenfarbe aus dem Luftbild, leichter Windbewegung, zwei Detailstufen, Schattenwurf in der Nähe), Gemeindegrenze, Points of Interest, Ortsnamen
 - **Gebäudedarstellung** (Auswahl im Panel «Darstellung»): **Dorfbild (realistisch)** mit Putz- oder Holzfassade, Fensterläden, Fenstern und Ziegeldach in der Farbe des Luftbilds; ausserdem Neutral, Nutzung, Baujahr, Höhe, Geschosse, Wohnungen, Heizenergie und Status im Register
 - **Nacht**: beleuchtete Fenster, Strassenlaternen mit Lichtkegeln, Sterne, Leuchteffekt; die Szene bleibt im Dunkeln lesbar
 - **Wetter überall sichtbar**: Regen, Schnee, Nebel, Bewölkung und Gewitter wirken am Bildschirm und in der Szene, unabhängig vom Kameraabstand; Live-Wetter (Open-Meteo) für «jetzt», Vorschau-Vorgaben für jede andere Zeit
@@ -63,7 +63,7 @@ Jeder statische Webserver genügt (siehe [docs/deployment.md](docs/deployment.md
 
 ```bash
 .venv/bin/python -m pytest -q          # Pipeline-Funktionen und Datendateien
-# Browser-Tests (22): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
+# Browser-Tests (28): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
 ```
 
 ## Projektstruktur
@@ -88,7 +88,8 @@ Alle Datensätze mit Herkunft, Lizenz, Stand und Abdeckung stehen in [docs/data-
 | Gelände, Luftbild, 3D-Gebäude, Grenze, historische Karten | swisstopo | Open Government Data, Quellenangabe |
 | Gebäudeattribute, Adressen | BFS, GWR | Open Government Data, Quellenangabe |
 | Strassen, Gewässer, POI, Linien, Ortsnamen | OpenStreetMap-Mitwirkende | ODbL 1.0 |
-| Bäume | WSL/BAFU Vegetationshöhenmodell NFI | ODbL mit DbCL |
+| Bäume (Standort, Höhe, Kronenradius) | WSL/BAFU Vegetationshöhenmodell NFI | ODbL mit DbCL |
+| Landeskarte (optionale Bodenansicht) | swisstopo Pixelkarte farbig, WMS | Open Government Data swisstopo, Quellenangabe |
 | Wetter | Open-Meteo | CC BY 4.0 (nicht kommerziell) |
 | Abfahrten | transport.opendata.ch / opentransportdata.swiss | Open Data, Quellenangabe |
 | Photovoltaikanlagen | BFE, Elektrizitätsproduktionsanlagen | Open Government Data, Quellenangabe |
@@ -124,7 +125,8 @@ Die Zahlen stehen auch im Almanach («Datenqualität») und stammen aus `public/
 - **Gebäude an Hängen** haben keinen Sockel; der Fuss kann schweben (der Shader dunkelt nur den Fussbereich ab).
 - **Historische Gebäude werden nicht rekonstruiert.** Die Zeitachse blendet vorhandene Gebäude nach GWR-Baujahr aus und zeigt historische Landeskarten.
 - **Luftbild**: 2 m Auflösung global, in Blicknähe wird SWISSIMAGE per WMS scharf nachgeladen (braucht Internet).
-- **Bäume** sind aus dem Vegetationshöhenmodell abgeleitete Kronenmaxima mit geschätztem Radius, alle mit derselben stilisierten Form.
+- **Bäume**: Standort, Höhe und Kronenradius sind aus dem Vegetationshöhenmodell abgeleitet. **Die Art ist geschätzt** (die dunkelsten 40 % der Kronen im Luftbild, ab 5 m Höhe, werden als Nadelbaum gezeichnet), Farbe und Kronenform sind gestalterisch. Es gibt weder Arten- noch Einzelbaumkataster.
+- **Simulierter Boden**: Klassierung (Wiese, Wald, Fels, befestigt) und Detail sind Annahmen, keine Messung. Schatten im Luftbild werden abgeschwächt; Halme und Muster sind Zufall. Wer Daten braucht, wählt «Luftbild» oder «Landeskarte».
 - **ÖV**: Gemessene Fahrzeugpositionen sind über die offene API nicht verfügbar. Die Fahrplansimulation interpoliert Fahrplanzeiten entlang der OSM-Liniengeometrie.
 - **Abstimmungen**: Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert (derzeit 2025-05-18 und 2023-03-12). Die Quelle sendet keine CORS-Header; darum zieht die Pipeline die Daten (`votes.json`).
 - **Photovoltaik**: Das Register kennt weder Modulzahl noch Modullage. Die gezeichnete Belegung ist eine Annahme (Modulgrösse 1.75 × 1.05 m, Wirkungsgrad nach Baujahr, bevorzugt Süd-, sonst Ost-/Westflächen, Randabstand 0.3 m). Freistehende Anlagen (2) und Fassadenanteile (Neigung ab 60°) werden nicht auf dem Dach gezeichnet. Dachflächen stammen aus swissBUILDINGS3D (Beta). Auf Gebäuden mit grosser Anlage reicht die Dachfläche oft nicht; dann ist die Anlage nur teilweise gezeichnet und das steht im Informationspanel.
