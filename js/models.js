@@ -8,7 +8,7 @@ const quaternion = new THREE.Quaternion();
 const euler = new THREE.Euler();
 const unit = new THREE.Vector3(1, 1, 1);
 
-function paint(geometry, hex, [x, y, z], [rx, ry, rz]) {
+export function paint(geometry, hex, [x, y, z], [rx, ry, rz]) {
   const g = geometry.index ? geometry.toNonIndexed() : geometry.clone();
   g.deleteAttribute("uv");
   quaternion.setFromEuler(euler.set(rx, ry, rz));
@@ -20,8 +20,8 @@ function paint(geometry, hex, [x, y, z], [rx, ry, rz]) {
   return g;
 }
 
-const box = (w, h, d, hex, x = 0, y = 0, z = 0, r = [0, 0, 0]) => paint(new THREE.BoxGeometry(w, h, d), hex, [x, y + h / 2, z], r);
-const cylinder = (rTop, rBottom, h, segments, hex, x = 0, y = 0, z = 0, r = [0, 0, 0]) => paint(new THREE.CylinderGeometry(rTop, rBottom, h, segments), hex, [x, y + h / 2, z], r);
+export const box = (w, h, d, hex, x = 0, y = 0, z = 0, r = [0, 0, 0]) => paint(new THREE.BoxGeometry(w, h, d), hex, [x, y + h / 2, z], r);
+export const cylinder = (rTop, rBottom, h, segments, hex, x = 0, y = 0, z = 0, r = [0, 0, 0]) => paint(new THREE.CylinderGeometry(rTop, rBottom, h, segments), hex, [x, y + h / 2, z], r);
 const build = (parts) => { const g = mergeGeometries(parts); g.computeBoundingSphere(); return g; };
 
 const GREY = "#6e7378", DARK = "#2a2e32", GLASS = "#a9c4d1", WOOD = "#8b6a47", YELLOW = "#f5c400", CONCRETE = "#b9b8b3";

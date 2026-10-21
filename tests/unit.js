@@ -6,6 +6,8 @@ import { createSegmentIndex, createBlocker } from "../js/roadindex.js";
 import { model } from "../js/models.js";
 import { moduleWatt, extractRoofFaces, layoutModules } from "../js/pv.js";
 import { parseTrees, buildTrees } from "../js/trees.js";
+import { buildNetwork, advance, sample } from "../js/ambient.js";
+import { markingLines, walk } from "../js/roadmarks.js";
 import { parseDem, parseBuildings } from "../js/api.js";
 import { weatherCondition, PRESETS, LIVE_WINDOW_MS } from "../js/weather.js";
 import { esc } from "../js/inspector.js";
@@ -253,6 +255,55 @@ test("Bäume: nicht auf Strassen, Gleisen, Wegen, in Bächen oder im Wasser, abe
   assert(blocked(30, 70.3) && !blocked(30, 73), "auf dem Weg");
   assert(!blocked(50, 90), "über einem Tunnel stehen Bäume");
   assert(blocked(60, 110) && !blocked(10, 110), "im Wasser");
+});
+
+test("Verkehr: Agent folgt der Linie, biegt an Knoten ab, kehrt an Enden um oder meldet Sackgasse", () => {
+  const net = buildNetwork([{ p: [0, 0, 100, 0], cls: "minor" }, { p: [100, 0, 100, 50], cls: "minor" }]);
+  assert(net.lines.length === 2 && Math.abs(net.lines[0].total - 100) < 1e-6);
+  const car = { line: net.lines[0], seg: 0, t: 90, dir: 1 };
+  assert(advance(car, 20, net, () => 0.5, { bounce: false }), "wechselt an der Einmündung auf die Anschlusslinie");
+  assert(car.line === net.lines[1] && Math.abs(car.t - 10) < 1e-6 && car.dir === 1);
+  const dead = { line: net.lines[1], seg: 0, t: 40, dir: 1 };
+  assert(advance(dead, 30, net, () => 0.5, { bounce: false }) === false, "Sackgasse ohne Wendemöglichkeit");
+  const walker = { line: net.lines[1], seg: 0, t: 40, dir: 1 };
+  assert(advance(walker, 30, net, () => 0.5, { bounce: true }) && walker.dir === -1 && Math.abs(walker.t - 30) < 1e-6, "Fussgänger kehrt um");
+  const p = sample(walker, {});
+  assert(Math.abs(p.x - 100) < 1e-6 && Math.abs(p.z - 30) < 1e-6 && p.tz === -1);
+});
+
+test("Verkehr: Kreisel sind Einbahn (Rechtsverkehr, gegen den Uhrzeigersinn) und werden umfahren", () => {
+  const ring = [];
+  for (let k = 0; k <= 16; k++) ring.push(Math.cos((k / 16) * 2 * Math.PI) * 10, Math.sin((k / 16) * 2 * Math.PI) * 10);
+  ring[ring.length - 2] = ring[0]; ring[ring.length - 1] = ring[1];
+  const net = buildNetwork([{ p: ring, cls: "minor", oneway: 1 }]);
+  assert(net.lines[0].closed);
+  const car = { line: net.lines[0], seg: 14, t: 0, dir: 1 };
+  assert(advance(car, 40, net, () => 0.5, { bounce: false }) && car.dir === 1, "fährt über den Schluss der Schleife weiter");
+});
+
+test("Strassenmarkierung: gestrichelte Mittellinie, Randlinien an Hauptstrassen, Unterbruch bei Kreuzungen", () => {
+  const roads = [{ c: "primary", p: [0, 0, 200, 0] }, { c: "minor", p: [100, -60, 100, 0] }, { c: "service", p: [0, 30, 200, 30] }];
+  const index = {
+    nearest(x, z, max, exclude) {
+      let best = null;
+      roads.forEach((r, owner) => {
+        if (owner === exclude) return;
+        for (let i = 0; i + 3 < r.p.length; i += 2) {
+          const [x0, z0, x1, z1] = r.p.slice(i, i + 4), dx = x1 - x0, dz = z1 - z0, t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / (dx * dx + dz * dz)));
+          const d = Math.hypot(x - (x0 + dx * t), z - (z0 + dz * t));
+          if (d <= max && (!best || d < best.distance)) best = { distance: d, owner };
+        }
+      });
+      return best;
+    },
+  };
+  const { dashes, edges } = markingLines(roads, index);
+  assert(dashes.length > 20, `Striche ${dashes.length}`);
+  assert(dashes.every((d) => Math.hypot(d[2] - d[0], d[3] - d[1]) <= 3.5), "Striche höchstens 3 m lang");
+  assert(!dashes.some((d) => d.some((v, i) => i % 2 === 0 && false)) && dashes.filter((d) => d[1] === 0 && d[0] > 95 && d[2] < 105 && d[3] === 0).length === 0, "keine Striche in der Einmündung");
+  assert(edges.length >= 2 && edges.every((e) => Math.abs(Math.abs(e[1]) - 3.6) < 0.05), "Randlinien 0.4 m vom Rand der 8 m breiten Strasse");
+  assert(!dashes.some((d) => d[1] > 20), "Servicestrasse ohne Markierung");
+  assert(walk([0, 0, 10, 0], 2).length === 6, "Abtastung im festen Abstand");
 });
 
 test("Echte Daten: Höhenraster entspricht metadata.json", async () => {

@@ -57,6 +57,7 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | LV95 (EPSG:2056) als Quellsystem, lokale Koordinaten für Three.js | Float32-Genauigkeit: `x = E - E0`, `y = Höhe - 430 m`, `z = -(N - N0)`; Ursprung (2'688'000, 1'206'300) |
 | Gebäude als ein zusammengeführtes Mesh mit einem Shader | Ein Draw-Call. Pro Vertex stehen Fassaden-/Dachfarbe, Fläche-Typ, Geschosszahl und Ladenstil als Attribute bereit; Fenster, Läden und Dachziegel entstehen prozedural im Fragment-Shader (kein Geometrie- oder Texturaufwand). Auswahl über eigenen AABB- und Dreiecks-Picker |
 | Photovoltaik als Instanzen auf Dachebenen | Die Register-Anlagen werden zur Laufzeit auf die Dachebenen gelegt (rund 20'000 Module, 3 Draw-Calls, nur unter 2.2 km Blickabstand sichtbar). Gemessen ist nur das Register; Modulzahl und -lage sind eine dokumentierte Simulation |
+| Verkehr nur in Blicknähe | Höchstens 260 Autos und 320 Personen, Startpunkte im Ring um den Blickpunkt (nie im Bild), Anzahl wächst mit dem Blickabstand, bei Nacht, Regen und Schnee weniger; die Bewegung ist reine Rechnung auf Polylinien ohne Physik |
 | Fahrzeuge und Ausstattung als Bausatz (`models.js`) | Wenige Quader und Zylinder mit Vertexfarben, per `InstancedMesh`/Gruppen eingesetzt: schlank, einheitlich, kein Asset-Download. Einzelne Fotomodelle wären teurer in Grösse und Pflege |
 | Wetter am Bildschirm statt im Raum | Das Overlay (`#weather-overlay`) deckt immer das ganze Blickfeld ab; zusätzlich Partikel um den Blickpunkt (Radius folgt dem Kameraabstand). So ist Wetter bei jedem Zoom sichtbar |
 | Nachtbeleuchtung ohne Lichtflut | Leuchtende Fenster im Gebäude-Shader, Laternenköpfe und Lichtflecken als additive Instanzen, nur 8 echte Punktlichter nahe am Blickpunkt, Bloom bei Dunkelheit |
@@ -75,6 +76,9 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | `geo.js` | LV95, lokale Koordinaten, WGS84 (swisstopo-Näherungsformeln) |
 | `scene.js` | Renderer, Kamera, OrbitControls (linke Taste verschiebt, Grenzen), EffectComposer (GTAO, Bloom), AO-Ausschlussliste |
 | `terrain.js` | Gelände-Kacheln, Höhenabfrage, Strahltest; Shader für simulierten Boden, historische Karte und scharfe Nahkachel |
+| `roadmarks.js` | Mittel- und Randlinien aus Strassenklasse und -breite, Unterbruch bei Kreuzungen (über den Segmentindex mit Strassen-Besitzer) |
+| `track.js` | Gleise: Schotterbett mit Schwellentextur (UV nach Laufmeter), zwei Schienenbänder, Schienen nur unter 1.5 km Blickabstand |
+| `ambient.js` | Simulierter Alltag: Netz aus Strassen und Trottoirs, Agenten (Autos mit Folgeabstand, Personen), Startpunkte in Blicknähe, eine Instanz-Gruppe je Fahrzeugtyp |
 | `ground.js` | Bodenansicht wählen: Simulation (Vorgabe), Luftbild, Landeskarte (WMS, global und als Nahkachel über `hires.js`) |
 | `trees.js` | Bäume: Laub-/Nadelbaum-Geometrie, Art und Farbe aus dem Luftbild, Wind im Vertex-Shader, zwei Detailstufen je 500-m-Zelle |
 | `buildings.js` | Gebäudemesh und -shader, Dorfbild (Fassade, Dach, Fenster), Farbmodi, Filter, Picker |

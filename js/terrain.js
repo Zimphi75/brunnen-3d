@@ -33,7 +33,8 @@ vec3 simGround( vec3 aerial, vec2 xz, float dist, float nY ) {
   vec3 floorColor = mix( vec3( 0.13, 0.15, 0.06 ), vec3( 0.22, 0.18, 0.095 ), smoothstep( 0.3, 0.8, n1 ) ) * ( 0.8 + 0.45 * n2 * fine );
   vec3 ground = mix( grass, floorColor, forest * 0.7 );
   vec3 evened = aerial / max( lum, 1e-3 ) * clamp( lum, 0.075, 0.4 );
-  vec3 other = mix( aerial, evened, 0.7 ) * ( 0.88 + 0.22 * vnoise( xz * 5.0 ) * fine + 0.1 * ( n4 - 0.5 ) * fine );
+  vec3 pave = vec3( 0.19, 0.195, 0.20 ) * clamp( lum / 0.16, 0.8, 1.2 );
+  vec3 other = mix( evened, pave, 0.78 ) * ( 0.93 + 0.14 * vnoise( xz * 9.0 ) * fine + 0.1 * ( n4 - 0.5 ) * fine );
   vec3 col = mix( other, ground, veg );
   float rock = smoothstep( 0.66, 0.45, nY ) * ( 1.0 - 0.6 * veg );
   vec3 rockColor = mix( vec3( 0.10, 0.095, 0.085 ), vec3( 0.19, 0.175, 0.155 ), fbm( xz * 0.45 ) ) * ( 0.8 + 0.4 * n4 * fine );
@@ -70,11 +71,12 @@ export class Terrain {
       shader.vertexShader = "varying vec2 vTerrXZ; varying vec3 vTerrN;\n" + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvTerrXZ = position.xz; vTerrN = normal;");
       shader.fragmentShader = "uniform sampler2D uHistory; uniform float uSplit; uniform vec2 uResolution; uniform sampler2D uHires; uniform vec4 uHiresRect; uniform float uHiresMix; uniform float uGroundMode; varying vec2 vTerrXZ; varying vec3 vTerrN;\n" + SIM_GROUND
         + shader.fragmentShader.replace("#include <map_fragment>", `#ifdef USE_MAP
-        vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+        float lodBias = uGroundMode < 0.5 ? 1.6 : 0.0;
+        vec4 sampledDiffuseColor = texture2D( map, vMapUv, lodBias );
         vec2 hu = (vTerrXZ - uHiresRect.xy) / uHiresRect.zw;
         if ( uHiresMix > 0.0 && hu.x > 0.0 && hu.x < 1.0 && hu.y > 0.0 && hu.y < 1.0 ) {
           float edge = min( min( hu.x, 1.0 - hu.x ), min( hu.y, 1.0 - hu.y ) );
-          sampledDiffuseColor = mix( sampledDiffuseColor, texture2D( uHires, hu ), uHiresMix * smoothstep( 0.0, 0.06, edge ) );
+          sampledDiffuseColor = mix( sampledDiffuseColor, texture2D( uHires, hu, lodBias * 2.4 ), uHiresMix * smoothstep( 0.0, 0.06, edge ) );
         }
         if ( uGroundMode < 0.5 ) sampledDiffuseColor.rgb = simGround( sampledDiffuseColor.rgb, vTerrXZ, length( vViewPosition ), normalize( vTerrN ).y );
         if ( uSplit > 0.0 && gl_FragCoord.x < uSplit * uResolution.x ) sampledDiffuseColor = texture2D( uHistory, vMapUv );

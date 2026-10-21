@@ -9,6 +9,8 @@ Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit
 - **Nacht**: beleuchtete Fenster, Strassenlaternen mit Lichtkegeln, Sterne, Leuchteffekt; die Szene bleibt im Dunkeln lesbar
 - **Wetter überall sichtbar**: Regen, Schnee, Nebel, Bewölkung und Gewitter wirken am Bildschirm und in der Szene, unabhängig vom Kameraabstand; Live-Wetter (Open-Meteo) für «jetzt», Vorschau-Vorgaben für jede andere Zeit
 - **Photovoltaik auf den Dächern**: Die 248 im BFE-Anlagenregister erfassten Anlagen in Ingenbohl (rund 8 MW) erscheinen als Modulfelder auf den Dachflächen der zugeordneten Gebäude: Glas mit Zellraster, Alurahmen, Spiegelung des Himmels, Schattenwurf; ältere Anlagen bläulich, neuere schwarz, dachintegrierte ohne Rahmen, Flachdächer aufgeständert. Anzahl und Lage der Module sind **simuliert** (aus Leistung, Baujahr, Ausrichtung und Neigung des Registers); Standort, Leistung, Jahr und Bauart sind gemessen. Das Informationspanel eines Gebäudes zeigt die Registerdaten und wie viele Module gezeichnet sind.
+- **Strassen und Gleise**: Zweispurige Strassen (Klassen Haupt-, Neben- und Quartierstrasse) tragen eine gestrichelte Mittellinie, Haupt- und Nebenstrassen zusätzlich Randlinien; die Linien enden vor Einmündungen. Gleise haben Schotterbett mit Schwellen und zwei Schienen im Normalspurabstand.
+- **Simulierter Alltag** (nur bei Boden «Simulation», Ebene «Verkehr und Personen»): Autos (Limousine, Kompaktwagen, Lieferwagen) fahren im Rechtsverkehr auf den Strassen, halten Abstand, biegen ab und umfahren Kreisel gegen den Uhrzeigersinn; Scheinwerfer und Rücklichter leuchten nachts. Personen gehen auf Wegen und auf Trottoirs im Siedlungsgebiet. Es werden nur Agenten in Blicknähe gerechnet.
 - **Haltestellen und Fahrzeuge**: Bushaltestellen mit Mast, Wartehäuschen und Bank, Bahnsteige, Schiffsteg; Postauto, SBB-Zug und Kursschiff als schlanke Modelle in der Fahrplansimulation (als Simulation gekennzeichnet)
 - Navigation: **linke Maustaste verschiebt die Karte**, rechte Taste oder Umschalt+Ziehen dreht, Mausrad zoomt; Pfeiltasten verschieben, `Q`/`E` drehen, `T` Vogelperspektive, `H` Ausgangsansicht, `/` Suche
 - Gebäude anklicken: Informationspanel mit Adresse, Gebäudeklasse, Baujahr/Bauperiode, Höhe, Grundfläche, Heizung usw.
@@ -63,7 +65,7 @@ Jeder statische Webserver genügt (siehe [docs/deployment.md](docs/deployment.md
 
 ```bash
 .venv/bin/python -m pytest -q          # Pipeline-Funktionen und Datendateien
-# Browser-Tests (28): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
+# Browser-Tests (32): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
 ```
 
 ## Projektstruktur
@@ -126,10 +128,11 @@ Die Zahlen stehen auch im Almanach («Datenqualität») und stammen aus `public/
 - **Historische Gebäude werden nicht rekonstruiert.** Die Zeitachse blendet vorhandene Gebäude nach GWR-Baujahr aus und zeigt historische Landeskarten.
 - **Luftbild**: 2 m Auflösung global, in Blicknähe wird SWISSIMAGE per WMS scharf nachgeladen (braucht Internet).
 - **Bäume**: Standort, Höhe und Kronenradius sind aus dem Vegetationshöhenmodell abgeleitet. **Die Art ist geschätzt** (die dunkelsten 40 % der Kronen im Luftbild, ab 5 m Höhe, werden als Nadelbaum gezeichnet), Farbe und Kronenform sind gestalterisch. Es gibt weder Arten- noch Einzelbaumkataster. Bäume auf Strassen, Wegen, Gleisen, in Bächen und im Wasser werden ausgeblendet (3000 von 54'327; massgebend sind die gezeichneten Breiten aus OSM); Bäume in Gebäuden werden nicht geprüft.
-- **Simulierter Boden**: Klassierung (Wiese, Wald, Fels, befestigt) und Detail sind Annahmen, keine Messung. Schatten im Luftbild werden abgeschwächt; Halme und Muster sind Zufall. Wer Daten braucht, wählt «Luftbild» oder «Landeskarte».
+- **Simulierter Boden**: Klassierung (Wiese, Wald, Fels, befestigt) und Detail sind Annahmen, keine Messung. Schatten im Luftbild werden abgeschwächt, befestigte Flächen einheitlich grau gezeichnet; Halme und Muster sind Zufall. Wer Daten braucht, wählt «Luftbild» oder «Landeskarte».
 - **ÖV**: Gemessene Fahrzeugpositionen sind über die offene API nicht verfügbar. Die Fahrplansimulation interpoliert Fahrplanzeiten entlang der OSM-Liniengeometrie.
 - **Abstimmungen**: Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert (derzeit 2025-05-18 und 2023-03-12). Die Quelle sendet keine CORS-Header; darum zieht die Pipeline die Daten (`votes.json`).
 - **Photovoltaik**: Das Register kennt weder Modulzahl noch Modullage. Die gezeichnete Belegung ist eine Annahme (Modulgrösse 1.75 × 1.05 m, Wirkungsgrad nach Baujahr, bevorzugt Süd-, sonst Ost-/Westflächen, Randabstand 0.3 m). Freistehende Anlagen (2) und Fassadenanteile (Neigung ab 60°) werden nicht auf dem Dach gezeichnet. Dachflächen stammen aus swissBUILDINGS3D (Beta). Auf Gebäuden mit grosser Anlage reicht die Dachfläche oft nicht; dann ist die Anlage nur teilweise gezeichnet und das steht im Informationspanel.
+- **Strassenmarkierung und Verkehr sind symbolisch.** OSM enthält hier keine Spurzahl und keine Einbahnrichtung: zweispurig wird aus der Strassenklasse angenommen, Einbahn nur bei Kreiseln. Es gibt weder Verkehrszählungen noch Personenzahlen; Dichte und Wege sind Annahmen (Strassenklasse, Bebauung in der Nähe). Trottoirs sind aus der Strassenbreite abgeleitet, nicht aus OSM-Daten. Autobahnen haben weder Markierung noch Verkehr, weil OSM sie als getrennte Fahrbahnen führt und die Fahrtrichtung fehlt.
 - **Nicht umgesetzt**: Solarpotenzial der Dächer (BFE sonnendach.ch), Isochronen, Objektprofil, Fahrmodus, STATPOP, Grundstücke und ÖREB, swissNAMES3D.
 - **Nicht getestet**: iPhone/Safari und schwache GPUs. Die Leistungswerte stammen von einem Apple-Silicon-Rechner (Chrome), siehe [docs/architecture.md](docs/architecture.md).
 - Die Pipeline ist auf Ingenbohl konfiguriert (`pipeline/config.py`); der GWR-Auszug ist auf den Kanton SZ festgelegt.

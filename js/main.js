@@ -21,6 +21,7 @@ import { initWeather } from "./weather.js";
 import { initHistory } from "./history.js";
 import { initHires } from "./hires.js";
 import { initGround } from "./ground.js";
+import { initAmbient } from "./ambient.js";
 import { initAlmanac } from "./almanac.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -266,6 +267,7 @@ async function setupUi(ctx) {
   initAnalysis(ctx);
   initHires(ctx);
   initGround(ctx);
+  initAmbient(ctx);
   initHistory(ctx);
 
   // Wetter: Vorgaben als Auswahl, Anzeige im Zeitfeld

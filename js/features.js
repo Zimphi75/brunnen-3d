@@ -4,6 +4,8 @@ import { buildRibbons, buildPolygonMesh, buildCurtain } from "./draped.js";
 import { loadOptionalJson, loadOptionalBinary } from "./api.js";
 import { createSegmentIndex, createBlocker } from "./roadindex.js";
 import { parseTrees, buildTrees } from "./trees.js";
+import { markingLines } from "./roadmarks.js";
+import { buildTrack } from "./track.js";
 
 const ROAD_STYLE = {
   motorway: { width: 11, color: "#7a7f86" }, primary: { width: 8, color: "#8a8f95" }, secondary: { width: 7, color: "#969a9f" },
@@ -23,7 +25,7 @@ function overlayMaterial(color) {
   });
 }
 
-function buildRoadGroups(roads, terrain) {
+function buildRoadGroups(roads, terrain, roadIndex) {
   const groups = {};
   for (const [group, kinds] of Object.entries(ROAD_GROUPS)) {
     const container = new THREE.Group();
@@ -31,11 +33,27 @@ function buildRoadGroups(roads, terrain) {
     for (const kind of kinds) {
       const lines = roads.filter((r) => r.c === kind && !r.t).map((r) => r.p);
       if (!lines.length) continue;
+      if (kind === "rail") { container.add(buildTrack(lines, terrain)); continue; }
       const style = ROAD_STYLE[kind];
       const mesh = new THREE.Mesh(buildRibbons(lines, { width: style.width, lift: kind === "rail" ? 0.35 : 0.3, terrain, step: kind === "aerialway" ? 25 : 8 }), overlayMaterial(style.color));
       mesh.receiveShadow = true;
       mesh.renderOrder = kind === "rail" ? 3 : kind === "path" || kind === "track" ? 1 : 2;
       container.add(mesh);
+    }
+    if (group === "roads") {
+      const { dashes, edges } = markingLines(roads, roadIndex);
+      const paint = new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.75, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 });
+      const markings = new THREE.Group();
+      markings.name = "markings";
+      for (const [lines, width] of [[dashes, 0.15], [edges, 0.12]]) {
+        if (!lines.length) continue;
+        const mesh = new THREE.Mesh(buildRibbons(lines, { width, lift: 0.34, terrain, step: 8 }), paint);
+        mesh.renderOrder = 3;
+        mesh.receiveShadow = true;
+        markings.add(mesh);
+      }
+      container.add(markings);
+      container.userData.markings = markings;
     }
     groups[group] = container;
   }
@@ -93,13 +111,21 @@ export async function initDataLayers(ctx) {
 
   const safe = (label, builder) => { try { return builder(); } catch (error) { reportError(`${label}: ${error.message}`, error); return null; } };
 
-  const roadGroups = roadsFile ? safe("Strassen", () => buildRoadGroups(roadsFile.roads, terrain)) : null;
+  const roadGroups = roadsFile ? safe("Strassen", () => buildRoadGroups(roadsFile.roads, terrain, ctx.roadIndex)) : null;
   if (!roadsFile) reportError("roads.json fehlt (Pipeline: python -m pipeline.process_osm)");
   const count = (kinds) => roadsFile ? roadsFile.roads.filter((r) => kinds.includes(r.c) && !r.t).length.toLocaleString("de-CH") : "";
   for (const [id, label, color] of [["roads", "Strassen", "#8a8f95"], ["paths", "Wege und Pfade", "#a0693b"], ["rail", "Bahn und Seilbahnen", "#3a3c40"]]) {
     layers.add({
       id, label, color, available: Boolean(roadGroups), note: "roads.json fehlt", count: count(ROAD_GROUPS[id]), visible: id !== "paths",
       apply: (v) => { if (!roadGroups) return; roadGroups[id].visible = v; if (v && !roadGroups[id].parent) scene.add(roadGroups[id]); },
+    });
+  }
+
+  if (roadGroups) {
+    // dünne Linien flimmern aus der Ferne: nur in der Nähe zeichnen
+    scene3d.onFrame((_, __, distance) => {
+      roadGroups.roads.userData.markings.visible = distance < 700;
+      roadGroups.rail.children.find((c) => c.name === "track")?.userData.rails && (roadGroups.rail.children.find((c) => c.name === "track").userData.rails.visible = distance < 1500);
     });
   }
 
