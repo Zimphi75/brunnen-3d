@@ -10,6 +10,7 @@ Architektonisches Vorbild ist [speicher.mlanalytica.com](https://speicher.mlanal
 - **Gebäudedarstellung** (Auswahl im Panel «Darstellung»): **Dorfbild (realistisch)** mit Putz- oder Holzfassade, Fensterläden, Fenstern und Ziegeldach in der Farbe des Luftbilds; ausserdem Neutral, Nutzung, Baujahr, Höhe, Geschosse, Wohnungen, Heizenergie und Status im Register
 - **Nacht**: beleuchtete Fenster, Strassenlaternen mit Lichtkegeln, Sterne, Leuchteffekt; die Szene bleibt im Dunkeln lesbar
 - **Wetter überall sichtbar**: Regen, Schnee, Nebel, Bewölkung und Gewitter wirken am Bildschirm und in der Szene, unabhängig vom Kameraabstand; Live-Wetter (Open-Meteo) für «jetzt», Vorschau-Vorgaben für jede andere Zeit
+- **Photovoltaik auf den Dächern**: Die 248 im BFE-Anlagenregister erfassten Anlagen in Ingenbohl (rund 8 MW) erscheinen als Modulfelder auf den Dachflächen der zugeordneten Gebäude: Glas mit Zellraster, Alurahmen, Spiegelung des Himmels, Schattenwurf; ältere Anlagen bläulich, neuere schwarz, dachintegrierte ohne Rahmen, Flachdächer aufgeständert. Anzahl und Lage der Module sind **simuliert** (aus Leistung, Baujahr, Ausrichtung und Neigung des Registers); Standort, Leistung, Jahr und Bauart sind gemessen. Das Informationspanel eines Gebäudes zeigt die Registerdaten und wie viele Module gezeichnet sind.
 - **Haltestellen und Fahrzeuge**: Bushaltestellen mit Mast, Wartehäuschen und Bank, Bahnsteige, Schiffsteg; Postauto, SBB-Zug und Kursschiff als schlanke Modelle in der Fahrplansimulation (als Simulation gekennzeichnet)
 - Navigation: **linke Maustaste verschiebt die Karte**, rechte Taste oder Umschalt+Ziehen dreht, Mausrad zoomt; Pfeiltasten verschieben, `Q`/`E` drehen, `T` Vogelperspektive, `H` Ausgangsansicht, `/` Suche
 - Gebäude anklicken: Informationspanel mit Adresse, Gebäudeklasse, Baujahr/Bauperiode, Höhe, Grundfläche, Heizung usw.
@@ -47,7 +48,7 @@ uv pip install --python .venv/bin/python -r pipeline/requirements.txt
 .venv/bin/python -m pipeline.run_all osm export  # einzelne Schritte
 ```
 
-Die Schritte `terrain`, `buildings`, `osm`, `trees`, `votes` und `export` können mehrfach ausgeführt werden. Downloads werden in `pipeline/cache/` zwischengespeichert und nicht erneut geladen. Beschreibung, Binärformate und Konfiguration: [docs/data-pipeline.md](docs/data-pipeline.md).
+Die Schritte `terrain`, `buildings`, `osm`, `trees`, `pv`, `votes` und `export` können mehrfach ausgeführt werden. Downloads werden in `pipeline/cache/` zwischengespeichert und nicht erneut geladen. Beschreibung, Binärformate und Konfiguration: [docs/data-pipeline.md](docs/data-pipeline.md).
 
 Dauer: wenige Minuten bei leerem Zwischenspeicher (der Gebäudeschritt dauert rund 30 s; Overpass kann einzelne Anfragen verzögern). `public/data/manifest.json` hält Hashwerte der Eingabedateien fest und macht Läufe vergleichbar.
 
@@ -92,6 +93,7 @@ Alle Datensätze mit Herkunft, Lizenz, Stand und Abdeckung stehen in [docs/data-
 | Bäume | WSL/BAFU Vegetationshöhenmodell NFI | ODbL mit DbCL |
 | Wetter | Open-Meteo | CC BY 4.0 (nicht kommerziell) |
 | Abfahrten | transport.opendata.ch / opentransportdata.swiss | Open Data, Quellenangabe |
+| Photovoltaikanlagen | BFE, Elektrizitätsproduktionsanlagen | Open Government Data, Quellenangabe |
 | Abstimmungsresultate | BFS voteinfo | Open Government Data, Quellenangabe |
 | Dachfarben | SWISSIMAGE-Luftbild (Median je Dach, abgeleitet) | Open Government Data swisstopo |
 
@@ -110,6 +112,8 @@ Bei einer Veröffentlichung müssen die Quellenangaben sichtbar bleiben (Inspect
 | Dachfarbe aus Luftbild | 2315 von 2316 |
 | Baumpositionen gegen OSM-Einzelbäume geprüft | 65 % mit Modellbaum innerhalb 4 m |
 | Strassenlaternen | 27 aus OSM, 215 entlang von Strassen mit `lit=yes` modelliert (gekennzeichnet) |
+| Photovoltaik | 281 Registeranlagen den 3D-Gebäuden zugeordnet (264 über EGID, 17 über die Lage), davon 248 in der Gemeinde; 4 Anlagen (271 kW) in der Gemeinde ohne passendes Gebäude |
+| Photovoltaik: Modulbelegung | 176 von 273 Gebäuden mit voller Belegung, auf den übrigen reicht die Dachfläche nicht (insgesamt rund 77 % der aus der Leistung berechneten Module) |
 
 Die Zahlen stehen auch im Almanach («Datenqualität») und stammen aus `public/data/metadata.json`.
 
@@ -125,10 +129,11 @@ Die Zahlen stehen auch im Almanach («Datenqualität») und stammen aus `public/
 - **Bäume** sind aus dem Vegetationshöhenmodell abgeleitete Kronenmaxima mit geschätztem Radius, alle mit derselben stilisierten Form.
 - **ÖV**: Gemessene Fahrzeugpositionen sind über die offene API nicht verfügbar. Die Fahrplansimulation interpoliert Fahrplanzeiten entlang der OSM-Liniengeometrie.
 - **Abstimmungen**: Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert (derzeit 2025-05-18 und 2023-03-12). Die Quelle sendet keine CORS-Header; darum zieht die Pipeline die Daten (`votes.json`).
-- **Nicht umgesetzt**: Solarpotenzial und PV-Modi (BFE), Isochronen, Objektprofil, Fahrmodus, STATPOP, Grundstücke und ÖREB, swissNAMES3D.
+- **Photovoltaik**: Das Register kennt weder Modulzahl noch Modullage. Die gezeichnete Belegung ist eine Annahme (Modulgrösse 1.75 × 1.05 m, Wirkungsgrad nach Baujahr, bevorzugt Süd-, sonst Ost-/Westflächen, Randabstand 0.3 m). Freistehende Anlagen (2) und Fassadenanteile (Neigung ab 60°) werden nicht auf dem Dach gezeichnet. Dachflächen stammen aus swissBUILDINGS3D (Beta). Auf Gebäuden mit grosser Anlage reicht die Dachfläche oft nicht; dann ist die Anlage nur teilweise gezeichnet und das steht im Informationspanel.
+- **Nicht umgesetzt**: Solarpotenzial der Dächer (BFE sonnendach.ch), Isochronen, Objektprofil, Fahrmodus, STATPOP, Grundstücke und ÖREB, swissNAMES3D.
 - **Nicht getestet**: iPhone/Safari und schwache GPUs. Die Leistungswerte stammen von einem Apple-Silicon-Rechner (Chrome), siehe [docs/architecture.md](docs/architecture.md).
 - Die Pipeline ist auf Ingenbohl konfiguriert (`pipeline/config.py`); der GWR-Auszug ist auf den Kanton SZ festgelegt.
 
 ## Nächste Schritte
 
-Siehe Abschnitt «Offene Punkte und technische Schulden» in [docs/architecture.md](docs/architecture.md): Solarpotenzial und PV-Modi, Isochronen und Fussgänger-Erreichbarkeit, Objektprofil, Fahrmodus, STATPOP-Hektarraster, swissNAMES3D, Grundstücke/ÖREB, Gebäudesockel, Test auf iPhone/Safari, Chunking der Gebäude.
+Siehe Abschnitt «Offene Punkte und technische Schulden» in [docs/architecture.md](docs/architecture.md): Solarpotenzial der Dächer (sonnendach.ch), Isochronen und Fussgänger-Erreichbarkeit, Objektprofil, Fahrmodus, STATPOP-Hektarraster, swissNAMES3D, Grundstücke/ÖREB, Gebäudesockel, Test auf iPhone/Safari, Chunking der Gebäude.

@@ -12,6 +12,28 @@ const OBJECT_TYPES = {
 };
 const MISSING = '<span class="tag">nicht erfasst</span>';
 
+const PV_ORIENTATION = { 1: "Norden", 2: "Nordost", 3: "Osten", 4: "Südost", 5: "Süden", 6: "Südwest", 7: "Westen", 8: "Nordwest", 9: "Zenit (flach)" };
+
+function pvSections(entries) {
+  return entries.map(({ plant, placed, requested, onRoof, facadeKw }, i) => {
+    const parts = plant.parts ?? [];
+    const orientation = [...new Set(parts.map((p) => p[2]).filter(Boolean).map((o) => PV_ORIENTATION[o]))].join(", ");
+    const inclination = [...new Set(parts.map((p) => p[1]).filter((v) => v != null).map((v) => `${Math.round(v)}°`))].join(", ");
+    const rows = [
+      [entries.length > 1 ? `Photovoltaikanlage ${i + 1}` : "Photovoltaikanlage", `${fmt(plant.kw, plant.kw < 10 ? 1 : 0)} kW`],
+      ["Inbetriebnahme", plant.year ?? MISSING, plant.year == null],
+      ["Bauart", { angebaut: "angebaut (auf dem Dach)", integriert: "dachintegriert", freistehend: "freistehend" }[plant.cat] ?? MISSING, !plant.cat],
+      ["Ausrichtung (Register)", orientation || MISSING, !orientation],
+      ["Neigung (Register)", inclination || MISSING, !inclination],
+    ];
+    rows.push(onRoof && requested > 0
+      ? ["Darstellung", `${placed} von ${requested} Modulen simuliert${placed < requested ? " (Dachfläche reicht nicht)" : ""}`]
+      : ["Darstellung", "freistehend, nicht auf dem Dach gezeichnet"]);
+    if (facadeKw) rows.push(["Fassadenanteil", `${fmt(facadeKw, 1)} kW (Neigung 60° und mehr), nicht gezeichnet`]);
+    return rows;
+  });
+}
+
 export function createInspector({ panel, body, closeButton, codes, onClose }) {
   closeButton.addEventListener("click", () => { hide(); onClose?.(); });
 
@@ -28,7 +50,7 @@ export function createInspector({ panel, body, closeButton, codes, onClose }) {
     panel.hidden = false;
   }
 
-  function showBuilding(record, { addresses = [], elevationOffset = 0 } = {}) {
+  function showBuilding(record, { addresses = [], elevationOffset = 0, pv = [] } = {}) {
     const gwr = record.gwr ?? {};
     const year = buildYear(record);
     const group = typeGroup(record);
@@ -44,6 +66,7 @@ export function createInspector({ panel, body, closeButton, codes, onClose }) {
         ...(group ? [{ text: group.label }] : []),
         ...(record.inMunicipality ? [] : [{ text: "Ausserhalb Ingenbohl", warn: true }]),
         ...(!record.gwr ? [{ text: "Kein GWR-Eintrag verknüpft", warn: true }] : []),
+        ...(pv.length ? [{ text: "Photovoltaik" }] : []),
       ],
       sections: [
         [
@@ -67,9 +90,10 @@ export function createInspector({ panel, body, closeButton, codes, onClose }) {
           ["LV95", formatLv95(record.center[0], record.center[1])],
           ["WGS84", `${wgs.lat.toFixed(5)}, ${wgs.lon.toFixed(5)}`],
         ],
+        ...pvSections(pv),
       ],
       links: [{ label: "map.geo.admin.ch", href: `https://map.geo.admin.ch/#/map?lang=de&center=${record.center[0]},${record.center[1]}&z=12&bgLayer=ch.swisstopo.swissimage` }],
-      source: "swisstopo swissBUILDINGS3D 3.0 beta, BFS GWR (Gebäude- und Wohnungsregister)",
+      source: `swisstopo swissBUILDINGS3D 3.0 beta, BFS GWR (Gebäude- und Wohnungsregister)${pv.length ? ", BFE Elektrizitätsproduktionsanlagen (Photovoltaik). Anzahl und Lage der Module sind simuliert" : ""}`,
     });
   }
 

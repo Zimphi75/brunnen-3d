@@ -4,6 +4,7 @@ import { sunPosition, zurichParts, zurichToDate } from "../js/sky.js";
 import { buildYear, typeGroup, Buildings, COLOR_MODES, facadeStyle, roofColor, floorsOf, isDemolished, hash01 } from "../js/buildings.js";
 import { createSegmentIndex } from "../js/roadindex.js";
 import { model } from "../js/models.js";
+import { moduleWatt, extractRoofFaces, layoutModules } from "../js/pv.js";
 import { parseDem, parseBuildings } from "../js/api.js";
 import { weatherCondition, PRESETS, LIVE_WINDOW_MS } from "../js/weather.js";
 import { esc } from "../js/inspector.js";
@@ -162,6 +163,56 @@ test("Echte Daten: Abstimmungen, Laternen und Register-Rest", async () => {
   assert(lamps.lamps.length > 100 && lamps.lamps.every((l) => l.length >= 2));
   const rest = await fetch("../public/data/gwr_unmatched.json").then((r) => r.json());
   assert(rest.buildings.length > 100 && rest.buildings.every((b) => b.egid && b.e && b.n));
+});
+
+// Satteldach 10 x 8 m, Neigung 30°, First in Ost-West-Richtung: Südfläche (Normale +z) und Nordfläche.
+function gableRoof() {
+  const h = Math.tan(Math.PI / 6) * 4;
+  const south = [[-5, 0, 4], [5, 0, 4], [5, h, 0], [-5, h, 0]];
+  const north = [[5, 0, -4], [-5, 0, -4], [-5, h, 0], [5, h, 0]];
+  const positions = new Float32Array([...south, ...north].flat());
+  return {
+    table: new Uint32Array([0, 8, 0, 12, 0, 2]), faces: new Uint32Array([4, 4]), surfaces: new Uint8Array(8).fill(1), positions,
+    indices: new Uint32Array([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]),
+  };
+}
+
+test("Photovoltaik: Dachflächen werden aus der Geometrie gelesen", () => {
+  const faces = extractRoofFaces(gableRoof(), 0);
+  assert(faces.length === 2);
+  const south = faces.find((f) => f.normal.z > 0);
+  near(south.slope, 30, 0.1, "Neigung"); near(south.azimuth, 180, 0.5, "Azimut Süd"); near(south.area, 10 * 4 / Math.cos(Math.PI / 6), 0.1, "Fläche");
+});
+
+test("Photovoltaik: Modulzahl aus Leistung und Jahr, Module liegen auf der Südfläche", () => {
+  assert(moduleWatt(2007) < moduleWatt(2015) && moduleWatt(2015) < moduleWatt(2024) && moduleWatt(2030) === moduleWatt(2040));
+  const result = layoutModules(extractRoofFaces(gableRoof(), 0), { kw: 3.9, year: 2015, cat: "angebaut", parts: [] });
+  assert(result.requested === Math.round(3900 / moduleWatt(2015)) && result.placed === result.requested, `${result.placed}/${result.requested}`);
+  for (const matrix of result.modules) {
+    const e = matrix.elements; // Spalte 2: Modulnormale
+    assert(e[5] > 0.8 && e[6] > 0.3, "Normale zeigt nach oben und Süden");
+    assert(e[14] > 0 && e[14] < 4.5 && Math.abs(e[12]) < 5, "Modul liegt über der Dachfläche");
+  }
+});
+
+test("Photovoltaik: Ausrichtung aus dem Register bestimmt die Dachfläche, zu grosse Anlagen werden gekappt", () => {
+  const faces = extractRoofFaces(gableRoof(), 0);
+  const north = layoutModules(faces, { kw: 2, year: 2015, cat: "angebaut", parts: [[2, null, 1, 2015]] });
+  assert(north.placed > 0 && north.modules.every((m) => m.elements[6] < -0.3), "Norden: Normale zeigt nach Norden");
+  const huge = layoutModules(extractRoofFaces(gableRoof(), 0), { kw: 500, year: 2015, cat: "angebaut", parts: [] });
+  assert(huge.placed < huge.requested && huge.placed >= 10 && huge.placed <= 28, "Dachfläche begrenzt die Modulzahl");
+  const facade = layoutModules(extractRoofFaces(gableRoof(), 0), { kw: 5, year: 2020, parts: [[5, 90, 5, 2020]] });
+  assert(facade.placed === 0 && facade.facadeKw === 5, "Fassadenanlagen werden nicht aufs Dach gelegt");
+});
+
+test("Echte Daten: pv.json passt zu den Gebäuden und liefert Module", async () => {
+  const [bin, json, pv] = await Promise.all([fetch("../public/data/buildings3d.bin").then((r) => r.arrayBuffer()), fetch("../public/data/buildings.json").then((r) => r.json()), fetch("../public/data/pv.json").then((r) => r.json())]);
+  const data = parseBuildings(bin, json.buildings);
+  assert(pv.plants.length > 100 && pv.plants.every((p) => p.b >= 0 && p.b < data.count && p.kw > 0));
+  const withEgid = pv.plants.filter((p) => p.match === "egid");
+  assert(withEgid.every((p) => json.buildings[p.b].egid), "EGID-Treffer gehören zu Gebäuden mit EGID");
+  const total = pv.plants.slice(0, 40).reduce((sum, plant) => sum + layoutModules(extractRoofFaces(data, plant.b), plant).placed, 0);
+  assert(total > 100, `Module: ${total}`);
 });
 
 test("Echte Daten: Höhenraster entspricht metadata.json", async () => {

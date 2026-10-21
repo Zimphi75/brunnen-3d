@@ -218,3 +218,26 @@ def test_manifest_lists_hashed_inputs():
     manifest = json.loads((DATA / "manifest.json").read_text())
     files = manifest.get("files") or manifest.get("inputs")
     assert files and all(entry.get("sha256") for entry in files)
+
+
+@needs("pv.json")
+def test_pv_plants_reference_buildings_and_have_plausible_values():
+    pv = json.loads((DATA / "pv.json").read_text())
+    records = json.loads((DATA / "buildings.json").read_text())["buildings"]
+    assert len(pv["plants"]) > 100
+    for plant in pv["plants"]:
+        assert 0 <= plant["b"] < len(records) and 0 < plant["kw"] < 5000
+        assert plant["match"] in ("egid", "lage") and plant["cat"] in (None, "angebaut", "integriert", "freistehend")
+        if plant["match"] == "egid":
+            assert records[plant["b"]]["egid"]
+        for kw, inclination, orientation, _ in plant["parts"]:
+            assert kw > 0 and (inclination is None or 0 <= inclination <= 90) and (orientation is None or 1 <= orientation <= 9)
+
+
+@needs("pv.json")
+@needs("metadata.json")
+def test_pv_summary_matches_file():
+    pv = json.loads((DATA / "pv.json").read_text())
+    summary = json.loads((DATA / "metadata.json").read_text())["pv"]
+    assert summary["plants"] == len(pv["plants"])
+    assert abs(summary["totalKw"] - sum(p["kw"] for p in pv["plants"])) < 0.5

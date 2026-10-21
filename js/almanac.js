@@ -49,9 +49,15 @@ export async function initAlmanac(ctx) {
   }
   function energyTab() {
     const entries = count(records.filter((r) => r.inMunicipality), (r) => heatingGroup(r)?.label ?? "Keine Angabe im GWR");
-    const years = records.filter((r) => buildYear(r)?.exact).length;
+    const pv = ctx.pv?.plants?.filter((p) => records[p.b]?.inMunicipality) ?? [];
+    const kwByYear = [...pv.reduce((m, p) => { if (p.year) m.set(p.year, (m.get(p.year) ?? 0) + p.kw); return m; }, new Map())].sort((a, b) => a[0] - b[0]).map(([year, kw]) => [String(year), Math.round(kw)]);
+    const pvBlock = pv.length ? `<h3>Photovoltaik in Ingenbohl (BFE-Anlagenregister)</h3>
+      <div class="stats">${stat(fmt(pv.length), "registrierte Anlagen auf Gebäuden")}${stat(`${fmt(pv.reduce((s, p) => s + p.kw, 0) / 1000, 1)} MW`, "registrierte Leistung")}
+        ${stat(fmt(new Set(pv.map((p) => p.b)).size), "Gebäude mit Photovoltaik")}${stat(fmt(ctx.pv.summary?.modules), "simulierte Module in der 3D-Ansicht")}</div>
+      <h3>Zugebaute Leistung nach Inbetriebnahmejahr (kW)</h3>${bars(kwByYear)}
+      <p class="note">Gemessen sind Standort, Leistung, Jahr, Bauart und teils Ausrichtung und Neigung. Anzahl und Lage der Module auf dem Dach sind aus der Leistung simuliert. Das Register umfasst ${fmt(ctx.meta.pv?.unmatchedPlantsInMunicipality ?? 0)} weitere Anlagen in der Gemeinde, die keinem Gebäude im 3D-Modell zugeordnet werden konnten.</p>` : "";
     return `<h3>Hauptenergieträger der Heizung (Gebäude im 3D-Modell)</h3>${bars(entries)}
-      <p class="note">Für ${fmt(records.filter((r) => r.gwr?.heatEnergy).length)} von ${fmt(records.length)} Gebäuden ist der Energieträger im GWR erfasst. Solarpotenzial und installierte Leistung (BFE) sind in dieser Version nur über die Verknüpfung auf map.geo.admin.ch erreichbar (${fmt(years)} Gebäude mit exaktem Baujahr).</p>`;
+      <p class="note">Für ${fmt(records.filter((r) => r.gwr?.heatEnergy).length)} von ${fmt(records.length)} Gebäuden ist der Energieträger im GWR erfasst. Das Solarpotenzial der Dächer (BFE sonnendach.ch) ist in dieser Version nicht integriert.</p>${pvBlock}`;
   }
   async function votesTab() {
     body.innerHTML = '<p class="note">Lade Resultate der eidgenössischen Abstimmungen …</p>';

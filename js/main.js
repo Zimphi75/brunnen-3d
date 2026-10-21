@@ -13,6 +13,7 @@ import { initDataLayers } from "./features.js";
 import { initPois } from "./pois.js";
 import { initTransport } from "./transport.js";
 import { initLighting } from "./lighting.js";
+import { initPv } from "./pv.js";
 import { initRegister } from "./register.js";
 import { initSearch } from "./search.js";
 import { initAnalysis } from "./analysis.js";
@@ -165,7 +166,7 @@ async function setupUi(ctx) {
   ctx.inspector = inspector;
   ctx.selectBuilding = (index) => {
     buildings.select(index);
-    inspector.showBuilding(ctx.records[index], { addresses: addressesByBuilding.get(index) ?? [], elevationOffset: frame.elevationOffset });
+    inspector.showBuilding(ctx.records[index], { addresses: addressesByBuilding.get(index) ?? [], elevationOffset: frame.elevationOffset, pv: ctx.pv?.byBuilding.get(index) ?? [] });
   };
 
   const providers = [];
@@ -259,6 +260,7 @@ async function setupUi(ctx) {
   await initPois(ctx);
   await initTransport(ctx);
   await initLighting(ctx);
+  await initPv(ctx);
   await initRegister(ctx);
   await initSearch(ctx);
   initAnalysis(ctx);

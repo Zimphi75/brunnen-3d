@@ -3,7 +3,7 @@
 Die Pipeline (`pipeline/`) lädt die Rohdaten, verarbeitet sie und schreibt browseroptimierte Dateien nach `public/data/`. Sie ist wiederholbar: Downloads landen in `pipeline/cache/` und werden bei erneuter Ausführung nicht wiederholt (Löschen des Ordners erzwingt einen frischen Abruf).
 
 ```bash
-.venv/bin/python -m pipeline.run_all            # terrain buildings osm trees votes export
+.venv/bin/python -m pipeline.run_all            # terrain buildings osm trees pv votes export
 .venv/bin/python -m pipeline.run_all buildings  # einzelner Schritt
 .venv/bin/python -m pipeline.download osm       # nur Download
 ```
@@ -30,8 +30,9 @@ Das Untersuchungsgebiet ist das Rechteck um die gepufferte Gemeindegrenze (für 
 6. **Bäume** (`process_trees.py`): Ausschnitt des Vegetationshöhenmodells per HTTP-Bereichsabfrage, Gaussglättung, lokale Maxima ≥ 3 m (Fenster 5 m), Kronenradius aus Höhe geschätzt.
 7. **Luftbild** (`process_terrain.build_ortho`): SWISSIMAGE-Kacheln zu einem JPEG; Ausdehnung identisch mit dem Höhenraster.
 8. **Dachfarben** (`roof_colors.py`, aus `process_buildings`): SWISSIMAGE-WMS-Kacheln (1 km, Zwischenspeicher), Median der Pixel auf den Dachflächen jedes Gebäudes → `roofColor` in `buildings.json`.
-9. **Abstimmungen** (`process_votes.py`): BFS-voteinfo-JSON je Abstimmungstag (per `curl`, System-Zertifikate), Ja-Anteil der Gemeinde, des Kantons und der Schweiz → `votes.json`.
-10. **Export** (`export.py`): `municipality.json`, `statistics.json` (GWR-Aggregate), `sources.json` (Herkunft, Lizenz, Abrufdatum), `manifest.json` (SHA-256 der Eingabedateien).
+9. **Photovoltaik** (`process_pv.py`): BFE-Anlagenregister (CSV-ZIP, 340'000 Anlagen), Unterkategorie Photovoltaik; Zuordnung zum 3D-Gebäude über die EGID, sonst über die Koordinate (Dachprojektion, höchstens 6 m Abstand); Teilanlagen mit Ausrichtung und Neigung aus `PlantDetail` → `pv.json`.
+10. **Abstimmungen** (`process_votes.py`): BFS-voteinfo-JSON je Abstimmungstag (per `curl`, System-Zertifikate), Ja-Anteil der Gemeinde, des Kantons und der Schweiz → `votes.json`.
+11. **Export** (`export.py`): `municipality.json`, `statistics.json` (GWR-Aggregate), `sources.json` (Herkunft, Lizenz, Abrufdatum), `manifest.json` (SHA-256 der Eingabedateien).
 
 `metadata.json` wird von den Schritten abschnittsweise ergänzt (`dem`, `ortho`, `buildings`, `osm`, `trees`, `municipality`, `statistics`) und ist die Verbindung zwischen Pipeline und Frontend (Ursprung, Raster, Höhenversatz).
 
@@ -88,6 +89,7 @@ Kopf (4 × uint32: `"TRE1"`, Version, Anzahl, 0), dann `Float32[n]` x, `Float32[
 - `roads.json`: `{ roads: [ { id, c (Klasse), n, b (Brücke), t (Tunnel), l (Layer), lit (beleuchtet, OSM), p [x0, z0, x1, z1, …] } ] }`
 - `lamps.json`: `{ lamps: [ [x, z, art] ] }`, `art` 0 = OSM-Knoten, 1 = entlang `lit=yes`-Strassen modelliert (Abstand rund 35 m)
 - `gwr_unmatched.json`: `{ buildings: [ { egid, e, n, address, inMunicipality, gwr } ] }`, bestehende Registergebäude ohne 3D-Modell
+- `pv.json`: `{ retrieved, source, orientations, plants: [ { id, b (Gebäudeindex), kw, year, cat (angebaut/integriert/freistehend), match (egid/lage), parts: [ [kw, Neigung°, Ausrichtung 1–9, Jahr] ] } ] }`; Ausrichtung 1 Norden … 5 Süden … 8 Nordwest, 9 Zenit (flach)
 - `votes.json`: `{ bfs, retrieved, source, votes: [ { date, title, local, turnout, canton, swiss, accepted } ] }`
 - `manifest.json`: SHA-256 und Grösse der Eingabedateien
 - `water.json`: `{ areas: [ { id, n, k, rings: [aussen, loch…] } ], streams: [ { id, n, k, p } ] }`

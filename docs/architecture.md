@@ -17,6 +17,7 @@ flowchart LR
     M[process_osm.py]
     R[process_trees.py]
     Q[process_votes.py]
+    PV[process_pv.py]
     C[roof_colors.py]
     E[export.py]
   end
@@ -35,9 +36,10 @@ flowchart LR
   B --> D
   O --> D
   V --> D
-  D --> T & G & M & R & Q & E
+  D --> T & G & M & R & Q & PV & E
   C --> G
-  T & G & M & R & Q & E --> F
+  G --> PV
+  T & G & M & R & Q & PV & E --> F
   F --> JS
   W --> JS
   P --> JS
@@ -54,6 +56,7 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | three.js r160 lokal in `public/vendor/` (per Skript) | Offline lauffähig, feste Version, GTAOPass vorhanden |
 | LV95 (EPSG:2056) als Quellsystem, lokale Koordinaten für Three.js | Float32-Genauigkeit: `x = E - E0`, `y = Höhe - 430 m`, `z = -(N - N0)`; Ursprung (2'688'000, 1'206'300) |
 | Gebäude als ein zusammengeführtes Mesh mit einem Shader | Ein Draw-Call. Pro Vertex stehen Fassaden-/Dachfarbe, Fläche-Typ, Geschosszahl und Ladenstil als Attribute bereit; Fenster, Läden und Dachziegel entstehen prozedural im Fragment-Shader (kein Geometrie- oder Texturaufwand). Auswahl über eigenen AABB- und Dreiecks-Picker |
+| Photovoltaik als Instanzen auf Dachebenen | Die Register-Anlagen werden zur Laufzeit auf die Dachebenen gelegt (rund 20'000 Module, 3 Draw-Calls, nur unter 2.2 km Blickabstand sichtbar). Gemessen ist nur das Register; Modulzahl und -lage sind eine dokumentierte Simulation |
 | Fahrzeuge und Ausstattung als Bausatz (`models.js`) | Wenige Quader und Zylinder mit Vertexfarben, per `InstancedMesh`/Gruppen eingesetzt: schlank, einheitlich, kein Asset-Download. Einzelne Fotomodelle wären teurer in Grösse und Pflege |
 | Wetter am Bildschirm statt im Raum | Das Overlay (`#weather-overlay`) deckt immer das ganze Blickfeld ab; zusätzlich Partikel um den Blickpunkt (Radius folgt dem Kameraabstand). So ist Wetter bei jedem Zoom sichtbar |
 | Nachtbeleuchtung ohne Lichtflut | Leuchtende Fenster im Gebäude-Shader, Laternenköpfe und Lichtflecken als additive Instanzen, nur 8 echte Punktlichter nahe am Blickpunkt, Bloom bei Dunkelheit |
@@ -74,6 +77,7 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | `buildings.js` | Gebäudemesh und -shader, Dorfbild (Fassade, Dach, Fenster), Farbmodi, Filter, Picker |
 | `models.js` | Bausatz: Haltestellen, Bahnsteig, Schiffsteg, Postauto, SBB-Zug, Kursschiff, Laternen |
 | `lighting.js` | Strassenlaternen, Nachtbeleuchtung, Leuchteffekt |
+| `pv.js` | Photovoltaik: Dachebenen aus der Gebäudegeometrie (Dreiecke gleicher Ebene zusammengefasst), Modulraster, Zuordnung nach Ausrichtung/Neigung, glänzende Module (`MeshPhysicalMaterial`, Himmelsumgebung, Instanzen je Bauart) |
 | `hires.js` | Scharfes Luftbild (WMS) in Blicknähe |
 | `register.js` | Registergebäude ohne 3D-Modell (schematisch) |
 | `roadindex.js` | Räumlicher Index über Strassen und Bahn (Ausrichtung von Haltestellen und Laternen) |
