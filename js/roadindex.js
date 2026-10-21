@@ -40,3 +40,46 @@ export function createSegmentIndex(roads, accept, cell = 60) {
   }
   return { nearest, count: segments.length };
 }
+
+const BLOCKED_HALF_WIDTH = { motorway: 5.5, primary: 4, secondary: 3.5, tertiary: 3, minor: 2.5, service: 1.75, track: 1.5, path: 0.8, rail: 1.7 };
+const BLOCKED_WATER_HALF_WIDTH = { river: 3, canal: 2, stream: 0.9 };
+
+function insideRing(x, z, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+    const xi = ring[i], zi = ring[i + 1], xj = ring[j], zj = ring[j + 1];
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * Prüft, ob an einer Stelle (x, z) ein Baum auf Strasse, Weg, Gleis, Bach oder im Wasser stünde.
+ * `clearance` ist der zusätzliche Abstand (Stammstärke, Bankett, ein Teil der Kronenbreite).
+ */
+export function createBlocker(roads, water) {
+  const lines = Object.entries(BLOCKED_HALF_WIDTH).map(([kind, half]) => ({ half, index: createSegmentIndex(roads, (r) => r.c === kind && !r.t) }))
+    .filter((entry) => entry.index.count);
+  const streams = water?.streams ?? [];
+  const streamsByHalf = new Map();
+  for (const stream of streams) {
+    const half = BLOCKED_WATER_HALF_WIDTH[stream.k] ?? 0.9;
+    if (!streamsByHalf.has(half)) streamsByHalf.set(half, []);
+    streamsByHalf.get(half).push(stream);
+  }
+  for (const [half, list] of streamsByHalf) lines.push({ half, index: createSegmentIndex(list, () => true) });
+  const areas = (water?.areas ?? []).map((area) => {
+    const ring = area.rings[0];
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < ring.length; i += 2) { minX = Math.min(minX, ring[i]); maxX = Math.max(maxX, ring[i]); minZ = Math.min(minZ, ring[i + 1]); maxZ = Math.max(maxZ, ring[i + 1]); }
+    return { rings: area.rings, minX, maxX, minZ, maxZ };
+  });
+  return function blocked(x, z, clearance = 0.7) {
+    for (const { half, index } of lines) if (index.nearest(x, z, half + clearance)) return true;
+    for (const area of areas) {
+      if (x < area.minX || x > area.maxX || z < area.minZ || z > area.maxZ) continue;
+      if (insideRing(x, z, area.rings[0]) && !area.rings.slice(1).some((hole) => insideRing(x, z, hole))) return true;
+    }
+    return false;
+  };
+}

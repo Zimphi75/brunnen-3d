@@ -2,7 +2,7 @@
 import { wgs84ToLv95, lv95ToWgs84, createFrame } from "../js/geo.js";
 import { sunPosition, zurichParts, zurichToDate } from "../js/sky.js";
 import { buildYear, typeGroup, Buildings, COLOR_MODES, facadeStyle, roofColor, floorsOf, isDemolished, hash01 } from "../js/buildings.js";
-import { createSegmentIndex } from "../js/roadindex.js";
+import { createSegmentIndex, createBlocker } from "../js/roadindex.js";
 import { model } from "../js/models.js";
 import { moduleWatt, extractRoofFaces, layoutModules } from "../js/pv.js";
 import { parseTrees, buildTrees } from "../js/trees.js";
@@ -240,6 +240,19 @@ test("Bäume: Laub- und Nadelbaum in zwei Detailstufen, Kronenbreite aus Höhe, 
   }
   frames.forEach((fn) => fn(0.016, 1000));
   assert(layer.group.children.some((mesh) => mesh.visible), "nahe Bäume werden gezeichnet");
+});
+
+test("Bäume: nicht auf Strassen, Gleisen, Wegen, in Bächen oder im Wasser, aber neben Strassen und über Tunneln", () => {
+  const roads = [{ c: "primary", p: [0, 0, 100, 0] }, { c: "rail", p: [0, 40, 100, 40] }, { c: "path", p: [0, 70, 100, 70] }, { c: "primary", t: true, p: [0, 90, 100, 90] }];
+  const water = { streams: [{ k: "stream", p: [0, 20, 100, 20] }], areas: [{ rings: [[50, 100, 80, 100, 80, 130, 50, 130]] }] };
+  const blocked = createBlocker(roads, water);
+  assert(blocked(50, 1) && blocked(50, 3.9), "auf der Strasse");
+  assert(!blocked(50, 8), "neben der Strasse");
+  assert(blocked(50, 20.4) && !blocked(50, 23), "im Bach");
+  assert(blocked(30, 41.5) && !blocked(30, 46), "auf dem Gleis");
+  assert(blocked(30, 70.3) && !blocked(30, 73), "auf dem Weg");
+  assert(!blocked(50, 90), "über einem Tunnel stehen Bäume");
+  assert(blocked(60, 110) && !blocked(10, 110), "im Wasser");
 });
 
 test("Echte Daten: Höhenraster entspricht metadata.json", async () => {

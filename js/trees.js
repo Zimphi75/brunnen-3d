@@ -124,7 +124,15 @@ function installMaterial() {
   return { material, uniforms };
 }
 
-export function buildTrees({ trees, terrain, ortho, scene3d, ctx }) {
+export function buildTrees({ trees: input, terrain, ortho, scene3d, ctx, blocked }) {
+  // Keine Bäume auf Strassen, Wegen, Gleisen, Bächen oder im Wasser (Abstand wächst mit der Kronenbreite).
+  const keep = [];
+  for (let i = 0; i < input.count; i++) if (!blocked?.(input.x[i], input.z[i], 0.7 + Math.min(1.2, 0.05 * input.radius[i]))) keep.push(i);
+  const trees = keep.length === input.count ? input : {
+    count: keep.length, x: Float32Array.from(keep, (i) => input.x[i]), z: Float32Array.from(keep, (i) => input.z[i]),
+    height: Uint8Array.from(keep, (i) => input.height[i]), radius: Uint8Array.from(keep, (i) => input.radius[i]),
+  };
+  const removed = input.count - trees.count;
   const group = new THREE.Group();
   group.name = "trees";
   const sampler = orthoSampler(ortho, terrain);
@@ -209,5 +217,5 @@ export function buildTrees({ trees, terrain, ortho, scene3d, ctx }) {
       }
     }
   });
-  return { group, count: trees.count, conifers: coniferCount, threshold };
+  return { group, count: trees.count, removed, conifers: coniferCount, threshold };
 }

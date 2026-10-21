@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { buildRibbons, buildPolygonMesh, buildCurtain } from "./draped.js";
 import { loadOptionalJson, loadOptionalBinary } from "./api.js";
-import { createSegmentIndex } from "./roadindex.js";
+import { createSegmentIndex, createBlocker } from "./roadindex.js";
 import { parseTrees, buildTrees } from "./trees.js";
 
 const ROAD_STYLE = {
@@ -110,7 +110,7 @@ export async function initDataLayers(ctx) {
     apply: (v) => { if (!waterGroup) return; waterGroup.visible = v; if (v && !waterGroup.parent) scene.add(waterGroup); },
   });
 
-  const treeLayer = treeBuffer ? safe("Bäume", () => buildTrees({ trees: parseTrees(treeBuffer), terrain, ortho: ctx.orthoTexture, scene3d, ctx })) : null;
+  const treeLayer = treeBuffer ? safe("Bäume", () => buildTrees({ trees: parseTrees(treeBuffer), terrain, ortho: ctx.orthoTexture, scene3d, ctx, blocked: createBlocker(ctx.roads, waterFile) })) : null;
   layers.add({
     id: "trees", label: "Bäume", color: "#3f7a3a", available: Boolean(treeLayer), note: "trees.bin fehlt (Pipeline: process_trees)",
     count: treeLayer ? treeLayer.count.toLocaleString("de-CH") : "",
