@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 
+import numpy as np
 from pyproj import Transformer
 from shapely.geometry import LineString, MultiLineString, Point, Polygon, box
 from shapely.ops import linemerge, polygonize, unary_union
@@ -306,6 +307,50 @@ def process_lamps(raw: dict, roads: list[dict], clip, origin) -> list[list[float
     return lamps
 
 
+MARKED_CROSSINGS = {"zebra", "marked", "uncontrolled", "traffic_signals"}
+CROSSING_ROADS = {"primary", "secondary", "tertiary", "minor", "service"}
+
+
+def process_crossings(raw: dict, roads: list[dict], clip, origin) -> dict:
+    """Fussgängerstreifen: [x, z, Winkel der Strasse (rad, atan2(dz, dx)), Strassenbreite, Art]; nur markierte Übergänge auf Strassen."""
+    segments = []
+    for road in roads:
+        if road["c"] not in CROSSING_ROADS or road["t"]:
+            continue
+        p = road["p"]
+        for i in range(0, len(p) - 3, 2):
+            segments.append((p[i], p[i + 1], p[i + 2], p[i + 3], road["c"]))
+    seg = np.array([s[:4] for s in segments], dtype="float64") if segments else np.zeros((0, 4))
+    crossings, level = [], []
+    for element in raw["elements"]:
+        tags = element.get("tags", {})
+        if "lon" not in element:
+            continue
+        x, z = to_local_xy(element["lon"], element["lat"], origin)
+        if not clip.contains(Point(x, z)):
+            continue
+        if tags.get("railway") == "level_crossing":
+            level.append([round(x, 1), round(z, 1)])
+            continue
+        kind = tags.get("crossing")
+        markings = tags.get("crossing:markings")
+        if kind == "unmarked" or markings == "no":
+            continue
+        zebra = kind == "zebra" or markings in {"zebra", "yes", "ladder", "surface", "lines"} or tags.get("crossing_ref") == "zebra"
+        if not (zebra or kind in MARKED_CROSSINGS) or not len(seg):
+            continue
+        dx, dz = seg[:, 2] - seg[:, 0], seg[:, 3] - seg[:, 1]
+        length2 = np.maximum(dx * dx + dz * dz, 1e-9)
+        t = np.clip(((x - seg[:, 0]) * dx + (z - seg[:, 1]) * dz) / length2, 0, 1)
+        distance = np.hypot(x - (seg[:, 0] + dx * t), z - (seg[:, 1] + dz * t))
+        index = int(distance.argmin())
+        if distance[index] > 6:
+            continue
+        cls = segments[index][4]
+        crossings.append([round(x, 1), round(z, 1), round(float(np.arctan2(dz[index], dx[index])), 3), ROAD_HALF_WIDTH[cls] * 2, "zebra" if zebra else "marked"])
+    return {"crossings": crossings, "levelCrossings": level}
+
+
 def process_places(raw: dict, clip, origin) -> list[dict]:
     places = []
     for element in raw["elements"]:
@@ -349,11 +394,15 @@ def main() -> None:
     lamps = process_lamps(raw["lamps"], roads, clip, origin)
     write_json("lamps.json", {"lamps": lamps, "sources": {"0": "OSM street_lamp", "1": "modelliert entlang Strassen mit lit=yes"}})
 
+    crossings = process_crossings(raw["crossings"], roads, clip, origin)
+    write_json("crossings.json", crossings)
+
     counts = defaultdict(int)
     for road in roads:
         counts[road["c"]] += 1
     update_metadata("osm", {
-        "files": ["roads.json", "water.json", "pois.json", "transport.json", "places.json", "lamps.json"],
+        "files": ["roads.json", "water.json", "pois.json", "transport.json", "places.json", "lamps.json", "crossings.json"],
+        "crossings": {"marked": len(crossings["crossings"]), "levelCrossings": len(crossings["levelCrossings"])},
         "lamps": {"osm": sum(1 for lamp in lamps if lamp[2] == 0), "modelled": sum(1 for lamp in lamps if lamp[2] == 1)},
         "roads": dict(counts), "waterAreas": len(water["areas"]), "streams": len(water["streams"]),
         "pois": len(pois), "stops": len(transport["stops"]), "lines": len(transport["lines"]),

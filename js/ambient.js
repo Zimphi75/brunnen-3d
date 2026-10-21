@@ -3,9 +3,12 @@
 import * as THREE from "three";
 import { walk, roadLayout } from "./roadmarks.js";
 import { skyEnvironment } from "./pv.js";
-import { CAR_KINDS, carMaterial, pedestrianGeometry, dogGeometry, figureMaterial } from "./vehicles.js";
+import { CAR_KINDS, carMaterial, pedestrianGeometry, dogGeometry, bikeGeometry, figureMaterial } from "./vehicles.js";
+import { roadWidth } from "./roadmarks.js";
 
-const CAR_CLASSES = { motorway: { speed: 28, weight: 1 }, primary: { speed: 14, weight: 1 }, secondary: { speed: 12, weight: 0.9 }, tertiary: { speed: 10, weight: 0.8 }, minor: { speed: 8.5, weight: 0.5 }, service: { speed: 5, weight: 0.2 } };
+// Nebenstrassen ohne Mittellinie (minor, service) sind praktisch autofrei: Gewicht nahe null; dort fahren Velos und gehen Personen.
+const CAR_CLASSES = { motorway: { speed: 28, weight: 1 }, primary: { speed: 14, weight: 1 }, secondary: { speed: 12, weight: 0.9 }, tertiary: { speed: 10, weight: 0.8 }, minor: { speed: 8.5, weight: 0.03 }, service: { speed: 5, weight: 0.02 } };
+const BIKE_CLASSES = { minor: { speed: 5.2, weight: 1 }, service: { speed: 4.6, weight: 0.8 }, track: { speed: 4, weight: 0.4 } };
 const SIDEWALK_CLASSES = ["primary", "secondary", "tertiary", "minor"];
 const ACTIVE_DISTANCE = 1400;
 const nodeKey = (x, z) => `${Math.round(x * 10)}:${Math.round(z * 10)}`;
@@ -21,7 +24,7 @@ export function buildNetwork(lines) {
     const cum = new Float32Array(n);
     for (let i = 1; i < n; i++) cum[i] = cum[i - 1] + Math.hypot(line.p[2 * i] - line.p[2 * i - 2], line.p[2 * i + 1] - line.p[2 * i - 1]);
     if (cum[n - 1] < 3) continue;
-    out.push({ id: out.length, p: line.p, n, cum, total: cum[n - 1], cls: line.cls, oneway: line.oneway ?? 0, lanes: line.lanes ?? [], width: line.width ?? 0, closed: n > 2 && line.p[0] === line.p[2 * n - 2] && line.p[1] === line.p[2 * n - 1] });
+    out.push({ id: out.length, p: line.p, n, cum, total: cum[n - 1], cls: line.cls, oneway: line.oneway ?? 0, lanes: line.lanes ?? [], width: line.width ?? 0, owner: line.owner ?? -1, d0: line.d0 ?? 0, closed: n > 2 && line.p[0] === line.p[2 * n - 2] && line.p[1] === line.p[2 * n - 1] });
   }
   const nodes = new Map();
   for (const line of out) for (let i = 0; i < line.n; i++) {
@@ -47,7 +50,7 @@ function enter(agent, line, vertex, random) {
  * Bewegt einen Agenten um `distance` Meter. An Knoten kann er abbiegen, an Enden wählt er eine Anschlusslinie.
  * Rückgabe false: Sackgasse ohne Wendemöglichkeit (`bounce` false), der Agent muss neu gesetzt werden.
  */
-export function advance(agent, distance, net, random = Math.random, { turn = 0.35, bounce = false } = {}) {
+export function advance(agent, distance, net, random = Math.random, { turn = 0.35, bounce = false, accept = null } = {}) {
   let remaining = distance;
   for (let guard = 0; remaining > 0 && guard < 60; guard++) {
     const line = agent.line, len = segmentLength(line, agent.seg);
@@ -56,7 +59,7 @@ export function advance(agent, distance, net, random = Math.random, { turn = 0.3
     remaining -= room;
     const vertex = agent.dir > 0 ? agent.seg + 1 : agent.seg, last = line.n - 1;
     const atEnd = vertex === 0 || vertex === last;
-    const options = (net.nodes.get(nodeKey(line.p[2 * vertex], line.p[2 * vertex + 1])) ?? []).filter((o) => o.line !== line);
+    const options = (net.nodes.get(nodeKey(line.p[2 * vertex], line.p[2 * vertex + 1])) ?? []).filter((o) => o.line !== line && (!accept || accept(o.line)));
     if (options.length && (atEnd || random() < turn)) { const pick = options[Math.floor(random() * options.length)]; enter(agent, pick.line, pick.index, random); continue; }
     if (!atEnd) { agent.seg += agent.dir; agent.t = agent.dir > 0 ? 0 : segmentLength(line, agent.seg); continue; }
     if (line.closed) {
@@ -84,6 +87,38 @@ const loopDirection = (p) => {
   // Rechtsverkehr: Kreisel gegen den Uhrzeigersinn (Kartenansicht, Nord oben); z ist nach Süden gerichtet, daher negative Fläche
   return area < 0 ? 1 : -1;
 };
+
+/**
+ * Geschwindigkeitsbegrenzung gegen Durchdringung. Agenten: { id, x, z, tx, tz, w (halbe Breite), l (halbe Länge), base, speed }.
+ * Gleichgerichtete Vorausfahrende bremsen den Hintermann (Folgeabstand); bei kreuzenden oder entgegenkommenden Wegen
+ * wartet, wer die höhere `id` hat (Vorrang nach id, damit sich nie zwei gegenseitig blockieren).
+ */
+export function limitSpeeds(agents, { minGap = 1.5, lookBase = 4, lookTime = 1.4 } = {}) {
+  for (const a of agents) {
+    a.limit = a.base; a.blocked = false;
+    for (const b of agents) {
+      if (a === b) continue;
+      const rx = b.x - a.x, rz = b.z - a.z, dist2 = rx * rx + rz * rz;
+      if (dist2 > 900) continue;
+      const aligned = a.tx * b.tx + a.tz * b.tz > 0.4;
+      if (aligned) {
+        const fwd = rx * a.tx + rz * a.tz, lat = Math.abs(rx * a.tz - rz * a.tx);
+        if (fwd > 0 && fwd < lookBase + a.base * lookTime && lat < a.w + b.w) {
+          const gap = fwd - a.l - b.l;
+          a.limit = Math.min(a.limit, gap < minGap ? 0 : (gap - minGap) / 1.2);
+          a.blocked = true;
+        }
+      } else if (a.id > b.id) {
+        for (const t of [0.4, 0.8, 1.3, 1.8]) {
+          const ax = a.x + a.tx * a.base * t, az = a.z + a.tz * a.base * t, bx = b.x + b.tx * b.speed * t, bz = b.z + b.tz * b.speed * t;
+          const reach = a.w + b.w + 0.3 + Math.max(a.l, b.l) * 0.35;
+          if ((ax - bx) ** 2 + (az - bz) ** 2 < reach * reach) { a.limit = 0; a.blocked = true; break; }
+        }
+      }
+    }
+    a.limit = Math.max(0, a.limit);
+  }
+}
 
 // --- Szene -----------------------------------------------------------------------------------------------------------------
 

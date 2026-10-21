@@ -220,6 +220,7 @@ def overpass_queries(bbox: str) -> dict[str, str]:
                 f'way["amenity"]["name"]({bbox});way["tourism"]["name"]({bbox});way["shop"]["name"]({bbox}););out tags center;',
         "routes": f'{header}relation["route"~"^(bus|train|ferry|railway|light_rail)$"]({bbox});out geom;',
         "trees": f'{header}node["natural"="tree"]({bbox});out;',
+        "crossings": f'{header}(node["highway"="crossing"]({bbox});node["railway"="level_crossing"]({bbox}););out;',
         "lamps": f'{header}(node["highway"="street_lamp"]({bbox});node["man_made"="street_lamp"]({bbox}););out;',
         "places": f'{header}(node["place"~"^(city|town|village|hamlet|suburb|neighbourhood|locality|isolated_dwelling)$"]["name"]({bbox});'
                   f'node["natural"~"^(peak|bay|cape)$"]["name"]({bbox}););out;',

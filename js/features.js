@@ -6,6 +6,8 @@ import { createSegmentIndex, createBlocker } from "./roadindex.js";
 import { parseTrees, buildTrees } from "./trees.js";
 import { markingLines, roadWidth } from "./roadmarks.js";
 import { buildTrack } from "./track.js";
+import { buildCrosswalks } from "./crosswalks.js";
+import { Bridges } from "./bridges.js";
 
 const ROAD_STYLE = {
   motorway: { width: 11, color: "#7a7f86" }, primary: { width: 8, color: "#8a8f95" }, secondary: { width: 7, color: "#969a9f" },
@@ -25,37 +27,83 @@ function overlayMaterial(color) {
   });
 }
 
-function buildRoadGroups(roads, terrain, roadIndex) {
+const nodeKey = (x, z) => `${Math.round(x * 10)}:${Math.round(z * 10)}`;
+const BLEND_LENGTH = 12;
+
+/** Durchschnittsfarbe aller Strassen und Wege, die an einem Endknoten zusammentreffen. */
+function nodeColors(roads) {
+  const nodes = new Map();
+  const add = (x, z, color) => {
+    const key = nodeKey(x, z), entry = nodes.get(key) ?? { r: 0, g: 0, b: 0, n: 0 };
+    entry.r += color.r; entry.g += color.g; entry.b += color.b; entry.n++;
+    nodes.set(key, entry);
+  };
+  for (const road of roads) {
+    const style = ROAD_STYLE[road.c];
+    if (!style || road.t || road.c === "rail" || road.c === "aerialway") continue;
+    const color = new THREE.Color(style.color);
+    add(road.p[0], road.p[1], color);
+    add(road.p[road.p.length - 2], road.p[road.p.length - 1], color);
+  }
+  return nodes;
+}
+
+/** Vertexfarbe einer Strasse: an den Enden gleitet sie in die Durchschnittsfarbe der anschliessenden Strassentypen. */
+function blendColors(road, nodes) {
+  const own = new THREE.Color(ROAD_STYLE[road.c].color);
+  const ends = [nodes.get(nodeKey(road.p[0], road.p[1])), nodes.get(nodeKey(road.p[road.p.length - 2], road.p[road.p.length - 1]))];
+  const target = (entry) => (entry ? new THREE.Color(entry.r / entry.n, entry.g / entry.n, entry.b / entry.n) : own);
+  const [startColor, endColor] = [target(ends[0]), target(ends[1])];
+  return (s, total) => {
+    const color = own.clone();
+    if (s < BLEND_LENGTH) color.lerp(startColor, 0.95 * (1 - s / BLEND_LENGTH) ** 1.5);
+    if (total - s < BLEND_LENGTH) color.lerp(endColor, 0.95 * (1 - (total - s) / BLEND_LENGTH) ** 1.5);
+    return color;
+  };
+}
+
+function buildRoadGroups(roads, terrain, roadIndex, bridges, crossings) {
   const groups = {};
+  const nodes = nodeColors(roads);
+  const vertexMaterial = () => { const m = overlayMaterial(0xffffff); m.vertexColors = true; return m; };
   for (const [group, kinds] of Object.entries(ROAD_GROUPS)) {
     const container = new THREE.Group();
     container.name = group;
     for (const kind of kinds) {
-      const members = roads.filter((r) => r.c === kind && !r.t);
-      const lines = members.map((r) => r.p);
+      const members = roads.map((road, index) => ({ road, index })).filter(({ road }) => road.c === kind && !road.t);
+      const lines = members.map((m) => m.road.p);
       if (!lines.length) continue;
-      if (kind === "rail") { container.add(buildTrack(lines, terrain)); continue; }
+      const heightFns = members.map((m) => bridges?.heightFn(m.index) ?? null);
+      if (kind === "rail") { container.add(buildTrack(lines, terrain, { heightFns })); continue; }
       const style = ROAD_STYLE[kind];
-      const widths = kind === "motorway" || kind === "primary" || kind === "secondary" ? members.map(roadWidth) : null;
-      const mesh = new THREE.Mesh(buildRibbons(lines, { width: style.width, widths, lift: kind === "rail" ? 0.35 : 0.3, terrain, step: kind === "aerialway" ? 25 : 8 }), overlayMaterial(style.color));
+      const widths = kind === "motorway" || kind === "primary" || kind === "secondary" ? members.map((m) => roadWidth(m.road)) : null;
+      const blend = kind !== "aerialway";
+      const mesh = new THREE.Mesh(buildRibbons(lines, {
+        width: style.width, widths, lift: 0.3, terrain, step: kind === "aerialway" ? 25 : 8, heightFns,
+        colors: blend ? members.map((m) => blendColors(m.road, nodes)) : null,
+      }), blend ? vertexMaterial() : overlayMaterial(style.color));
       mesh.receiveShadow = true;
-      mesh.renderOrder = kind === "rail" ? 3 : kind === "path" || kind === "track" ? 1 : 2;
+      mesh.renderOrder = kind === "path" || kind === "track" ? 1 : 2;
       container.add(mesh);
     }
     if (group === "roads") {
-      const { dashes, edges } = markingLines(roads, roadIndex);
+      const { dashes, edges, dashMeta, edgeMeta } = markingLines(roads, roadIndex);
       const paint = new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.75, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 });
       const markings = new THREE.Group();
       markings.name = "markings";
-      for (const [lines, width] of [[dashes, 0.15], [edges, 0.12]]) {
+      for (const [lines, meta, width] of [[dashes, dashMeta, 0.15], [edges, edgeMeta, 0.12]]) {
         if (!lines.length) continue;
-        const mesh = new THREE.Mesh(buildRibbons(lines, { width, lift: 0.34, terrain, step: 8 }), paint);
+        const mesh = new THREE.Mesh(buildRibbons(lines, {
+          width, lift: 0.34, terrain, step: 8, heightFns: meta.map((m) => bridges?.heightFn(m.owner) ?? null), sStarts: meta.map((m) => m.s0),
+        }), paint);
         mesh.renderOrder = 3;
         mesh.receiveShadow = true;
         markings.add(mesh);
       }
+      if (crossings?.length) markings.add(buildCrosswalks(crossings, terrain, paint));
       container.add(markings);
       container.userData.markings = markings;
+      if (bridges?.count) container.add(bridges.build());
     }
     groups[group] = container;
   }
@@ -103,8 +151,8 @@ function buildWater(water, terrain) {
 export async function initDataLayers(ctx) {
   const { terrain, scene3d, layers, reportError } = ctx;
   const scene = scene3d.scene;
-  const [roadsFile, waterFile, treeBuffer, municipality] = await Promise.all([
-    loadOptionalJson("roads.json"), loadOptionalJson("water.json"), loadOptionalBinary("trees.bin"), loadOptionalJson("municipality.json"),
+  const [roadsFile, waterFile, treeBuffer, municipality, crossingFile] = await Promise.all([
+    loadOptionalJson("roads.json"), loadOptionalJson("water.json"), loadOptionalBinary("trees.bin"), loadOptionalJson("municipality.json"), loadOptionalJson("crossings.json"),
   ]);
   ctx.municipality = municipality;
   ctx.roads = roadsFile?.roads ?? [];
@@ -113,7 +161,9 @@ export async function initDataLayers(ctx) {
 
   const safe = (label, builder) => { try { return builder(); } catch (error) { reportError(`${label}: ${error.message}`, error); return null; } };
 
-  const roadGroups = roadsFile ? safe("Strassen", () => buildRoadGroups(roadsFile.roads, terrain, ctx.roadIndex)) : null;
+  ctx.bridges = safe("Brücken", () => new Bridges(ctx.roads, terrain));
+  ctx.crossings = crossingFile?.crossings ?? [];
+  const roadGroups = roadsFile ? safe("Strassen", () => buildRoadGroups(roadsFile.roads, terrain, ctx.roadIndex, ctx.bridges, ctx.crossings)) : null;
   if (!roadsFile) reportError("roads.json fehlt (Pipeline: python -m pipeline.process_osm)");
   const count = (kinds) => roadsFile ? roadsFile.roads.filter((r) => kinds.includes(r.c) && !r.t).length.toLocaleString("de-CH") : "";
   for (const [id, label, color] of [["roads", "Strassen", "#8a8f95"], ["paths", "Wege und Pfade", "#a0693b"], ["rail", "Bahn und Seilbahnen", "#3a3c40"]]) {

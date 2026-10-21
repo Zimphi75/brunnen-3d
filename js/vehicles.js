@@ -244,3 +244,19 @@ export function figureMaterial() {
   material.customProgramCacheKey = () => "figures-v1";
   return material;
 }
+
+/** Velo mit Fahrerin oder Fahrer (Ursprung an der Hüfte auf dem Sattel, vorne +z); Beine treten im Shader. */
+export function bikeGeometry(count) {
+  const dark = "#1b1b1d", helmet = "#e8e8e4";
+  const g = mergeGeometries([
+    part(cylinder(0.34, 0.34, 0.045, 14, dark, 0, 0, -0.36, [0, 0, Math.PI / 2]).translate(0, 0, 0), 0), part(cylinder(0.34, 0.34, 0.045, 14, dark, 0, 0, 0.7, [0, 0, Math.PI / 2]), 0),
+    part(box(0.045, 0.045, 0.7, WHITE, 0, 0.74, 0.18), 1), part(box(0.045, 0.045, 0.68, WHITE, 0, 0.52, 0.2, [0.75, 0, 0]), 1), part(box(0.04, 0.5, 0.04, WHITE, 0, 0.36, -0.12), 1),
+    part(box(0.04, 0.72, 0.04, dark, 0, 0, 0.6), 0), part(box(0.04, 0.6, 0.04, dark, 0, 0, -0.34, [-0.4, 0, 0]), 0),
+    part(box(0.5, 0.03, 0.03, dark, 0, 0.98, 0.55), 0), part(box(0.1, 0.05, 0.26, dark, 0, 0.9, -0.02), 0),
+    part(box(0.4, 0.58, 0.22, WHITE, 0, 0.98, 0.1, [0.75, 0, 0]), 1),
+    part(box(0.09, 0.52, 0.1, WHITE, 0.22, 0.85, 0.36, [-0.65, 0, 0]), 1), part(box(0.09, 0.52, 0.1, WHITE, -0.22, 0.85, 0.36, [-0.65, 0, 0]), 1),
+    part(box(0.13, 0.82, 0.15, WHITE, 0.1, 0.1, 0.0), 2, 1, 0.92), part(box(0.13, 0.82, 0.15, WHITE, -0.1, 0.1, 0.0), 2, -1, 0.92),
+    part(box(0.1, 0.1, 0.12, WHITE, 0, 1.42, 0.45), 3), part(box(0.19, 0.22, 0.2, WHITE, 0, 1.45, 0.43), 3), part(box(0.22, 0.12, 0.25, helmet, 0, 1.6, 0.42), 0),
+  ]);
+  return withPhase(g, count);
+}

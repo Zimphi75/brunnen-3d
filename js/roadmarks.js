@@ -27,7 +27,7 @@ export function roadLayout(road) {
     const lanes = Math.max(1, road.ln || 1), width = Math.max(base, lanes * 3.2 + 1);
     return { width, lanes: Array.from({ length: lanes }, (_, i) => (i - (lanes - 1) / 2) * 3.2), dividers: lanes > 1 ? Array.from({ length: lanes - 1 }, (_, i) => (i - (lanes - 2) / 2) * 3.2) : [], edges: [], dash: [3, 6] };
   }
-  const marked = { primary: { edge: true, dash: [3, 6] }, secondary: { edge: true, dash: [3, 6] }, tertiary: { edge: false, dash: [3, 6] }, minor: { edge: false, dash: [2, 4] } }[road.c];
+  const marked = { primary: { edge: true, dash: [3, 6] }, secondary: { edge: true, dash: [3, 6] }, tertiary: { edge: false, dash: [3, 6] } }[road.c];
   return {
     width: base, lanes: [base / 4], dividers: marked ? [0] : [], edges: marked?.edge ? [-(base / 2 - EDGE_INSET), base / 2 - EDGE_INSET] : [], dash: marked?.dash ?? [3, 6],
   };
@@ -58,7 +58,7 @@ export function walk(p, step) {
  * Markierungen enden vor Einmündungen und Kreuzungen (sobald eine andere Strasse die Fahrbahn berührt).
  */
 export function markingLines(roads, index) {
-  const dashes = [], edges = [];
+  const dashes = [], edges = [], dashMeta = [], edgeMeta = [];
   const crossing = (sample, owner, margin) => {
     const other = index.nearest(sample.x, sample.z, 14, owner);
     return other !== null && other.distance < roadWidth(roads[other.owner]) / 2 + margin;
@@ -70,19 +70,19 @@ export function markingLines(roads, index) {
     const fine = walk(road.p, 1);
     if (fine.length < MIN_LENGTH) return;
     const [dash, gap] = layout.dash;
-    const runs = (samples, keep, offset, target) => {
-      let run = [];
-      const flush = () => { if (run.length >= 2) target.push(run.flatMap(([x, z]) => [x, z])); run = []; };
+    const runs = (samples, keep, offset, target, meta) => {
+      let run = [], start = 0;
+      const flush = () => { if (run.length >= 2) { target.push(run.flatMap(([x, z]) => [x, z])); meta.push({ owner, s0: start }); } run = []; };
       for (const sample of samples) {
-        if (keep(sample)) run.push([sample.x - sample.tz * offset, sample.z + sample.tx * offset]); else flush();
+        if (keep(sample)) { if (!run.length) start = sample.d; run.push([sample.x - sample.tz * offset, sample.z + sample.tx * offset]); } else flush();
       }
       flush();
     };
-    for (const offset of layout.dividers) runs(fine, (s) => s.d % (dash + gap) < dash && s.d > 2 && !crossing(s, owner, 1.2), offset, dashes);
+    for (const offset of layout.dividers) runs(fine, (s) => s.d % (dash + gap) < dash && s.d > 2 && !crossing(s, owner, 1.2), offset, dashes, dashMeta);
     if (layout.edges.length) {
       const coarse = walk(road.p, 2);
-      for (const offset of layout.edges) runs(coarse, (s) => !crossing(s, owner, 1.0), offset, edges);
+      for (const offset of layout.edges) runs(coarse, (s) => !crossing(s, owner, 1.0), offset, edges, edgeMeta);
     }
   });
-  return { dashes, edges };
+  return { dashes, edges, dashMeta, edgeMeta };
 }

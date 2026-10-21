@@ -37,21 +37,22 @@ function bedTexture() {
 }
 
 /** Band mit Texturkoordinaten: u quer (0..1), v = Laufmeter / Schwellenabstand. */
-function bedGeometry(lines, terrain) {
+function bedGeometry(lines, terrain, heightFns) {
   const positions = [], uvs = [], indices = [];
-  for (const flat of lines) {
+  lines.forEach((flat, lineIndex) => {
     const samples = walk(flat, 3);
-    if (samples.length < 2) continue;
+    if (samples.length < 2) return;
     const base = positions.length / 3;
+    const heightFn = heightFns?.[lineIndex];
     samples.forEach((s) => {
       for (const side of [1, -1]) {
         const x = s.x - s.tz * (BED_WIDTH / 2) * side, z = s.z + s.tx * (BED_WIDTH / 2) * side;
-        positions.push(x, (terrain.heightAt(x, z) ?? 0) + BED_LIFT, z);
+        positions.push(x, (heightFn ? heightFn(s.x, s.z, s.d) : terrain.heightAt(x, z) ?? 0) + BED_LIFT, z);
         uvs.push(side === 1 ? 0 : 1, s.d / SLEEPER_PITCH);
       }
     });
     for (let i = 0; i < samples.length - 1; i++) { const a = base + i * 2; indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
-  }
+  });
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
@@ -66,10 +67,10 @@ function offsetLines(lines, offset) {
 }
 
 /** `lines`: Gleis-Polylinien [x0, z0, …]. Rückgabe: Gruppe mit Bett, Schienen und `rails` (nur in der Nähe sichtbar). */
-export function buildTrack(lines, terrain) {
+export function buildTrack(lines, terrain, { heightFns = null } = {}) {
   const group = new THREE.Group();
   group.name = "track";
-  const bed = new THREE.Mesh(bedGeometry(lines, terrain), new THREE.MeshStandardMaterial({
+  const bed = new THREE.Mesh(bedGeometry(lines, terrain, heightFns), new THREE.MeshStandardMaterial({
     map: bedTexture(), roughness: 1, metalness: 0, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
   }));
   bed.renderOrder = 3;
@@ -77,7 +78,7 @@ export function buildTrack(lines, terrain) {
   const rails = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({ color: 0xb4b8be, roughness: 0.4, metalness: 0.6, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 });
   for (const side of [1, -1]) {
-    const mesh = new THREE.Mesh(buildRibbons(offsetLines(lines, (GAUGE / 2) * side), { width: RAIL_WIDTH, lift: RAIL_LIFT, terrain, step: 3 }), steel);
+    const mesh = new THREE.Mesh(buildRibbons(offsetLines(lines, (GAUGE / 2) * side), { width: RAIL_WIDTH, lift: RAIL_LIFT, terrain, step: 3, heightFns }), steel);
     mesh.renderOrder = 4;
     mesh.receiveShadow = true;
     rails.add(mesh);
