@@ -22,20 +22,20 @@ Nicht nötig: `pipeline/`, `tests/`, `.venv/`, `docs/`.
 
 ## Automatisch auf Hoststar veröffentlichen
 
-Das GitHub-Repository enthält den Workflow `.github/workflows/hoststar-deploy.yml`. Bei jedem Push auf `main` baut GitHub Actions die Datenpipeline und Three.js, führt die pytest-Tests aus und stellt daraus den statischen Website-Ordner zusammen. Der Upload zu Hoststar läuft über SFTP (Port 5544). Manuelle Builds lassen sich unter **Actions → Build and deploy to Hoststar → Run workflow** starten.
+Das GitHub-Repository enthält den Workflow `.github/workflows/hoststar-deploy.yml`. Bei jedem Push auf `main` baut GitHub Actions die Datenpipeline und Three.js, führt die pytest-Tests aus und stellt daraus den statischen Website-Ordner zusammen. Der Upload zu Hoststar läuft verschlüsselt über explizites FTPS (Port 21). Manuelle Builds lassen sich unter **Actions → Build and deploy to Hoststar → Run workflow** starten.
 
 Vor dem ersten Deploy im GitHub-Repository unter **Settings → Secrets and variables → Actions** konfigurieren:
 
 | Typ | Name | Wert |
 |---|---|---|
 | Secret | `HOSTSTAR_SFTP_SERVER` | Servername aus My Panel, z. B. `lx68.hoststar.hosting` |
-| Secret | `HOSTSTAR_SFTP_USERNAME` | separater SFTP-Benutzer für Brunnen 3D |
-| Secret | `HOSTSTAR_SFTP_PASSWORD` | Passwort dieses SFTP-Benutzers |
+| Secret | `HOSTSTAR_SFTP_USERNAME` | separater Hoststar-Dateiübertragungsbenutzer für Brunnen 3D |
+| Secret | `HOSTSTAR_SFTP_PASSWORD` | Passwort dieses Benutzers (dieselben Hoststar-Zugangsdaten gelten für WebFTP, SFTP und FTPS) |
 | Variable | `HOSTSTAR_SFTP_ENABLED` | `true` |
 
 In Hoststar eine eigene Website/Subdomain (z. B. `brunnen3d.multikanal.ch`) anlegen und einen separaten FTP-Benutzer erstellen, der ausschliesslich auf das automatisch zugewiesene Webroot dieser Website beschränkt ist. Das SFTP-Konto startet dort; der Workflow lädt nach `./` hoch. Den Domain-Hauptordner `/home/ch71104/web` nicht als Ziel verwenden, wenn dort bereits eine Website liegt.
 
-Die Zugangsdaten nie in Dateien oder Commits eintragen. Hoststar zeigt für das Hosting SFTP auf Port 5544. Hoststar bietet auf diesem Server nur den älteren `ssh-rsa`-Hostschlüssel an; `.github/hoststar_known_hosts` pinnt den am 2026-10-21 verifizierten Schlüssel. Der Deploy verwendet strikt diesen Pin. Bei einer legitimen Hostkey-Rotation muss der neue Schlüssel über Hoststar bestätigt und der Pin manuell aktualisiert werden.
+Die Zugangsdaten nie in Dateien oder Commits eintragen. Hoststar bietet für dieses Hosting SFTP (Port 5544) sowie explizites FTPS (Port 21) an. Der Workflow verwendet FTPS mit strikter TLS-Zertifikatsprüfung, da der SFTP-Login im GitHub-Runner trotz erfolgreichem WebFTP-Login abgelehnt wurde. Die Secret-Namen behalten aus Kompatibilitätsgründen den bisherigen `SFTP`-Teil.
 
 Die Site wird erst nach dem Setzen von `HOSTSTAR_SFTP_ENABLED` veröffentlicht. Ohne diese Variable werden Build, Datengenerierung und Tests ausgeführt, der Deploy-Job bleibt übersprungen.
 
