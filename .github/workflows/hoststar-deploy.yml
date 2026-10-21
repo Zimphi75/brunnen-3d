@@ -65,19 +65,29 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Check out source and pinned Hoststar key
+        uses: actions/checkout@v4
+
       - name: Download website artifact
         uses: actions/download-artifact@v4
         with:
           name: hoststar-site
           path: _site
 
-      - name: Deploy to Hoststar with SFTP
-        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
-        with:
-          server: ${{ secrets.HOSTSTAR_SFTP_SERVER }}
-          username: ${{ secrets.HOSTSTAR_SFTP_USERNAME }}
-          password: ${{ secrets.HOSTSTAR_SFTP_PASSWORD }}
-          port: 5544
-          sftp_only: true
-          local_path: _site/*
-          remote_path: ./
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y sshpass
+
+      - name: Deploy to Hoststar with verified SFTP
+        env:
+          HOSTSTAR_SFTP_SERVER: ${{ secrets.HOSTSTAR_SFTP_SERVER }}
+          HOSTSTAR_SFTP_USERNAME: ${{ secrets.HOSTSTAR_SFTP_USERNAME }}
+          SSHPASS: ${{ secrets.HOSTSTAR_SFTP_PASSWORD }}
+        run: |
+          printf 'put -r _site/* .\n' > "$RUNNER_TEMP/hoststar-sftp.batch"
+          sshpass -e sftp \
+            -P 5544 \
+            -oHostKeyAlgorithms=+ssh-rsa \
+            -oUserKnownHostsFile="$GITHUB_WORKSPACE/.github/hoststar_known_hosts" \
+            -oStrictHostKeyChecking=yes \
+            -b "$RUNNER_TEMP/hoststar-sftp.batch" \
+            "$HOSTSTAR_SFTP_USERNAME@$HOSTSTAR_SFTP_SERVER"

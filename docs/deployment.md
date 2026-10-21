@@ -33,9 +33,9 @@ Vor dem ersten Deploy im GitHub-Repository unter **Settings → Secrets and vari
 | Secret | `HOSTSTAR_SFTP_PASSWORD` | Passwort dieses SFTP-Benutzers |
 | Variable | `HOSTSTAR_SFTP_ENABLED` | `true` |
 
-In Hoststar zuerst einen eigenen Ordner für die Website anlegen (empfohlen: `brunnen3d`) und einen separaten FTP-Benutzer erstellen, der ausschliesslich auf diesen Ordner beschränkt ist. Das SFTP-Konto startet dann in diesem Ordner; der Workflow lädt nach `./` hoch. Lege optional die Subdomain `brunnen3d.multikanal.ch` so an, dass ihr Webroot genau auf diesen Ordner zeigt. Den Domain-Hauptordner `/home/ch71104/web` nicht als Ziel verwenden, wenn dort bereits eine Website liegt.
+In Hoststar eine eigene Website/Subdomain (z. B. `brunnen3d.multikanal.ch`) anlegen und einen separaten FTP-Benutzer erstellen, der ausschliesslich auf das automatisch zugewiesene Webroot dieser Website beschränkt ist. Das SFTP-Konto startet dort; der Workflow lädt nach `./` hoch. Den Domain-Hauptordner `/home/ch71104/web` nicht als Ziel verwenden, wenn dort bereits eine Website liegt.
 
-Die Zugangsdaten nie in Dateien oder Commits eintragen. Hoststar zeigt für das Hosting SFTP auf Port 5544. Der SFTP-Deploy-Workflow erstellt das entfernte Zielverzeichnis nicht selbst; es muss vor dem ersten Deploy bereits existieren.
+Die Zugangsdaten nie in Dateien oder Commits eintragen. Hoststar zeigt für das Hosting SFTP auf Port 5544. Hoststar bietet auf diesem Server nur den älteren `ssh-rsa`-Hostschlüssel an; `.github/hoststar_known_hosts` pinnt den am 2026-10-21 verifizierten Schlüssel. Der Deploy verwendet strikt diesen Pin. Bei einer legitimen Hostkey-Rotation muss der neue Schlüssel über Hoststar bestätigt und der Pin manuell aktualisiert werden.
 
 Die Site wird erst nach dem Setzen von `HOSTSTAR_SFTP_ENABLED` veröffentlicht. Ohne diese Variable werden Build, Datengenerierung und Tests ausgeführt, der Deploy-Job bleibt übersprungen.
 
