@@ -67,7 +67,7 @@ const smoothstep = (edge0, edge1, x) => {
 
 const SCRATCH_COLOR = new THREE.Color();
 
-export function createSky({ scene, renderer, camera, latitude, longitude }) {
+export function createSky({ scene, renderer, camera, latitude, longitude, shadowMapSize = 4096 }) {
   const sky = new Sky();
   sky.scale.setScalar(20000);
   scene.add(sky);
@@ -79,7 +79,7 @@ export function createSky({ scene, renderer, camera, latitude, longitude }) {
 
   const sun = new THREE.DirectionalLight(0xffffff, 3);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.mapSize.set(shadowMapSize, shadowMapSize);
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.6;
   sun.shadow.camera.near = 10;
@@ -95,9 +95,23 @@ export function createSky({ scene, renderer, camera, latitude, longitude }) {
 
   scene.fog = new THREE.FogExp2(0xbfd4e4, 0.00004);
 
+  // Sterne: einfache Punktwolke, nur bei Dunkelheit sichtbar (gestalterisch, keine Sternkarte).
+  const starPositions = new Float32Array(1400 * 3);
+  for (let i = 0; i < 1400; i++) {
+    const u = Math.random(), v = Math.random() * 0.97 + 0.03; // nur obere Halbkugel
+    const phi = 2 * Math.PI * u, y = v, r = Math.sqrt(1 - y * y);
+    starPositions.set([Math.cos(phi) * r * 15000, y * 15000, Math.sin(phi) * r * 15000], i * 3);
+  }
+  const starGeometry = new THREE.BufferGeometry();
+  starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+  const starMaterial = new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.8, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false });
+  const stars = new THREE.Points(starGeometry, starMaterial);
+  stars.frustumCulled = false;
+  scene.add(stars);
+
   const state = {
     date: new Date(), altitude: 0, azimuth: 0, direction: new THREE.Vector3(0, 1, 0),
-    cloudCover: 0, fogBoost: 0, shadows: true, dayFactor: 1,
+    cloudCover: 0, fogBoost: 0, shadows: true, dayFactor: 1, night: 0,
   };
 
   function apply() {
@@ -109,18 +123,24 @@ export function createSky({ scene, renderer, camera, latitude, longitude }) {
     const degrees = altitude / RAD;
     const day = smoothstep(-6, 8, degrees);
     state.dayFactor = day;
+    state.night = 1 - smoothstep(-7, 2, degrees);
     const cloud = 1 - 0.6 * state.cloudCover;
     uniforms.sunPosition.value.copy(state.direction);
     uniforms.rayleigh.value = 0.4 + 1.2 * day;
     sun.intensity = 2.5 * smoothstep(-1, 14, degrees) * cloud;
     sun.color.setRGB(1, 0.78 + 0.22 * smoothstep(2, 22, degrees), 0.55 + 0.45 * smoothstep(2, 28, degrees));
-    hemisphere.intensity = (0.3 + 0.5 * day) * (1 + 0.6 * state.cloudCover * day);
-    hemisphere.color.set(0x2a3c66).lerp(SCRATCH_COLOR.set(0xcfe3ff), day);
+    hemisphere.intensity = (0.55 + 0.25 * day) * (1 + 0.6 * state.cloudCover * day);
+    hemisphere.color.set(0x3a5086).lerp(SCRATCH_COLOR.set(0xcfe3ff), day);
     hemisphere.groundColor.set(0x141a24).lerp(SCRATCH_COLOR.set(0x6a7360), day);
-    moon.intensity = 0.7 * (1 - day);
+    moon.intensity = 1.1 * (1 - day);
     renderer.toneMappingExposure = 0.85 + 0.1 * day;
     const fogColor = new THREE.Color().setRGB(0.04, 0.06, 0.1).lerp(new THREE.Color(0.75, 0.83, 0.9), day);
     scene.fog.color.copy(fogColor);
+    // Bei Nacht liefert der Preetham-Himmel einen braunen Ton; dann ersetzt ein dunkles Blau den Himmel.
+    sky.visible = day > 0.03;
+    scene.background = scene.background.set(0x070b16).lerp(SCRATCH_COLOR.set(0xbfd4e4), day);
+    starMaterial.opacity = Math.max(0, 1 - state.cloudCover) * Math.pow(state.night, 2) * 0.9;
+    stars.visible = starMaterial.opacity > 0.01;
     scene.fog.density = 0.00004 + 0.0004 * state.fogBoost;
     sun.castShadow = state.shadows && degrees > 1.5;
   }
@@ -139,6 +159,7 @@ export function createSky({ scene, renderer, camera, latitude, longitude }) {
     sun.position.copy(snapped).addScaledVector(state.direction, 4000);
     sun.target.updateMatrixWorld();
     sky.position.copy(camera.position);
+    stars.position.copy(camera.position);
   }
 
   return {

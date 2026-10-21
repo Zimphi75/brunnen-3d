@@ -19,14 +19,26 @@ import numpy as np
 import rasterio
 import shapely
 from rasterio.windows import from_bounds
+from pyproj import Transformer
 from scipy import ndimage
+from scipy.spatial import cKDTree
 
 from . import config, download
 from .common import update_metadata
 
-MIN_HEIGHT_M = 3.0
+MIN_HEIGHT_M = 2.5
+SMOOTHING_SIGMA = 1.0
+OSM_SUPPLEMENT_DISTANCE_M = 4.0
+OSM_DEFAULT_HEIGHT_M = 7.0
 MAX_TREES = 250_000
 COLLECTION = "ch.bafu.landesforstinventar-vegetationshoehenmodell"
+
+
+def osm_height(tags: dict) -> float:
+    try:
+        return float(str(tags.get("height", "")).lower().replace("m", "").strip())
+    except ValueError:
+        return OSM_DEFAULT_HEIGHT_M
 
 
 def newest_item(buffered) -> dict:
@@ -66,7 +78,7 @@ def main() -> None:
     if nodata is not None:
         heights[data == nodata] = 0
     heights[heights < 0] = 0
-    smooth = ndimage.gaussian_filter(heights, sigma=1.2)
+    smooth = ndimage.gaussian_filter(heights, sigma=SMOOTHING_SIGMA)
     peaks = (smooth == ndimage.maximum_filter(smooth, size=5)) & (smooth >= MIN_HEIGHT_M)
     rows, cols = np.nonzero(peaks)
     easting = transform.c + (cols + 0.5) * transform.a
@@ -74,6 +86,24 @@ def main() -> None:
     height = smooth[rows, cols]
     inside = shapely.contains_xy(buffered, easting, northing)
     easting, northing, height = easting[inside], northing[inside], height[inside]
+    # Kontrolle gegen OSM-Einzelbäume; im Siedlungsgebiet maskiert das Vegetationsmodell Objekte, daher werden
+    # nicht erkannte OSM-Bäume ergänzt (Höhe aus dem Tag `height`, sonst Standardwert).
+    osm = download.download_osm(buffered, only={"trees"})["trees"]["elements"]
+    to_lv95 = Transformer.from_crs(config.CRS_WGS84, config.CRS_LV95, always_xy=True)
+    osm_xy = np.array([to_lv95.transform(e["lon"], e["lat"]) for e in osm if "lon" in e]).reshape(-1, 2)
+    osm_tags = [e.get("tags", {}) for e in osm if "lon" in e]
+    inside_osm = shapely.contains_xy(buffered, osm_xy[:, 0], osm_xy[:, 1]) if len(osm_xy) else np.array([], dtype=bool)
+    osm_xy = osm_xy[inside_osm]
+    osm_tags = [t for t, keep in zip(osm_tags, inside_osm) if keep]
+    detected = cKDTree(np.c_[easting, northing]) if len(easting) else None
+    distance = detected.query(osm_xy)[0] if detected is not None and len(osm_xy) else np.full(len(osm_xy), np.inf)
+    recall = float(np.mean(distance <= OSM_SUPPLEMENT_DISTANCE_M)) if len(osm_xy) else None
+    missing = distance > OSM_SUPPLEMENT_DISTANCE_M
+    added_height = np.array([osm_height(t) for t in osm_tags])[missing]
+    easting = np.concatenate([easting, osm_xy[missing, 0]])
+    northing = np.concatenate([northing, osm_xy[missing, 1]])
+    height = np.concatenate([height, added_height])
+    detected_count = int(len(height) - missing.sum())
     if len(height) > MAX_TREES:
         keep = np.argsort(-height)[:MAX_TREES]
         easting, northing, height = easting[keep], northing[keep], height[keep]
@@ -89,10 +119,12 @@ def main() -> None:
         handle.write(x.tobytes() + z.tobytes() + pad(h) + pad(r))
     update_metadata("trees", {
         "file": "trees.bin", "count": int(len(x)), "minHeightM": MIN_HEIGHT_M,
-        "method": "Lokale Maxima im Vegetationshöhenmodell; Kronenradius aus Höhe geschätzt",
+        "method": "Lokale Maxima im Vegetationshöhenmodell; Kronenradius aus Höhe geschätzt; nicht erkannte OSM-Einzelbäume ergänzt",
+        "fromVegetationModel": detected_count, "addedFromOsm": int(missing.sum()),
+        "validation": {"osmTrees": int(len(osm_xy)), "osmTreesWithModelTreeWithin4m": recall},
         "source": f"BAFU Vegetationshöhenmodell NFI ({item['properties']['datetime'][:4]})",
     })
-    print(f"trees.bin: {len(x)} Bäume")
+    print(f"trees.bin: {len(x)} Bäume (Modell {detected_count}, OSM ergänzt {int(missing.sum())}); OSM-Bäume mit Modellbaum <= 4 m: {recall:.0%}")
 
 
 if __name__ == "__main__":

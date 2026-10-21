@@ -30,5 +30,6 @@ STAC_BASE = "https://data.geo.admin.ch/api/stac/v0.9"
 GEOADMIN_API = "https://api3.geo.admin.ch/rest/services/all/MapServer"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 GWR_URL = "https://public.madd.bfs.admin.ch/sz.zip"
+WMS_URL = "https://wms.geo.admin.ch/"
 
 USER_AGENT = "brunnen-3d/0.1 (lokale Datenpipeline)"

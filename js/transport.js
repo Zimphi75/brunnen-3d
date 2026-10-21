@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { loadOptionalJson } from "./api.js";
 import { wgs84ToLv95 } from "./geo.js";
 import { buildRibbons } from "./draped.js";
+import { model, MODEL_MATERIAL } from "./models.js";
 import { zurichParts } from "./sky.js";
 
 const API = "https://transport.opendata.ch/v1";
@@ -55,6 +56,35 @@ function pointAtArc(flat, target) {
   return null;
 }
 
+/** Lage und Ausrichtung eines Haltestellenmodells: Front zeigt zur Strasse, zum Gleis oder (Schiff) zum See. */
+export function stopPlacement(stop, terrain, ctx) {
+  let { x, z } = stop;
+  let heading = 0;
+  if (stop.m === "bus") {
+    const road = ctx.roadIndex?.nearest(x, z, 25);
+    if (road) heading = road.distance > 0.5 ? Math.atan2(road.x - x, road.z - z) : Math.atan2(-road.tz, road.tx);
+  } else if (stop.m === "train") {
+    const rail = ctx.railIndex?.nearest(x, z, 40);
+    if (rail) {
+      const nx = -rail.tz, nz = rail.tx;
+      const side = rail.distance > 2 ? Math.sign((x - rail.x) * nx + (z - rail.z) * nz) || 1 : 1;
+      x = rail.x + nx * side * 3.6; z = rail.z + nz * side * 3.6; // Bahnsteig neben dem Gleis
+      heading = Math.atan2(-nx * side, -nz * side);
+    }
+  } else if (stop.m === "ferry") {
+    let best = { h: Infinity, dx: 0, dz: 1 };
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2, dx = Math.sin(a), dz = Math.cos(a);
+      const h = terrain.heightAt(x + dx * 30, z + dz * 30);
+      if (h !== null && h < best.h) best = { h, dx, dz };
+    }
+    heading = Math.atan2(best.dx, best.dz);
+    x -= best.dx * 8; z -= best.dz * 8; // Steg beginnt am Ufer
+  }
+  const ground = terrain.heightAt(x, z) ?? 0;
+  return { x, z, y: stop.m === "ferry" ? ground + 0.1 : ground, heading };
+}
+
 export async function initTransport(ctx) {
   const { scene3d, terrain, frame, layers } = ctx;
   const data = await loadOptionalJson("transport.json");
@@ -81,14 +111,29 @@ export async function initTransport(ctx) {
     apply: (v) => { lineGroup.visible = v; if (v && !lineGroup.parent) scene.add(lineGroup); },
   });
 
-  // Haltestellen
+  // Haltestellen als Modelle: Mast mit Haltestellenschild und Fahrplan (Wartehäuschen nur, wenn OSM es verzeichnet), Bahnsteig, Schiffsteg.
   const stopGroup = new THREE.Group();
-  const stopPositions = stops.map((s) => new THREE.Vector3(s.x, (terrain.heightAt(s.x, s.z) ?? 0) + 9, s.z));
-  if (stops.length) {
-    const mesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(4, 4, 18, 14), new THREE.MeshStandardMaterial({ roughness: 0.5 }), stops.length);
-    const matrix = new THREE.Matrix4();
-    stops.forEach((stop, i) => { matrix.makeTranslation(stopPositions[i].x, stopPositions[i].y, stopPositions[i].z); mesh.setMatrixAt(i, matrix); mesh.setColorAt(i, new THREE.Color(MODE[stop.m].color)); });
+  const placements = stops.map((stop) => stopPlacement(stop, terrain, ctx));
+  const stopPositions = placements.map((p) => new THREE.Vector3(p.x, p.y + 2.2, p.z));
+  const variants = new Map();
+  stops.forEach((stop, i) => {
+    const key = stop.m === "bus" ? `bus:${stop.shelter}:${stop.bench}` : stop.m;
+    if (!variants.has(key)) variants.set(key, []);
+    variants.get(key).push(i);
+  });
+  const matrix = new THREE.Matrix4(), axis = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
+  for (const [key, members] of variants) {
+    const [mode, shelter, bench] = key.split(":");
+    const geometry = mode === "bus" ? model("busStop", { shelter: shelter === "true", bench: bench === "true" }) : mode === "train" ? model("trainPlatform") : model("ferryPier");
+    const mesh = new THREE.InstancedMesh(geometry, MODEL_MATERIAL, members.length);
+    members.forEach((stopIndex, slot) => {
+      const p = placements[stopIndex];
+      matrix.compose(new THREE.Vector3(p.x, p.y, p.z), new THREE.Quaternion().setFromAxisAngle(axis, p.heading), one);
+      mesh.setMatrixAt(slot, matrix);
+    });
     mesh.computeBoundingSphere();
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     stopGroup.add(mesh);
   }
   layers.add({
@@ -199,7 +244,6 @@ export async function initTransport(ctx) {
   }
 
   const meshes = new Map();
-  const shapeFor = { train: [30, 4, 4], bus: [12, 3.5, 3.5], ferry: [40, 8, 10] };
   let enabled = false;
   scene3d.onFrame(() => {
     if (!enabled) return;
@@ -213,20 +257,20 @@ export async function initTransport(ctx) {
       alive.add(id);
       let mesh = meshes.get(id);
       if (!mesh) {
-        const [l, h, w] = shapeFor[journey.mode];
-        mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), new THREE.MeshStandardMaterial({ color: MODE[journey.mode].color, roughness: 0.4 }));
+        const geometry = journey.mode === "train" ? model("sbbTrain", 3) : journey.mode === "bus" ? model("postBus") : model("lakeShip");
+        mesh = new THREE.Mesh(geometry, MODEL_MATERIAL);
         mesh.castShadow = true; mesh.userData.journey = journey;
         vehicles.add(mesh); meshes.set(id, mesh);
       }
       const ground = terrain.heightAt(position.x, position.z) ?? 0;
-      mesh.position.set(position.x, ground + (journey.mode === "ferry" ? 3 : 3.2), position.z);
+      mesh.position.set(position.x, ground + (journey.mode === "ferry" ? -0.4 : journey.mode === "train" ? 0.4 : 0.05), position.z);
       mesh.rotation.y = position.heading;
       mesh.userData.position = position;
     });
-    for (const [id, mesh] of meshes) if (!alive.has(id)) { vehicles.remove(mesh); mesh.geometry.dispose(); meshes.delete(id); }
+    for (const [id, mesh] of meshes) if (!alive.has(id)) { vehicles.remove(mesh); meshes.delete(id); }
   });
   layers.add({
-    id: "vehicles", label: "Fahrzeuge (Fahrplansimulation)", color: "#8e44ad", visible: false, available: lines.length > 0,
+    id: "vehicles", label: "Fahrzeuge (Fahrplansimulation)", color: "#8e44ad", visible: true, available: lines.length > 0,
     note: "Positionen aus dem Fahrplan berechnet, keine Live-Daten",
     apply: (v) => { enabled = v; vehicles.visible = v; if (v && !vehicles.parent) scene.add(vehicles); },
   });

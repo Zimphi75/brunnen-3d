@@ -26,19 +26,22 @@ export function parseDem(buffer, meta) {
   return { values, nx, ny, cell, minE, minN, scale: meta.dem.heightScale };
 }
 
-// Format siehe pipeline/process_buildings.py (Magic "BLD3", Version 1).
+// Format siehe pipeline/process_buildings.py (Magic "BLD3", Version 2).
+export const BUILDING_TABLE_STRIDE = 6; // vertexStart, vertexCount, indexStart, indexCount, faceStart, faceCount
+
 export function parseBuildings(buffer, records) {
-  const header = new Uint32Array(buffer, 0, 5);
+  const header = new Uint32Array(buffer, 0, 6);
   const magic = String.fromCharCode(...new Uint8Array(buffer, 0, 4));
-  if (magic !== "BLD3" || header[1] !== 1) throw new Error("buildings3d.bin: unbekanntes Format");
-  const [, , count, vertexCount, indexCount] = header;
+  if (magic !== "BLD3" || header[1] !== 2) throw new Error("buildings3d.bin: unbekanntes Format (erwartet Version 2, Pipeline neu ausführen)");
+  const [, , count, vertexCount, indexCount, faceCount] = header;
   if (count !== records.length) throw new Error(`buildings3d.bin (${count}) und buildings.json (${records.length}) passen nicht zusammen`);
-  let offset = 20;
-  const table = new Uint32Array(buffer, offset, count * 4); offset += count * 16;
+  let offset = 24;
+  const table = new Uint32Array(buffer, offset, count * BUILDING_TABLE_STRIDE); offset += count * BUILDING_TABLE_STRIDE * 4;
   const positions = new Float32Array(buffer, offset, vertexCount * 3); offset += vertexCount * 12;
   const indices = new Uint32Array(buffer, offset, indexCount); offset += indexCount * 4;
-  const surfaces = new Uint8Array(buffer, offset, vertexCount);
-  return { count, vertexCount, indexCount, table, positions, indices, surfaces };
+  const surfaces = new Uint8Array(buffer, offset, vertexCount); offset += vertexCount + ((4 - (vertexCount % 4)) % 4);
+  const faces = new Uint32Array(buffer, offset, faceCount);
+  return { count, vertexCount, indexCount, faceCount, table, positions, indices, surfaces, faces };
 }
 
 export function createProgress(onChange) {

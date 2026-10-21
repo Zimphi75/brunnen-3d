@@ -6,17 +6,21 @@ Architektonisches Vorbild ist [speicher.mlanalytica.com](https://speicher.mlanal
 
 ## Funktionen
 
-- Gelände (swissALTI3D), Luftbild (SWISSIMAGE), 2316 Gebäude (swissBUILDINGS3D 3.0 beta, mit GWR-Attributen), Strassen, Wege, Bahn, Gewässer, Bäume, Gemeindegrenze, Points of Interest, Ortsnamen
-- Navigation (Drehen, Zoomen, Verschieben), Voreinstellungen, Vogelperspektive, Schrägansicht, Kamera zurücksetzen
+- Gelände (swissALTI3D), Luftbild (SWISSIMAGE, in Blicknähe zusätzlich scharf nachgeladen), 2316 Gebäude (swissBUILDINGS3D 3.0 beta, mit GWR-Attributen), Strassen, Wege, Bahn, Gewässer, 54'000 Bäume, Gemeindegrenze, Points of Interest, Ortsnamen
+- **Gebäudedarstellung** (Auswahl im Panel «Darstellung»): **Dorfbild (realistisch)** mit Putz- oder Holzfassade, Fensterläden, Fenstern und Ziegeldach in der Farbe des Luftbilds; ausserdem Neutral, Nutzung, Baujahr, Höhe, Geschosse, Wohnungen, Heizenergie und Status im Register
+- **Nacht**: beleuchtete Fenster, Strassenlaternen mit Lichtkegeln, Sterne, Leuchteffekt; die Szene bleibt im Dunkeln lesbar
+- **Wetter überall sichtbar**: Regen, Schnee, Nebel, Bewölkung und Gewitter wirken am Bildschirm und in der Szene, unabhängig vom Kameraabstand; Live-Wetter (Open-Meteo) für «jetzt», Vorschau-Vorgaben für jede andere Zeit
+- **Haltestellen und Fahrzeuge**: Bushaltestellen mit Mast, Wartehäuschen und Bank, Bahnsteige, Schiffsteg; Postauto, SBB-Zug und Kursschiff als schlanke Modelle in der Fahrplansimulation (als Simulation gekennzeichnet)
+- Navigation: **linke Maustaste verschiebt die Karte**, rechte Taste oder Umschalt+Ziehen dreht, Mausrad zoomt; Pfeiltasten verschieben, `Q`/`E` drehen, `T` Vogelperspektive, `H` Ausgangsansicht, `/` Suche
 - Gebäude anklicken: Informationspanel mit Adresse, Gebäudeklasse, Baujahr/Bauperiode, Höhe, Grundfläche, Heizung usw.
-- Einfärben nach Baujahr, Höhe und Gebäudetyp
-- Sonnenstand, Uhrzeit und Datum, Tagesverlauf, Schattenwurf, Tag-Nacht-Modus
-- Aktuelles Wetter (Open-Meteo) mit Bewölkung, Nebel, Regen und Schnee
-- ÖV: Haltestellen, Linien, nächste Abfahrten (Fahrplan oder Echtzeitprognose), optionale Fahrplansimulation (klar als Simulation gekennzeichnet)
+- Sonnenstand, Uhrzeit und Datum, Tagesverlauf, Schattenwurf (Panel oben in der Mitte)
+- ÖV: Haltestellen, Linien, nächste Abfahrten (Fahrplan oder Echtzeitprognose)
 - Zeitachse: Gebäude nach Baujahr filtern, Wachstum abspielen, historische Landeskarten (swisstopo Zeitreise), Vergleich mit heute per Trennlinie
 - Suche nach Adressen, Strassen, Gebäuden (EGID), POI, Orten und Koordinaten (LV95 oder WGS84)
-- Werkzeuge: Strecke messen (mit Höhenprofil), Punkt abfragen (Koordinaten, Höhe)
-- Hell- und Dunkelmodus, Ebenen einzeln schaltbar, Ambient Occlusion, Schatten
+- Werkzeuge: Strecke messen (mit Höhenprofil), Punkt abfragen
+- **Register ohne 3D-Modell**: 337 bestehende GWR-Gebäude, die swissBUILDINGS3D nicht enthält (meist Kleinbauten), lassen sich schematisch zuschalten und anklicken
+- **Almanach** (unten rechts): Übersicht, Gebäude, Energie, eidgenössische Abstimmungen der Gemeinde, Datenqualität mit Abdeckungskennzahlen, Quellen
+- Hell- und Dunkelmodus, Ebenen einzeln schaltbar, Ambient Occlusion, Schatten; Qualität sinkt automatisch auf Touch-Geräten und schwachen CPUs (kein AO, kleinere Schattenkarte)
 
 ## Voraussetzungen
 
@@ -43,9 +47,9 @@ uv pip install --python .venv/bin/python -r pipeline/requirements.txt
 .venv/bin/python -m pipeline.run_all osm export  # einzelne Schritte
 ```
 
-Die Schritte `terrain`, `buildings`, `osm`, `trees` und `export` können mehrfach ausgeführt werden. Downloads werden in `pipeline/cache/` zwischengespeichert und nicht erneut geladen. Beschreibung, Binärformate und Konfiguration: [docs/data-pipeline.md](docs/data-pipeline.md).
+Die Schritte `terrain`, `buildings`, `osm`, `trees`, `votes` und `export` können mehrfach ausgeführt werden. Downloads werden in `pipeline/cache/` zwischengespeichert und nicht erneut geladen. Beschreibung, Binärformate und Konfiguration: [docs/data-pipeline.md](docs/data-pipeline.md).
 
-Dauer: wenige Minuten bei leerem Zwischenspeicher (der Gebäudeschritt dauert rund 30 s; Overpass kann einzelne Anfragen verzögern).
+Dauer: wenige Minuten bei leerem Zwischenspeicher (der Gebäudeschritt dauert rund 30 s; Overpass kann einzelne Anfragen verzögern). `public/data/manifest.json` hält Hashwerte der Eingabedateien fest und macht Läufe vergleichbar.
 
 ## Webserver starten
 
@@ -60,7 +64,7 @@ Jeder statische Webserver genügt (siehe [docs/deployment.md](docs/deployment.md
 
 ```bash
 .venv/bin/python -m pytest -q          # Pipeline-Funktionen und Datendateien
-# Browser-Tests: python serve.py, dann http://127.0.0.1:8080/tests/unit.html
+# Browser-Tests (22): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
 ```
 
 ## Projektstruktur
@@ -88,22 +92,43 @@ Alle Datensätze mit Herkunft, Lizenz, Stand und Abdeckung stehen in [docs/data-
 | Bäume | WSL/BAFU Vegetationshöhenmodell NFI | ODbL mit DbCL |
 | Wetter | Open-Meteo | CC BY 4.0 (nicht kommerziell) |
 | Abfahrten | transport.opendata.ch / opentransportdata.swiss | Open Data, Quellenangabe |
+| Abstimmungsresultate | BFS voteinfo | Open Government Data, Quellenangabe |
+| Dachfarben | SWISSIMAGE-Luftbild (Median je Dach, abgeleitet) | Open Government Data swisstopo |
 
 Bei einer Veröffentlichung müssen die Quellenangaben sichtbar bleiben (Inspector und diese Dokumentation). Für die kommerzielle Nutzung von Open-Meteo ist ein API-Schlüssel nötig.
 
+## Datenqualität in Zahlen
+
+| Kennzahl | Wert |
+|---|---|
+| Gebäude im 3D-Modell | 2316 (2010 in der Gemeinde, Rest Pufferzone) |
+| GWR-Verknüpfung | 2275, davon 2238 über EGID und 37 über die Lage |
+| Abdeckung bestehender GWR-Gebäude durch das 3D-Modell | Wohngebäude 98.5 %, ab 40 m² Grundfläche 96.8 %, alle 85.3 % |
+| Registergebäude ohne 3D-Modell | 387 (Median 14 m² Grundfläche), 337 davon im Register-Layer |
+| Als abgebrochen registriert, aber im 3D-Modell | 30, standardmässig ausgeblendet |
+| Exaktes Baujahr | 684 Gebäude (weitere rund 1400 mit Bauperiode) |
+| Dachfarbe aus Luftbild | 2315 von 2316 |
+| Baumpositionen gegen OSM-Einzelbäume geprüft | 65 % mit Modellbaum innerhalb 4 m |
+| Strassenlaternen | 27 aus OSM, 215 entlang von Strassen mit `lit=yes` modelliert (gekennzeichnet) |
+
+Die Zahlen stehen auch im Almanach («Datenqualität») und stammen aus `public/data/metadata.json`.
+
 ## Bekannte Einschränkungen
 
-- **Baujahr**: Nur 660 von 2316 Gebäuden haben ein exaktes Baujahr im GWR. Weitere rund 1400 haben nur eine Bauperiode (in der Zeitachse als Periodenmitte). Gebäude ohne GWR-Angabe sind nicht datierbar. Das Feld `ERSTELLUNG_JAHR` von swissBUILDINGS3D ist die Erfassung der Daten, nicht das Baujahr.
-- **swissBUILDINGS3D 3.0** ist ein Beta-Produkt; Dachformen sind teils vereinfacht, Dachüberstände und Details können fehlen.
-- **Historische Gebäude werden nicht rekonstruiert.** Die Zeitachse blendet vorhandene Gebäude nach GWR-Baujahr aus und zeigt historische Landeskarten. Abgebrochene Gebäude fehlen naturgemäss.
-- **Luftbild** hat 2 m Auflösung (Download-Umfang); aus der Nähe wirkt die Textur unscharf.
-- **Bäume** sind aus dem Vegetationshöhenmodell abgeleitete Kronenmaxima mit geschätztem Kronenradius, keine Einzelbaumkataster. Alle Bäume haben dieselbe stilisierte Form.
-- **ÖV**: Gemessene Fahrzeugpositionen sind über die offene API nicht verfügbar. Die Fahrplansimulation interpoliert Fahrplanzeiten entlang der OSM-Liniengeometrie, ohne Verspätungen, und wird nur für Abschnitte mit passender Geometrie gezeichnet.
-- **Statistiken**: `statistics.json` enthält GWR-Aggregate. Einwohnerzahlen (STATPOP) und Unternehmen (STATENT) sind nicht integriert.
-- **Grundstücke und ÖREB** (Geoportal Kanton Schwyz) sind noch nicht eingebunden; es wurde kein stabiler offener Massendownload geprüft.
-- **Ortsnamen** stammen aus OpenStreetMap. swissNAMES3D ist nicht integriert.
+- **Fassaden, Fensterläden, Fenster und Dachziegel sind gestalterisch.** Kein offener Datensatz enthält Fassadenfarben. Die Fassade wird stabil aus der Gebäude-ID und der GWR-Nutzung abgeleitet; Dachfarbe und Geometrie sind gemessen. Das Panel «Darstellung» weist in der Legende darauf hin. Wer Daten braucht statt Optik, wählt einen der Datenmodi.
+- **Abdeckung**: swissBUILDINGS3D enthält kaum Kleinbauten. 15 % der bestehenden Registergebäude haben kein 3D-Modell (siehe Tabelle). Sie sind nicht erfunden, sondern als schematische Quader zuschaltbar.
+- **Baujahr**: Nur 684 von 2316 Gebäuden haben ein exaktes Baujahr im GWR. Das Feld `ERSTELLUNG_JAHR` von swissBUILDINGS3D ist die Erfassung der Daten, nicht das Baujahr.
+- **swissBUILDINGS3D 3.0** ist ein Beta-Produkt; Dachformen sind teils vereinfacht.
+- **Gebäude an Hängen** haben keinen Sockel; der Fuss kann schweben (der Shader dunkelt nur den Fussbereich ab).
+- **Historische Gebäude werden nicht rekonstruiert.** Die Zeitachse blendet vorhandene Gebäude nach GWR-Baujahr aus und zeigt historische Landeskarten.
+- **Luftbild**: 2 m Auflösung global, in Blicknähe wird SWISSIMAGE per WMS scharf nachgeladen (braucht Internet).
+- **Bäume** sind aus dem Vegetationshöhenmodell abgeleitete Kronenmaxima mit geschätztem Radius, alle mit derselben stilisierten Form.
+- **ÖV**: Gemessene Fahrzeugpositionen sind über die offene API nicht verfügbar. Die Fahrplansimulation interpoliert Fahrplanzeiten entlang der OSM-Liniengeometrie.
+- **Abstimmungen**: Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert (derzeit 2025-05-18 und 2023-03-12). Die Quelle sendet keine CORS-Header; darum zieht die Pipeline die Daten (`votes.json`).
+- **Nicht umgesetzt**: Solarpotenzial und PV-Modi (BFE), Isochronen, Objektprofil, Fahrmodus, STATPOP, Grundstücke und ÖREB, swissNAMES3D.
+- **Nicht getestet**: iPhone/Safari und schwache GPUs. Die Leistungswerte stammen von einem Apple-Silicon-Rechner (Chrome), siehe [docs/architecture.md](docs/architecture.md).
 - Die Pipeline ist auf Ingenbohl konfiguriert (`pipeline/config.py`); der GWR-Auszug ist auf den Kanton SZ festgelegt.
 
 ## Nächste Schritte
 
-Siehe Abschnitt «Offene Punkte und technische Schulden» in [docs/architecture.md](docs/architecture.md): Isochronen, Fussgänger-Erreichbarkeit, Solarpotenzial (sonnendach.ch), STATPOP-Hektarraster, swissNAMES3D, Grundstücke/ÖREB, höher aufgelöste Orthofotos im Zentrum, Chunking der Gebäude.
+Siehe Abschnitt «Offene Punkte und technische Schulden» in [docs/architecture.md](docs/architecture.md): Solarpotenzial und PV-Modi, Isochronen und Fussgänger-Erreichbarkeit, Objektprofil, Fahrmodus, STATPOP-Hektarraster, swissNAMES3D, Grundstücke/ÖREB, Gebäudesockel, Test auf iPhone/Safari, Chunking der Gebäude.

@@ -67,20 +67,7 @@ export function initHistory(ctx) {
   });
 
   // Historische Karte als zweite Terraintextur; Trennlinie vergleicht links (Geschichte) und rechts (heute).
-  const uniforms = { uHistory: { value: null }, uSplit: { value: 0 }, uResolution: { value: new THREE.Vector2(1, 1) } };
-  terrain.material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
-    shader.fragmentShader = "uniform sampler2D uHistory; uniform float uSplit; uniform vec2 uResolution;\n" + shader.fragmentShader.replace(
-      "#include <map_fragment>",
-      `#ifdef USE_MAP
-        vec4 sampledDiffuseColor = texture2D( map, vMapUv );
-        if ( uSplit > 0.0 && gl_FragCoord.x < uSplit * uResolution.x ) sampledDiffuseColor = texture2D( uHistory, vMapUv );
-        diffuseColor *= sampledDiffuseColor;
-      #endif`,
-    );
-  };
-  terrain.material.customProgramCacheKey = () => "terrain-history";
-  terrain.material.needsUpdate = true;
+  const uniforms = terrain.uniforms;
 
   const compareBox = $("#hist-compare"), mapSelect = $("#hist-map"), note = $("#hist-note");
   const divider = document.createElement("div");

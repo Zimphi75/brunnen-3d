@@ -5,6 +5,7 @@ Ohne Argument werden alle Quellen geladen.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import time
@@ -114,8 +115,13 @@ def wgs84_bbox(geometry) -> tuple[float, float, float, float]:
 # --- STAC (swisstopo) ------------------------------------------------------
 
 def stac_items(collection: str, geometry) -> list[dict]:
-    """Alle STAC-Items einer Collection, die die Geometrie schneiden (mit Paginierung)."""
+    """Alle STAC-Items einer Collection, die die Geometrie schneiden. Die Antwort wird gespeichert,
+    damit Wiederholungen dieselben Kacheln verwenden (reproduzierbar, offline lauffähig)."""
     west, south, east, north = wgs84_bbox(geometry)
+    key = hashlib.sha1(f"{collection}|{west:.5f}|{south:.5f}|{east:.5f}|{north:.5f}".encode()).hexdigest()[:12]
+    cache = config.CACHE_DIR / "stac" / f"{collection}_{key}.json"
+    if cache.exists():
+        return json.loads(cache.read_text())
     url = f"{config.STAC_BASE}/collections/{collection}/items"
     params = {"bbox": f"{west},{south},{east},{north}", "limit": 100}
     items: list[dict] = []
@@ -126,6 +132,8 @@ def stac_items(collection: str, geometry) -> list[dict]:
         items.extend(page["features"])
         url = next((link["href"] for link in page.get("links", []) if link["rel"] == "next"), None)
         params = None
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(items))
     return items
 
 
@@ -208,10 +216,11 @@ def overpass_queries(bbox: str) -> dict[str, str]:
                  f'way["waterway"~"^(river|stream|canal)$"]({bbox}););out geom;',
         "pois": f'{header}(node["amenity"]({bbox});node["shop"]({bbox});node["tourism"]({bbox});node["historic"]({bbox});'
                 f'node["leisure"~"^(playground|pitch|sports_centre|swimming_pool|marina|slipway|park)$"]({bbox});'
-                f'node["public_transport"]({bbox});node["railway"~"^(station|halt|tram_stop)$"]({bbox});'
+                f'node["public_transport"]({bbox});node["highway"="bus_stop"]({bbox});node["railway"~"^(station|halt|tram_stop)$"]({bbox});'
                 f'way["amenity"]["name"]({bbox});way["tourism"]["name"]({bbox});way["shop"]["name"]({bbox}););out tags center;',
         "routes": f'{header}relation["route"~"^(bus|train|ferry|railway|light_rail)$"]({bbox});out geom;',
         "trees": f'{header}node["natural"="tree"]({bbox});out;',
+        "lamps": f'{header}(node["highway"="street_lamp"]({bbox});node["man_made"="street_lamp"]({bbox}););out;',
         "places": f'{header}(node["place"~"^(city|town|village|hamlet|suburb|neighbourhood|locality|isolated_dwelling)$"]["name"]({bbox});'
                   f'node["natural"~"^(peak|bay|cape)$"]["name"]({bbox}););out;',
     }

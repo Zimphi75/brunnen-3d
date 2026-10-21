@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { buildRibbons, buildPolygonMesh, buildCurtain } from "./draped.js";
 import { loadOptionalJson, loadOptionalBinary } from "./api.js";
+import { createSegmentIndex } from "./roadindex.js";
 
 const ROAD_STYLE = {
   motorway: { width: 11, color: "#7a7f86" }, primary: { width: 8, color: "#8a8f95" }, secondary: { width: 7, color: "#969a9f" },
@@ -149,6 +150,9 @@ export async function initDataLayers(ctx) {
     loadOptionalJson("roads.json"), loadOptionalJson("water.json"), loadOptionalBinary("trees.bin"), loadOptionalJson("municipality.json"),
   ]);
   ctx.municipality = municipality;
+  ctx.roads = roadsFile?.roads ?? [];
+  ctx.roadIndex = createSegmentIndex(ctx.roads, (r) => ROAD_GROUPS.roads.includes(r.c) && !r.t);
+  ctx.railIndex = createSegmentIndex(ctx.roads, (r) => r.c === "rail" && !r.t);
 
   const safe = (label, builder) => { try { return builder(); } catch (error) { reportError(`${label}: ${error.message}`, error); return null; } };
 

@@ -25,6 +25,11 @@ ROAD_CLASSES = {
     "track": "track", "path": "path", "footway": "path", "cycleway": "path", "bridleway": "path", "steps": "path",
 }
 RAIL_VALUES = {"rail", "narrow_gauge", "light_rail", "funicular", "tram", "rack"}
+LIT_VALUES = {"yes", "automatic", "24/7", "sunset-sunrise"}
+LAMP_SPACING_M = 32
+LAMP_MIN_DISTANCE_M = 18
+LAMP_CLASSES = {"motorway", "primary", "secondary", "tertiary", "minor", "service"}
+ROAD_HALF_WIDTH = {"motorway": 5.5, "primary": 4, "secondary": 3.5, "tertiary": 3, "minor": 2.5, "service": 1.8}
 
 AMENITY_GROUPS = {
     "Gastronomie": {"restaurant", "cafe", "bar", "pub", "fast_food", "biergarten", "ice_cream"},
@@ -88,7 +93,7 @@ def process_roads(raw: dict, clip, origin) -> list[dict]:
             tunnel = tags.get("tunnel") not in (None, "no") or tags.get("covered") == "yes"
             roads.append({
                 "id": element["id"], "c": kind, "n": tags.get("name") or tags.get("ref"),
-                "b": int(bridge), "t": int(tunnel), "l": int(tags.get("layer", 0) or 0) if str(tags.get("layer", "0")).lstrip("-").isdigit() else 0,
+                "b": int(bridge), "t": int(tunnel), "lit": int(tags.get("lit") in LIT_VALUES), "l": int(tags.get("layer", 0) or 0) if str(tags.get("layer", "0")).lstrip("-").isdigit() else 0,
                 "p": flat(part.coords),
             })
     return roads
@@ -206,7 +211,7 @@ def stop_mode(tags: dict) -> str | None:
 
 
 def process_transport(pois_raw: dict, routes_raw: dict, clip, origin) -> dict:
-    stops: dict[tuple[str, str], dict] = {}
+    stops: list[dict] = []
     for element in pois_raw["elements"]:
         tags = element.get("tags", {})
         name = tags.get("name")
@@ -216,7 +221,16 @@ def process_transport(pois_raw: dict, routes_raw: dict, clip, origin) -> dict:
         x, z = to_local_xy(element["lon"], element["lat"], origin)
         if not clip.contains(Point(x, z)):
             continue
-        stops.setdefault((mode, name), {"n": name, "m": mode, "x": round(x, 1), "z": round(z, 1), "ref": tags.get("uic_ref") or tags.get("ref:IFOPT")})
+        # Gleiche Haltestelle in mehreren Richtungen (> 20 m Abstand) bleibt getrennt; Duplikate am selben Ort werden zusammengeführt.
+        same = next((s for s in stops if s["n"] == name and s["m"] == mode and (s["x"] - x) ** 2 + (s["z"] - z) ** 2 < 20 ** 2), None)
+        shelter = tags.get("shelter") == "yes" or tags.get("covered") == "yes"
+        bench = tags.get("bench") == "yes"
+        if same:
+            same["shelter"] = same["shelter"] or shelter
+            same["bench"] = same["bench"] or bench
+            continue
+        stops.append({"n": name, "m": mode, "x": round(x, 1), "z": round(z, 1), "ref": tags.get("uic_ref") or tags.get("ref:IFOPT"),
+                      "shelter": shelter, "bench": bench})
     lines: dict[tuple, dict] = {}
     for relation in routes_raw["elements"]:
         tags = relation.get("tags", {})
@@ -245,7 +259,40 @@ def process_transport(pois_raw: dict, routes_raw: dict, clip, origin) -> dict:
         merged = linemerge(union) if union.geom_type == "MultiLineString" else union
         output_lines.append({"m": entry["m"], "ref": entry["ref"], "name": sorted(entry["names"])[0], "operator": entry["operator"],
                              "colour": entry["colour"], "lines": [flat(p.coords) for p in lines_of(merged)]})
-    return {"stops": list(stops.values()), "lines": output_lines}
+    return {"stops": stops, "lines": output_lines}
+
+
+def process_lamps(raw: dict, roads: list[dict], clip, origin) -> list[list[float]]:
+    """[x, z, Quelle]: 0 = OSM-Knoten (street_lamp), 1 = modelliert entlang Strassen mit lit=yes (Abstand ca. 32 m)."""
+    lamps = []
+    for element in raw["elements"]:
+        if "lon" not in element:
+            continue
+        x, z = to_local_xy(element["lon"], element["lat"], origin)
+        if clip.contains(Point(x, z)):
+            lamps.append([round(x, 1), round(z, 1), 0])
+    real = [(x, z) for x, z, _ in lamps]
+    placed: list[tuple[float, float]] = list(real)
+
+    def near_existing(x: float, z: float) -> bool:
+        return any((x - px) ** 2 + (z - pz) ** 2 < LAMP_MIN_DISTANCE_M ** 2 for px, pz in placed)
+
+    for road in roads:
+        if not road["lit"] or road["t"] or road["c"] not in LAMP_CLASSES:
+            continue
+        line = LineString(list(zip(road["p"][0::2], road["p"][1::2])))
+        offset = ROAD_HALF_WIDTH[road["c"]] + 1.0
+        distance = LAMP_SPACING_M / 2
+        while distance < line.length:
+            a, b = line.interpolate(distance), line.interpolate(min(line.length, distance + 2))
+            dx, dz = b.x - a.x, b.y - a.y
+            length = (dx * dx + dz * dz) ** 0.5 or 1.0
+            x, z = a.x - dz / length * offset, a.y + dx / length * offset  # rechte Strassenseite
+            if not near_existing(x, z):
+                lamps.append([round(x, 1), round(z, 1), 1])
+                placed.append((x, z))
+            distance += LAMP_SPACING_M
+    return lamps
 
 
 def process_places(raw: dict, clip, origin) -> list[dict]:
@@ -288,12 +335,15 @@ def main() -> None:
     write_json("transport.json", transport)
     places = process_places(raw["places"], clip, origin)
     write_json("places.json", {"places": places})
+    lamps = process_lamps(raw["lamps"], roads, clip, origin)
+    write_json("lamps.json", {"lamps": lamps, "sources": {"0": "OSM street_lamp", "1": "modelliert entlang Strassen mit lit=yes"}})
 
     counts = defaultdict(int)
     for road in roads:
         counts[road["c"]] += 1
     update_metadata("osm", {
-        "files": ["roads.json", "water.json", "pois.json", "transport.json", "places.json"],
+        "files": ["roads.json", "water.json", "pois.json", "transport.json", "places.json", "lamps.json"],
+        "lamps": {"osm": sum(1 for lamp in lamps if lamp[2] == 0), "modelled": sum(1 for lamp in lamps if lamp[2] == 1)},
         "roads": dict(counts), "waterAreas": len(water["areas"]), "streams": len(water["streams"]),
         "pois": len(pois), "stops": len(transport["stops"]), "lines": len(transport["lines"]),
         "source": "OpenStreetMap-Mitwirkende, ODbL 1.0 (Overpass-API)",

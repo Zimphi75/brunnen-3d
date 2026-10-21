@@ -71,7 +71,8 @@ def test_triangulate_face_with_hole_keeps_area():
 
 def test_building_mesh_cube_is_closed_and_outward():
     origin = (2_688_000, 1_206_300)
-    local, triangles, surfaces, lv95 = building_mesh(unit_cube(), origin, 430.0)
+    local, triangles, surfaces, lv95, face_sizes = building_mesh(unit_cube(), origin, 430.0)
+    assert face_sizes == [4] * 6
     assert len(triangles) == 12  # 6 Flächen x 2 Dreiecke
     assert set(surfaces.tolist()) == {0, 1, 2}  # Wand, Dach, Boden
     assert local[:, 1].min() == pytest.approx(70.0) and local[:, 1].max() == pytest.approx(80.0)
@@ -106,18 +107,20 @@ def test_dem_size_and_range():
 @needs("buildings3d.bin")
 def test_buildings_binary_matches_json():
     raw = (DATA / "buildings3d.bin").read_bytes()
-    magic, version, count, vertex_count, index_count = struct.unpack_from("<4sIIII", raw, 0)
-    assert magic == b"BLD3" and version == 1
+    magic, version, count, vertex_count, index_count, face_count = struct.unpack_from("<4sIIIII", raw, 0)
+    assert magic == b"BLD3" and version == 2
     records = json.loads((DATA / "buildings.json").read_text())["buildings"]
     assert count == len(records) > 1000
-    table = np.frombuffer(raw, dtype="<u4", count=count * 4, offset=20).reshape(count, 4)
-    assert table[:, 1].sum() == vertex_count and table[:, 3].sum() == index_count
+    table = np.frombuffer(raw, dtype="<u4", count=count * 6, offset=24).reshape(count, 6)
+    assert table[:, 1].sum() == vertex_count and table[:, 3].sum() == index_count and table[:, 5].sum() == face_count
     assert table[-1, 0] + table[-1, 1] == vertex_count
-    positions_offset = 20 + count * 16
+    positions_offset = 24 + count * 24
     indices = np.frombuffer(raw, dtype="<u4", count=index_count, offset=positions_offset + vertex_count * 12)
     assert indices.max() < vertex_count
-    expected = positions_offset + vertex_count * 12 + index_count * 4 + vertex_count + (-vertex_count % 4)
-    assert len(raw) == expected
+    faces_offset = positions_offset + vertex_count * 12 + index_count * 4 + vertex_count + (-vertex_count % 4)
+    faces = np.frombuffer(raw, dtype="<u4", count=face_count, offset=faces_offset)
+    assert faces.sum() == vertex_count
+    assert len(raw) == faces_offset + face_count * 4
 
 
 @needs("buildings.json")
@@ -166,3 +169,52 @@ def test_municipality_polygon():
     outer = municipality["polygons"][0][0]
     polygon = Polygon(list(zip(outer[0::2], outer[1::2])))
     assert polygon.is_valid and polygon.area / 1e4 == pytest.approx(municipality["areaHa"], rel=0.02)
+
+
+# --- Erweiterungen: Dachfarbe, Laternen, Register-Rest, Abstimmungen, Qualitätszahlen ---
+
+@needs("buildings.json")
+def test_roof_colors_are_hex_and_cover_almost_all_buildings():
+    records = json.loads((DATA / "buildings.json").read_text())["buildings"]
+    colors = [r.get("roofColor") for r in records]
+    assert sum(c is not None for c in colors) / len(records) > 0.95
+    assert all(c is None or (len(c) == 7 and c[0] == "#") for c in colors)
+
+
+@needs("lamps.json")
+def test_lamps_are_marked_as_osm_or_modelled_and_not_on_buildings():
+    lamps = json.loads((DATA / "lamps.json").read_text())["lamps"]
+    assert len(lamps) > 100
+    assert {lamp[2] for lamp in lamps} <= {0, 1}, "0 = OSM-Knoten, 1 = entlang lit=yes modelliert"
+    assert sum(1 for lamp in lamps if lamp[2] == 0) >= 10
+
+
+@needs("gwr_unmatched.json")
+def test_unmatched_register_buildings_are_not_in_3d_model():
+    rest = json.loads((DATA / "gwr_unmatched.json").read_text())["buildings"]
+    egids = {r["gwr"].get("egid") for r in json.loads((DATA / "buildings.json").read_text())["buildings"] if "gwr" in r}
+    assert rest and not ({b["egid"] for b in rest} & egids)
+    assert all(b["gwr"]["status"] not in (1007, 1008) for b in rest if b.get("inMunicipality"))
+
+
+@needs("votes.json")
+def test_votes_have_valid_percentages_and_known_municipality():
+    votes = json.loads((DATA / "votes.json").read_text())
+    assert votes["bfs"] == config.MUNICIPALITY_BFS and len(votes["votes"]) > 10
+    for vote in votes["votes"]:
+        assert 0 <= vote["local"] <= 100 and len(vote["date"]) == 8 and vote["title"]
+
+
+@needs("metadata.json")
+def test_coverage_metrics_are_consistent():
+    match = json.loads((DATA / "metadata.json").read_text())["buildings"]["match"]
+    assert match["joinedByEgid"] + match["joinedByLocation"] >= match["gwrCoveredBy3d"] - 400
+    assert match["coverageResidential"]["rate"] > 0.95 and match["coverageRate"] < 1
+    assert match["gwrCoveredBy3d"] + match["gwrWithout3dModel"] >= match["gwrExistingInMunicipality"] - 5
+
+
+@needs("manifest.json")
+def test_manifest_lists_hashed_inputs():
+    manifest = json.loads((DATA / "manifest.json").read_text())
+    files = manifest.get("files") or manifest.get("inputs")
+    assert files and all(entry.get("sha256") for entry in files)

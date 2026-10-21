@@ -35,6 +35,12 @@ export function createScene(canvas) {
   controls.maxDistance = 16000;
   controls.zoomToCursor = true;
   controls.screenSpacePanning = false;
+  // Kartenbedienung: Ziehen verschiebt, rechte Taste oder Umschalt/Strg dreht, Rad zoomt; Pfeiltasten verschieben.
+  controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+  controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+  controls.keyPanSpeed = 22;
+  controls.listenToKeyEvents(canvas);
+  canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(scene, camera);
@@ -49,7 +55,7 @@ export function createScene(canvas) {
   } catch (error) {
     console.warn("Ambient Occlusion nicht verfügbar:", error);
   }
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.12, 0.6, 0.92);
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.5, 0.9);
   bloomPass.enabled = false;
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
@@ -67,6 +73,7 @@ export function createScene(canvas) {
     };
   }
   const frameCallbacks = new Set();
+  let panBounds = null;
   let lastFrame = performance.now();
   let fps = 60;
   let frameInfo = { calls: 0, triangles: 0 };
@@ -86,6 +93,12 @@ export function createScene(canvas) {
     lastFrame = now;
     fps += (1 / Math.max(delta, 1e-3) - fps) * 0.05;
     controls.update();
+    if (panBounds) {
+      const t = controls.target;
+      const dx = Math.min(panBounds.maxX, Math.max(panBounds.minX, t.x)) - t.x;
+      const dz = Math.min(panBounds.maxZ, Math.max(panBounds.minZ, t.z)) - t.z;
+      if (dx || dz) { t.x += dx; t.z += dz; camera.position.x += dx; camera.position.z += dz; }
+    }
     // Nahebene folgt dem Abstand zum Blickpunkt: hält die Tiefenauflösung hoch.
     const distance = camera.position.distanceTo(controls.target);
     const near = THREE.MathUtils.clamp(distance / 150, 0.5, 60);
@@ -103,6 +116,7 @@ export function createScene(canvas) {
   return {
     renderer, scene, camera, controls, composer, settings, aoExcluded,
     hasAmbientOcclusion: Boolean(aoPass),
+    set panBounds(value) { panBounds = value; },
     onFrame(callback) { frameCallbacks.add(callback); return () => frameCallbacks.delete(callback); },
     get fps() { return fps; },
     renderInfo: () => ({ ...frameInfo, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),

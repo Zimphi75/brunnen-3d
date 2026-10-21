@@ -1,20 +1,21 @@
 """Führt die gesamte Datenpipeline aus (Zwischenspeicher in pipeline/cache/, wiederholbar).
 
 Aufruf: python -m pipeline.run_all [schritt ...]
-Schritte: terrain buildings osm trees export (ohne Argument: alle in dieser Reihenfolge)
+Schritte: terrain buildings osm trees votes export (ohne Argument: alle in dieser Reihenfolge)
 """
 from __future__ import annotations
 
 import sys
 import time
 
-from . import export, process_buildings, process_osm, process_terrain, process_trees
+from . import export, process_buildings, process_osm, process_terrain, process_trees, process_votes
 
 STEPS = {
     "terrain": lambda: process_terrain.main([]),
     "buildings": process_buildings.main,
     "osm": process_osm.main,
     "trees": process_trees.main,
+    "votes": process_votes.main,
     "export": export.main,
 }
 

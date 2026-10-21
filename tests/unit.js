@@ -1,9 +1,11 @@
 // Browser-Unit-Tests ohne Test-Framework (die Umgebung benötigt kein Node).
 import { wgs84ToLv95, lv95ToWgs84, createFrame } from "../js/geo.js";
 import { sunPosition, zurichParts, zurichToDate } from "../js/sky.js";
-import { buildYear, typeGroup, Buildings } from "../js/buildings.js";
+import { buildYear, typeGroup, Buildings, COLOR_MODES, facadeStyle, roofColor, floorsOf, isDemolished, hash01 } from "../js/buildings.js";
+import { createSegmentIndex } from "../js/roadindex.js";
+import { model } from "../js/models.js";
 import { parseDem, parseBuildings } from "../js/api.js";
-import { weatherCondition } from "../js/weather.js";
+import { weatherCondition, PRESETS, LIVE_WINDOW_MS } from "../js/weather.js";
 import { esc } from "../js/inspector.js";
 
 const results = [];
@@ -93,7 +95,73 @@ test("Echte Daten: Gebäudedatei ist konsistent und pickbar", async () => {
   // Filter blendet Gebäude aus
   const visible = buildings.applyFilter((record) => record.gwr?.yearBuilt && record.gwr.yearBuilt < 1900);
   assert(visible < data.count && buildings.geometry.drawRange.count < data.indexCount);
-  assert(buildings.applyFilter(null) === data.count);
+  assert(buildings.applyFilter(null) === data.count - buildings.stats().hiddenDemolished, "ohne Filter bleiben nur abgebrochene Gebäude ausgeblendet");
+});
+
+test("Dorfbild: Fassade und Dach sind pro Gebäude stabil und deterministisch", () => {
+  const record = { id: "abc-1", footprintArea: 120, gwr: { class: 1110, yearBuilt: 1975 }, roofColor: "#a05a40" };
+  assert(JSON.stringify(facadeStyle(record)) === JSON.stringify(facadeStyle({ ...record })));
+  assert(hash01("x", "a") === hash01("x", "a") && hash01("x", "a") !== hash01("x", "b"));
+  assert(roofColor(record).measured === true && /^#[0-9a-f]{6}$/.test(roofColor(record).hex));
+  assert(roofColor({ id: "ohne" }).measured === false, "ohne Messwert Rückfallfarbe, als nicht gemessen markiert");
+  assert(facadeStyle({ id: "k", gwr: { class: 1272 } }).kind === "kirche");
+  assert(facadeStyle({ id: "g", gwr: { class: 1242 } }).kind === "beton");
+});
+
+test("Geschosse: GWR-Wert hat Vorrang, sonst Schätzung aus der Traufhöhe", () => {
+  assert(floorsOf({ gwr: { floors: 4 } }).count === 4 && floorsOf({ gwr: { floors: 4 } }).estimated === false);
+  const estimated = floorsOf({ roofMin: 109, groundElevation: 100 });
+  assert(estimated.estimated === true && estimated.count === 3);
+});
+
+test("Abgebrochene Gebäude (GWR-Status 1007/1008) werden erkannt", () => {
+  assert(isDemolished({ gwr: { status: 1007 } }) && isDemolished({ gwr: { status: 1008 } }));
+  assert(!isDemolished({ gwr: { status: 1004 } }) && !isDemolished({}));
+});
+
+test("Gebäudemodi: Dorfbild ist Vorgabe und alle Modi sind benannt", () => {
+  assert(COLOR_MODES[0].id === "dorf" && COLOR_MODES.length >= 8);
+  assert(new Set(COLOR_MODES.map((m) => m.id)).size === COLOR_MODES.length);
+});
+
+test("Wetter: Vorgaben und Live-Zeitfenster", () => {
+  for (const key of ["live", "clear", "cloudy", "rain", "snow", "fog", "storm"]) assert(PRESETS[key], key);
+  assert(weatherCondition(PRESETS.rain.current).rain && weatherCondition(PRESETS.snow.current).snow);
+  assert(weatherCondition(PRESETS.storm.current).storm && LIVE_WINDOW_MS === 2 * 3600 * 1000);
+});
+
+test("Strassenindex: nächstes Segment samt Richtung", () => {
+  const index = createSegmentIndex([{ p: [0, 0, 100, 0] }], () => true);
+  const hit = index.nearest(50, 8, 20);
+  assert(hit && Math.abs(hit.distance - 8) < 1e-6 && Math.abs(hit.x - 50) < 1e-6 && hit.tx === 1);
+  assert(index.nearest(50, 80, 20) === null);
+});
+
+test("Modelle: Haltestelle, Zug und Schiff liefern Geometrie mit Vertexfarben", () => {
+  for (const [name, args] of [["busStop", [{ shelter: true, bench: true }]], ["trainPlatform", []], ["ferryPier", []], ["postBus", []], ["sbbTrain", [3]], ["lakeShip", []]]) {
+    const geometry = model(name, ...args);
+    assert(geometry.getAttribute("position").count > 20 && geometry.getAttribute("color"), name);
+  }
+});
+
+test("Echte Daten: Dorfbild-Modus und ausgeblendete abgebrochene Gebäude", async () => {
+  const [bin, json, codes] = await Promise.all([fetch("../public/data/buildings3d.bin").then((r) => r.arrayBuffer()), fetch("../public/data/buildings.json").then((r) => r.json()), fetch("../public/data/codes.json").then((r) => r.json())]);
+  const buildings = new Buildings(parseBuildings(bin, json.buildings), json.buildings, codes);
+  assert(buildings.mode === "dorf");
+  const demolished = json.buildings.filter(isDemolished).length;
+  assert(buildings.stats().hiddenDemolished === demolished);
+  for (const mode of COLOR_MODES) { buildings.setColorMode(mode.id); assert(Array.isArray(buildings.legend()), mode.id); }
+  const withRoof = json.buildings.filter((b) => b.roofColor).length;
+  assert(withRoof / json.buildings.length > 0.95, "Dachfarbe für mehr als 95 % der Gebäude");
+});
+
+test("Echte Daten: Abstimmungen, Laternen und Register-Rest", async () => {
+  const votes = await fetch("../public/data/votes.json").then((r) => r.json());
+  assert(votes.bfs === 1364 && votes.votes.length > 10 && votes.votes.every((v) => v.local >= 0 && v.local <= 100));
+  const lamps = await fetch("../public/data/lamps.json").then((r) => r.json());
+  assert(lamps.lamps.length > 100 && lamps.lamps.every((l) => l.length >= 2));
+  const rest = await fetch("../public/data/gwr_unmatched.json").then((r) => r.json());
+  assert(rest.buildings.length > 100 && rest.buildings.every((b) => b.egid && b.e && b.n));
 });
 
 test("Echte Daten: Höhenraster entspricht metadata.json", async () => {

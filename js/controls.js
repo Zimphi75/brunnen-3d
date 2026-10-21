@@ -53,6 +53,7 @@ export function createCameraRig({ camera, controls, terrain, onFrame }) {
   return {
     flyTo,
     currentView,
+    rotate(degrees) { const v = currentView(); flyTo({ target: controls.target.clone(), distance: v.distance, heading: v.heading + THREE.MathUtils.degToRad(degrees), tilt: v.tilt, duration: 0.45 }); },
     topDown() { const v = currentView(); flyTo({ target: controls.target.clone(), distance: v.distance, heading: v.heading, tilt: THREE.MathUtils.degToRad(1), duration: 0.9 }); },
     oblique() { const v = currentView(); flyTo({ target: controls.target.clone(), distance: v.distance, heading: v.heading, tilt: THREE.MathUtils.degToRad(58), duration: 0.9 }); },
     stop() { animation = null; },

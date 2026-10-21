@@ -1,6 +1,7 @@
 """Gemeindegrenze, GWR-Statistik und Quellenverzeichnis -> municipality.json, statistics.json, sources.json."""
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
 from datetime import date
@@ -77,13 +78,21 @@ def sources(metadata: dict) -> list[dict]:
          "notes": "Beta-Produkt. Das Feld ERSTELLUNG_JAHR bezeichnet die Datenerfassung, nicht das Baujahr."},
         {"id": "gwr", "title": "Eidg. Gebäude- und Wohnungsregister (GWR), Kanton Schwyz", "provider": "Bundesamt für Statistik (BFS)", "license": "Open Government Data BFS (Quellenangabe)", "terms": BFS_TERMS,
          "url": config.GWR_URL, "coverage": "Kanton SZ, täglich aktualisiert", "crs": "EPSG:2056", "vintage": metadata.get("statistics", {}).get("gwrExportDate", ""), "format": "CSV (tab-getrennt)", "retrieved": today,
-         "files": ["buildings.json", "addresses.json", "codes.json", "statistics.json"], "notes": "Verknüpfung mit swissBUILDINGS3D über EGID. Baujahr nur dort vorhanden, wo im GWR erfasst; sonst Bauperiode."},
-        {"id": "osm", "title": "OpenStreetMap (Strassen, Bahn, Gewässer, POI, Linien)", "provider": "OpenStreetMap-Mitwirkende", "license": "ODbL 1.0", "terms": "https://www.openstreetmap.org/copyright",
+         "files": ["buildings.json", "addresses.json", "codes.json", "statistics.json", "gwr_unmatched.json"],
+         "notes": "Verknüpfung mit swissBUILDINGS3D über EGID, ergänzt über die Lage (GWR-Koordinate im Grundriss). Baujahr nur dort vorhanden, wo im GWR erfasst; sonst Bauperiode. Registergebäude ohne 3D-Modell (meist Kleinbauten) stehen in gwr_unmatched.json."},
+        {"id": "roofcolor", "title": "SWISSIMAGE (WMS, 0.5 m) für Dachfarben", "provider": "swisstopo", "license": "Open Government Data swisstopo (Quellenangabe)", "terms": SWISSTOPO_TERMS,
+         "url": f"{config.WMS_URL} (ch.swisstopo.swissimage)", "coverage": "Schweiz", "crs": "EPSG:2056", "vintage": "aktuell zum Abruf", "format": "JPEG, 1-km-Kacheln", "retrieved": today,
+         "files": ["buildings.json"], "notes": "Dachfarbe = Median der Luftbildpixel auf den Dachflächen des 3D-Modells. Näherung; Schatten und Lagegenauigkeit beeinflussen sie."},
+        {"id": "osm", "title": "OpenStreetMap (Strassen, Bahn, Gewässer, POI, Linien, Laternen)", "provider": "OpenStreetMap-Mitwirkende", "license": "ODbL 1.0", "terms": "https://www.openstreetmap.org/copyright",
          "url": config.OVERPASS_URL, "coverage": "Untersuchungsgebiet inkl. Puffer", "crs": "EPSG:4326 -> EPSG:2056", "vintage": "Abruf", "format": "Overpass JSON", "retrieved": today,
-         "files": ["roads.json", "water.json", "pois.json", "transport.json"], "notes": "Vollständigkeit und Aktualität sind nicht garantiert."},
+         "files": ["roads.json", "water.json", "pois.json", "transport.json", "places.json", "lamps.json"],
+         "notes": "Vollständigkeit und Aktualität sind nicht garantiert. Strassenlaternen: nur 27 OSM-Knoten; weitere Standorte sind entlang von Strassen mit lit=yes modelliert (lamps.json, Quelle 1)."},
         {"id": "trees", "title": "Vegetationshöhenmodell NFI", "provider": "WSL / BAFU (Landesforstinventar)", "license": "ODbL mit DbCL", "terms": "https://www.envidat.ch/dataset/vegetation-height-model-nfi",
          "url": f"{config.STAC_BASE}/collections/ch.bafu.landesforstinventar-vegetationshoehenmodell", "coverage": "Schweiz, jährlich 1/6 aktualisiert", "crs": "EPSG:2056", "vintage": metadata.get("trees", {}).get("source", ""),
-         "format": "Cloud-Optimized GeoTIFF, 1 m", "retrieved": today, "files": ["trees.bin"], "notes": "Baumpositionen als lokale Maxima abgeleitet, Kronenradius aus Höhe geschätzt."},
+         "format": "Cloud-Optimized GeoTIFF, 1 m", "retrieved": today, "files": ["trees.bin"], "notes": "Baumpositionen als lokale Maxima abgeleitet (Validierung gegen OSM-Einzelbäume in metadata.json), Kronenradius aus Höhe geschätzt, nicht erkannte OSM-Bäume ergänzt."},
+        {"id": "votes", "title": "Eidgenössische Abstimmungen (Gemeinderesultate)", "provider": "Bundesamt für Statistik (BFS), voteinfo", "license": "Open Government Data (Quellenangabe: BFS)", "terms": "https://opendata.swiss/de/terms-of-use",
+         "url": "https://ogd-static.voteinfo-app.ch/v1/ogd/", "coverage": "Schweiz, Gemeindeebene", "format": "JSON, serverseitig gezogen (Quelle ohne CORS)", "retrieved": today, "files": ["votes.json"],
+         "notes": "Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert (derzeit 2025-05-18 und 2023-03-12)."},
         {"id": "weather", "title": "Open-Meteo (Wetter, zur Laufzeit)", "provider": "Open-Meteo", "license": "CC BY 4.0 (nicht-kommerzielle Nutzung)", "terms": "https://open-meteo.com/en/terms",
          "url": "https://api.open-meteo.com/v1/forecast", "coverage": "weltweit", "format": "JSON (Browser-Abruf)", "retrieved": "zur Laufzeit", "files": []},
         {"id": "transport", "title": "transport.opendata.ch (Abfahrten, zur Laufzeit)", "provider": "Opendata.ch auf Basis von opentransportdata.swiss", "license": "Open Data (Quellenangabe, Nutzungsbedingungen opentransportdata.swiss)",
@@ -92,6 +101,28 @@ def sources(metadata: dict) -> list[dict]:
         {"id": "history", "title": "Zeitreise: historische Landeskarten (zur Laufzeit)", "provider": "swisstopo", "license": "Open Government Data swisstopo (Quellenangabe)", "terms": SWISSTOPO_TERMS,
          "url": "https://wms.geo.admin.ch/ (ch.swisstopo.zeitreihen)", "coverage": "Schweiz, Kartenstände ab 1844", "format": "WMS (Browser-Abruf)", "retrieved": "zur Laufzeit", "files": []},
     ]
+
+
+def sha256(path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def export_manifest() -> None:
+    """Prüfsummen aller Eingabedateien im Zwischenspeicher: macht einen Lauf nachvollziehbar und vergleichbar."""
+    files = []
+    for path in sorted(config.CACHE_DIR.rglob("*")):
+        if not path.is_file() or path.suffix == ".part":
+            continue
+        if path.parent.name in {"gwr"} and path.suffix == ".csv":
+            continue  # aus sz.zip entpackt
+        files.append({"path": str(path.relative_to(config.CACHE_DIR)), "bytes": path.stat().st_size, "sha256": sha256(path)})
+    payload = {"generated": date.today().isoformat(), "files": files}
+    (config.OUT_DIR / "manifest.json").write_text(json.dumps(payload, indent=1))
+    print(f"manifest.json: {len(files)} Eingabedateien")
 
 
 def export_sources() -> None:
@@ -105,6 +136,7 @@ def main() -> None:
     export_municipality()
     export_statistics()
     export_sources()
+    export_manifest()
 
 
 if __name__ == "__main__":

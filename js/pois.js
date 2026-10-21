@@ -35,13 +35,24 @@ export async function initPois(ctx) {
   if (pois.length) {
     const geometry = new THREE.ConeGeometry(1.6, pinHeight, 8).rotateX(Math.PI);
     mesh = new THREE.InstancedMesh(geometry, new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.05 }), pois.length);
-    const matrix = new THREE.Matrix4();
-    pois.forEach((poi, i) => {
-      matrix.makeTranslation(positions[i].x, positions[i].y, positions[i].z);
-      mesh.setMatrixAt(i, matrix);
-      mesh.setColorAt(i, new THREE.Color(POI_COLORS[poi.c] ?? "#95a5a6"));
+    const matrix = new THREE.Matrix4(), scaleVector = new THREE.Vector3(), baseY = pois.map((poi) => terrain.heightAt(poi.x, poi.z) ?? 0);
+    ctx.poiScale = 1;
+    const placePins = (scale) => {
+      scaleVector.set(scale, scale, scale);
+      pois.forEach((poi, i) => {
+        matrix.compose(new THREE.Vector3(poi.x, baseY[i] + pinHeight * scale / 2, poi.z), new THREE.Quaternion(), scaleVector);
+        mesh.setMatrixAt(i, matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.computeBoundingSphere();
+    };
+    pois.forEach((poi, i) => mesh.setColorAt(i, new THREE.Color(POI_COLORS[poi.c] ?? "#95a5a6")));
+    placePins(1);
+    // Pins schrumpfen beim Heranzoomen, damit sie Gebäude nicht verdecken.
+    scene3d.onFrame((_, now, distance) => {
+      const wanted = THREE.MathUtils.clamp(distance / 500, 0.25, 1);
+      if (Math.abs(wanted - ctx.poiScale) > 0.06) { ctx.poiScale = wanted; placePins(wanted); }
     });
-    mesh.computeBoundingSphere();
     mesh.castShadow = true;
     group.add(mesh);
   }

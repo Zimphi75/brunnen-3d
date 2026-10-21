@@ -15,12 +15,39 @@ export class Terrain {
     this.group = new THREE.Group();
     this.group.name = "terrain";
     this.material = new THREE.MeshStandardMaterial({ color: 0xc9d1c2, roughness: 0.95, metalness: 0 });
+    this.#installShader();
     this.chunks = [];
     this.width = (dem.nx - 1) * dem.cell;
     this.depth = (dem.ny - 1) * dem.cell;
     // lokale Koordinaten der Südwestecke
     this.minX = dem.minE - frame.originE;
     this.maxZ = -(dem.minN - frame.originN);
+  }
+
+  /** Gemeinsamer Shader: historische Karte (links der Trennlinie) und hochauflösendes Luftbild in Blicknähe. */
+  #installShader() {
+    const blank = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+    blank.needsUpdate = true;
+    this.uniforms = {
+      uHistory: { value: blank }, uSplit: { value: 0 }, uResolution: { value: new THREE.Vector2(1, 1) },
+      uHires: { value: blank }, uHiresRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uHiresMix: { value: 0 },
+    };
+    this.material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, this.uniforms);
+      shader.vertexShader = "varying vec2 vTerrXZ;\n" + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvTerrXZ = position.xz;");
+      shader.fragmentShader = "uniform sampler2D uHistory; uniform float uSplit; uniform vec2 uResolution; uniform sampler2D uHires; uniform vec4 uHiresRect; uniform float uHiresMix; varying vec2 vTerrXZ;\n"
+        + shader.fragmentShader.replace("#include <map_fragment>", `#ifdef USE_MAP
+        vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+        vec2 hu = (vTerrXZ - uHiresRect.xy) / uHiresRect.zw;
+        if ( uHiresMix > 0.0 && hu.x > 0.0 && hu.x < 1.0 && hu.y > 0.0 && hu.y < 1.0 ) {
+          float edge = min( min( hu.x, 1.0 - hu.x ), min( hu.y, 1.0 - hu.y ) );
+          sampledDiffuseColor = mix( sampledDiffuseColor, texture2D( uHires, hu ), uHiresMix * smoothstep( 0.0, 0.06, edge ) );
+        }
+        if ( uSplit > 0.0 && gl_FragCoord.x < uSplit * uResolution.x ) sampledDiffuseColor = texture2D( uHistory, vMapUv );
+        diffuseColor *= sampledDiffuseColor;
+      #endif`);
+    };
+    this.material.customProgramCacheKey = () => "terrain-overlays";
   }
 
   gridHeight(i, j) {
