@@ -1,0 +1,82 @@
+name: Build and deploy to Hoststar
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hoststar-deploy
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Cache source downloads
+        uses: actions/cache@v4
+        with:
+          path: pipeline/cache
+          key: pipeline-${{ runner.os }}-${{ hashFiles('pipeline/config.py') }}
+          restore-keys: |
+            pipeline-${{ runner.os }}-
+
+      - name: Install pipeline dependencies
+        run: python -m pip install -r pipeline/requirements.txt
+
+      - name: Generate datasets
+        run: python -m pipeline.run_all
+
+      - name: Vendor Three.js
+        run: python scripts/vendor_three.py
+
+      - name: Run pipeline tests
+        run: python -m pytest -q
+
+      - name: Assemble static website
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -R css js public _site/
+
+      - name: Upload website artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoststar-site
+          path: _site/
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    if: ${{ vars.HOSTSTAR_FTP_ENABLED == 'true' }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download website artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: hoststar-site
+          path: _site
+
+      - name: Deploy to Hoststar with FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTSTAR_FTP_SERVER }}
+          username: ${{ secrets.HOSTSTAR_FTP_USERNAME }}
+          password: ${{ secrets.HOSTSTAR_FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: _site/
+          server-dir: ${{ secrets.HOSTSTAR_FTP_DIRECTORY }}/

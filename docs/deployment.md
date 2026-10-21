@@ -20,6 +20,24 @@ Nicht nötig: `pipeline/`, `tests/`, `.venv/`, `docs/`.
 2. Verzeichnisse oben auf den Webserver kopieren.
 3. MIME-Typen prüfen: `.js` als `text/javascript`, `.json` als `application/json`, `.bin` als `application/octet-stream`.
 
+## Automatisch auf Hoststar veröffentlichen
+
+Das GitHub-Repository enthält den Workflow `.github/workflows/hoststar-deploy.yml`. Bei jedem Push auf `main` baut GitHub Actions die Datenpipeline und Three.js, führt die pytest-Tests aus und stellt daraus den statischen Website-Ordner zusammen. Der Upload zu Hoststar läuft über FTPS. Manuelle Builds lassen sich unter **Actions → Build and deploy to Hoststar → Run workflow** starten.
+
+Vor dem ersten Deploy im GitHub-Repository unter **Settings → Secrets and variables → Actions** konfigurieren:
+
+| Typ | Name | Wert |
+|---|---|---|
+| Secret | `HOSTSTAR_FTP_SERVER` | FTP-Servername aus Hoststars My Panel |
+| Secret | `HOSTSTAR_FTP_USERNAME` | FTP-Benutzername |
+| Secret | `HOSTSTAR_FTP_PASSWORD` | FTP-Passwort |
+| Secret | `HOSTSTAR_FTP_DIRECTORY` | Zielverzeichnis der Website, z. B. das im My Panel angezeigte Domain-Verzeichnis |
+| Variable | `HOSTSTAR_FTP_ENABLED` | `true` |
+
+Das Zielverzeichnis sollte ausschliesslich für Brunnen 3D verwendet werden: Der FTP-Workflow synchronisiert den Website-Inhalt dorthin. Die FTP-Zugangsdaten nie in Dateien oder Commits eintragen. Der Workflow erwartet explizites FTPS auf dem Standardport 21. Falls Hoststar für das Hosting nur unverschlüsseltes FTP oder einen abweichenden Port freigibt, muss das Protokoll im Workflow angepasst werden.
+
+Die Site wird erst nach dem Setzen von `HOSTSTAR_FTP_ENABLED` veröffentlicht. Ohne diese Variable werden Build, Datengenerierung und Tests ausgeführt, der Deploy-Job bleibt übersprungen.
+
 ## Empfehlungen für den Betrieb
 
 - **Kompression**: gzip oder Brotli für `.json`, `.js` und `.bin` einschalten (gemessen mit gzip -9: `buildings.json` 1.0 MB → 153 KB, `buildings3d.bin` 8.6 MB → 2.1 MB, `dem.bin` 3.0 MB → 1.7 MB, `roads.json` 536 KB → 161 KB).
