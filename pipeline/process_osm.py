@@ -26,6 +26,8 @@ ROAD_CLASSES = {
 }
 RAIL_VALUES = {"rail", "narrow_gauge", "light_rail", "funicular", "tram", "rack"}
 LIT_VALUES = {"yes", "automatic", "24/7", "sunset-sunrise"}
+ONEWAY_FORWARD = {"yes", "true", "1"}
+ONEWAY_REVERSE = {"-1", "reverse"}
 LAMP_SPACING_M = 32
 LAMP_MIN_DISTANCE_M = 18
 LAMP_CLASSES = {"motorway", "primary", "secondary", "tertiary", "minor", "service"}
@@ -68,6 +70,14 @@ def lines_of(geometry) -> list[LineString]:
     return []
 
 
+def oneway_direction(tags: dict) -> int:
+    """+1: Einbahn in Digitalisierrichtung, -1: gegen sie, 0: beidseitig befahrbar (Kreisel gelten als Einbahn)."""
+    value = tags.get("oneway")
+    if value in ONEWAY_FORWARD or tags.get("junction") == "roundabout":
+        return 1
+    return -1 if value in ONEWAY_REVERSE else 0
+
+
 def process_roads(raw: dict, clip, origin) -> list[dict]:
     roads = []
     for element in raw["elements"]:
@@ -94,6 +104,7 @@ def process_roads(raw: dict, clip, origin) -> list[dict]:
             roads.append({
                 "id": element["id"], "c": kind, "n": tags.get("name") or tags.get("ref"),
                 "b": int(bridge), "t": int(tunnel), "lit": int(tags.get("lit") in LIT_VALUES), "l": int(tags.get("layer", 0) or 0) if str(tags.get("layer", "0")).lstrip("-").isdigit() else 0,
+                "ow": oneway_direction(tags), "ln": int(tags["lanes"]) if str(tags.get("lanes", "")).isdigit() else 0,
                 "p": flat(part.coords),
             })
     return roads

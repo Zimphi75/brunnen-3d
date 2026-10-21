@@ -7,7 +7,7 @@ import { model } from "../js/models.js";
 import { moduleWatt, extractRoofFaces, layoutModules } from "../js/pv.js";
 import { parseTrees, buildTrees } from "../js/trees.js";
 import { buildNetwork, advance, sample } from "../js/ambient.js";
-import { markingLines, walk } from "../js/roadmarks.js";
+import { markingLines, walk, roadLayout } from "../js/roadmarks.js";
 import { parseDem, parseBuildings } from "../js/api.js";
 import { weatherCondition, PRESETS, LIVE_WINDOW_MS } from "../js/weather.js";
 import { esc } from "../js/inspector.js";
@@ -304,6 +304,20 @@ test("Strassenmarkierung: gestrichelte Mittellinie, Randlinien an Hauptstrassen,
   assert(edges.length >= 2 && edges.every((e) => Math.abs(Math.abs(e[1]) - 3.6) < 0.05), "Randlinien 0.4 m vom Rand der 8 m breiten Strasse");
   assert(!dashes.some((d) => d[1] > 20), "Servicestrasse ohne Markierung");
   assert(walk([0, 0, 10, 0], 2).length === 6, "Abtastung im festen Abstand");
+});
+
+test("Autobahn: zwei Spuren je Fahrtrichtung mit Spurtrennlinie, Randlinien und Fahrstreifenmitten", () => {
+  const oneway = roadLayout({ c: "motorway", ow: 1, ln: 2 });
+  assert(oneway.lanes.length === 2 && Math.abs(oneway.lanes[1] - oneway.lanes[0] - 3.75) < 1e-9, "Spurbreite 3.75 m");
+  assert(oneway.dividers.length === 1 && oneway.edges.length === 2 && Math.abs(oneway.dividers[0] - (oneway.lanes[0] + oneway.lanes[1]) / 2) < 1e-9);
+  assert(oneway.width > 9.5 && oneway.width < 11 && roadLayout({ c: "motorway", ow: 1, ln: 1 }).width < oneway.width, "Auffahrt schmaler als zweispurige Fahrbahn");
+  const twoWay = roadLayout({ c: "motorway", ow: 0, ln: 4 });
+  assert(twoWay.dividers[0] === 0 && twoWay.lanes.length === 1 && twoWay.lanes[0] > 0, "Gegenverkehr: Mittellinie, Rechtsverkehr");
+  const net = buildNetwork([{ p: [0, 0, 300, 0], cls: "motorway", oneway: 1, lanes: oneway.lanes, width: oneway.width }]);
+  assert(net.lines[0].lanes.length === 2 && net.lines[0].oneway === 1);
+  const lines = markingLines([{ c: "motorway", ow: 1, ln: 2, p: [0, 0, 300, 0] }], { nearest: () => null });
+  assert(lines.dashes.length > 10 && lines.edges.length === 2, "gestrichelte Spurtrennlinie, zwei Randlinien");
+  assert(lines.dashes.every((d) => Math.abs(d[2] - d[0]) <= 6.5), "Striche 6 m");
 });
 
 test("Echte Daten: Höhenraster entspricht metadata.json", async () => {

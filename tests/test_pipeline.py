@@ -241,3 +241,12 @@ def test_pv_summary_matches_file():
     summary = json.loads((DATA / "metadata.json").read_text())["pv"]
     assert summary["plants"] == len(pv["plants"])
     assert abs(summary["totalKw"] - sum(p["kw"] for p in pv["plants"])) < 0.5
+
+
+@needs("roads.json")
+def test_roads_have_direction_and_lane_attributes():
+    roads = json.loads((DATA / "roads.json").read_text())["roads"]
+    assert all(r["ow"] in (-1, 0, 1) and isinstance(r["ln"], int) and r["ln"] >= 0 for r in roads)
+    motorways = [r for r in roads if r["c"] == "motorway" and not r["t"]]
+    assert motorways and sum(r["ow"] != 0 for r in motorways) > len(motorways) / 2, "Autobahnfahrbahnen sind Einbahn"
+    assert any(r["ln"] == 2 and r["ow"] for r in motorways), "zweispurige Fahrbahnen vorhanden"

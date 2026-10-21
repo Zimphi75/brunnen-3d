@@ -233,7 +233,7 @@ function moduleTexture(kind) {
 }
 
 /** Einfache Himmelsumgebung für Spiegelungen im Modulglas (nur für Module, nicht für die ganze Szene). */
-function skyEnvironment(renderer) {
+export function skyEnvironment(renderer) {
   const geometry = new THREE.SphereGeometry(50, 32, 16);
   const colors = [], position = geometry.getAttribute("position");
   const horizon = new THREE.Color("#e6eef5"), zenith = new THREE.Color("#4f86c6"), ground = new THREE.Color("#5d6158");

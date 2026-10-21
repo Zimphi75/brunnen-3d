@@ -78,6 +78,7 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | `terrain.js` | Gelände-Kacheln, Höhenabfrage, Strahltest; Shader für simulierten Boden, historische Karte und scharfe Nahkachel |
 | `roadmarks.js` | Mittel- und Randlinien aus Strassenklasse und -breite, Unterbruch bei Kreuzungen (über den Segmentindex mit Strassen-Besitzer) |
 | `track.js` | Gleise: Schotterbett mit Schwellentextur (UV nach Laufmeter), zwei Schienenbänder, Schienen nur unter 1.5 km Blickabstand |
+| `vehicles.js` | Modelle und Materialien für den Alltag: Autos als Querschnitts-Lofts mit Glas, Felgen, Leuchten und Klarlack-Material (Materialcode je Dreieck, Himmelsumgebung), Personen und Hunde mit Gehbewegung im Vertex-Shader |
 | `ambient.js` | Simulierter Alltag: Netz aus Strassen und Trottoirs, Agenten (Autos mit Folgeabstand, Personen), Startpunkte in Blicknähe, eine Instanz-Gruppe je Fahrzeugtyp |
 | `ground.js` | Bodenansicht wählen: Simulation (Vorgabe), Luftbild, Landeskarte (WMS, global und als Nahkachel über `hires.js`) |
 | `trees.js` | Bäume: Laub-/Nadelbaum-Geometrie, Art und Farbe aus dem Luftbild, Wind im Vertex-Shader, zwei Detailstufen je 500-m-Zelle |

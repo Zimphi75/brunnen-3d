@@ -86,7 +86,7 @@ Kopf (4 × uint32: `"TRE1"`, Version, Anzahl, 0), dann `Float32[n]` x, `Float32[
 
 ### JSON-Dateien
 
-- `roads.json`: `{ roads: [ { id, c (Klasse), n, b (Brücke), t (Tunnel), l (Layer), lit (beleuchtet, OSM), p [x0, z0, x1, z1, …] } ] }`
+- `roads.json`: `{ roads: [ { id, c (Klasse), n, b (Brücke), t (Tunnel), l (Layer), lit (beleuchtet, OSM), ow (Einbahn: +1 in Punktfolge, -1 dagegen, 0 beidseitig; Kreisel +1), ln (Spurzahl laut OSM oder 0), p [x0, z0, x1, z1, …] } ] }`
 - `lamps.json`: `{ lamps: [ [x, z, art] ] }`, `art` 0 = OSM-Knoten, 1 = entlang `lit=yes`-Strassen modelliert (Abstand rund 35 m)
 - `gwr_unmatched.json`: `{ buildings: [ { egid, e, n, address, inMunicipality, gwr } ] }`, bestehende Registergebäude ohne 3D-Modell
 - `pv.json`: `{ retrieved, source, orientations, plants: [ { id, b (Gebäudeindex), kw, year, cat (angebaut/integriert/freistehend), match (egid/lage), parts: [ [kw, Neigung°, Ausrichtung 1–9, Jahr] ] } ] }`; Ausrichtung 1 Norden … 5 Süden … 8 Nordwest, 9 Zenit (flach)

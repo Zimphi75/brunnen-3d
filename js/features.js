@@ -4,7 +4,7 @@ import { buildRibbons, buildPolygonMesh, buildCurtain } from "./draped.js";
 import { loadOptionalJson, loadOptionalBinary } from "./api.js";
 import { createSegmentIndex, createBlocker } from "./roadindex.js";
 import { parseTrees, buildTrees } from "./trees.js";
-import { markingLines } from "./roadmarks.js";
+import { markingLines, roadWidth } from "./roadmarks.js";
 import { buildTrack } from "./track.js";
 
 const ROAD_STYLE = {
@@ -31,11 +31,13 @@ function buildRoadGroups(roads, terrain, roadIndex) {
     const container = new THREE.Group();
     container.name = group;
     for (const kind of kinds) {
-      const lines = roads.filter((r) => r.c === kind && !r.t).map((r) => r.p);
+      const members = roads.filter((r) => r.c === kind && !r.t);
+      const lines = members.map((r) => r.p);
       if (!lines.length) continue;
       if (kind === "rail") { container.add(buildTrack(lines, terrain)); continue; }
       const style = ROAD_STYLE[kind];
-      const mesh = new THREE.Mesh(buildRibbons(lines, { width: style.width, lift: kind === "rail" ? 0.35 : 0.3, terrain, step: kind === "aerialway" ? 25 : 8 }), overlayMaterial(style.color));
+      const widths = kind === "motorway" || kind === "primary" || kind === "secondary" ? members.map(roadWidth) : null;
+      const mesh = new THREE.Mesh(buildRibbons(lines, { width: style.width, widths, lift: kind === "rail" ? 0.35 : 0.3, terrain, step: kind === "aerialway" ? 25 : 8 }), overlayMaterial(style.color));
       mesh.receiveShadow = true;
       mesh.renderOrder = kind === "rail" ? 3 : kind === "path" || kind === "track" ? 1 : 2;
       container.add(mesh);

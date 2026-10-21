@@ -1,13 +1,12 @@
 // Simulierter Alltag (nur bei Boden «Simulation»): Autos auf den Strassen, Personen auf Wegen und Trottoirs.
 // Symbolisch: Es gibt keine Verkehrs- oder Personenzahlen. Dichte und Wege sind Annahmen (Strassenklasse, Bebauung in der Nähe).
 import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { box, cylinder } from "./models.js";
-import { walk, ROAD_WIDTH } from "./roadmarks.js";
+import { walk, roadLayout } from "./roadmarks.js";
+import { skyEnvironment } from "./pv.js";
+import { CAR_KINDS, carMaterial, pedestrianGeometry, dogGeometry, figureMaterial } from "./vehicles.js";
 
-const CAR_CLASSES = { primary: { speed: 14, weight: 1 }, secondary: { speed: 12, weight: 0.9 }, tertiary: { speed: 10, weight: 0.8 }, minor: { speed: 8.5, weight: 0.5 }, service: { speed: 5, weight: 0.2 } };
+const CAR_CLASSES = { motorway: { speed: 28, weight: 1 }, primary: { speed: 14, weight: 1 }, secondary: { speed: 12, weight: 0.9 }, tertiary: { speed: 10, weight: 0.8 }, minor: { speed: 8.5, weight: 0.5 }, service: { speed: 5, weight: 0.2 } };
 const SIDEWALK_CLASSES = ["primary", "secondary", "tertiary", "minor"];
-const CAR_MAX = 260, PED_MAX = 320;
 const ACTIVE_DISTANCE = 1400;
 const nodeKey = (x, z) => `${Math.round(x * 10)}:${Math.round(z * 10)}`;
 
@@ -22,7 +21,7 @@ export function buildNetwork(lines) {
     const cum = new Float32Array(n);
     for (let i = 1; i < n; i++) cum[i] = cum[i - 1] + Math.hypot(line.p[2 * i] - line.p[2 * i - 2], line.p[2 * i + 1] - line.p[2 * i - 1]);
     if (cum[n - 1] < 3) continue;
-    out.push({ id: out.length, p: line.p, n, cum, total: cum[n - 1], cls: line.cls, oneway: line.oneway ?? 0, closed: n > 2 && line.p[0] === line.p[2 * n - 2] && line.p[1] === line.p[2 * n - 1] });
+    out.push({ id: out.length, p: line.p, n, cum, total: cum[n - 1], cls: line.cls, oneway: line.oneway ?? 0, lanes: line.lanes ?? [], width: line.width ?? 0, closed: n > 2 && line.p[0] === line.p[2 * n - 2] && line.p[1] === line.p[2 * n - 1] });
   }
   const nodes = new Map();
   for (const line of out) for (let i = 0; i < line.n; i++) {
@@ -86,63 +85,14 @@ const loopDirection = (p) => {
   return area < 0 ? 1 : -1;
 };
 
-// --- Modelle -------------------------------------------------------------------------------------------------------------
-
-function tag(parts, tint, glow = 0) {
-  return parts.map((g) => {
-    const n = g.attributes.position.count;
-    g.setAttribute("aTint", new THREE.BufferAttribute(new Float32Array(n).fill(tint), 1));
-    g.setAttribute("aGlow", new THREE.BufferAttribute(new Float32Array(n).fill(glow), 1));
-    return g;
-  });
-}
-
-const GLASS_DARK = "#1b2631", LIGHT = "#fff1c4", TAIL = "#d41919", WHITE = "#ffffff", TIRE = "#1d1f22";
-
-function carGeometry({ length, width, bodyHeight, cabinLength, cabinHeight, cabinShift }) {
-  const wheelZ = length * 0.32, wheelX = width / 2 - 0.1;
-  const parts = [
-    ...tag([box(width, bodyHeight, length, WHITE, 0, 0.3, 0), box(width - 0.2, cabinHeight, cabinLength, WHITE, 0, 0.3 + bodyHeight, cabinShift)], 1),
-    ...tag([box(width - 0.14, cabinHeight * 0.62, cabinLength + 0.05, GLASS_DARK, 0, 0.3 + bodyHeight + cabinHeight * 0.18, cabinShift)], 0),
-    ...tag([cylinder(0.32, 0.32, 0.24, 10, TIRE, wheelX, 0, wheelZ, [0, 0, Math.PI / 2]), cylinder(0.32, 0.32, 0.24, 10, TIRE, -wheelX, 0, wheelZ, [0, 0, Math.PI / 2]),
-      cylinder(0.32, 0.32, 0.24, 10, TIRE, wheelX, 0, -wheelZ, [0, 0, Math.PI / 2]), cylinder(0.32, 0.32, 0.24, 10, TIRE, -wheelX, 0, -wheelZ, [0, 0, Math.PI / 2])].map((g) => g.translate(0, 0, 0)), 0),
-    ...tag([box(0.34, 0.12, 0.06, LIGHT, 0.55, 0.58, length / 2), box(0.34, 0.12, 0.06, LIGHT, -0.55, 0.58, length / 2)], 0, 1),
-    ...tag([box(0.34, 0.12, 0.06, TAIL, 0.55, 0.62, -length / 2), box(0.34, 0.12, 0.06, TAIL, -0.55, 0.62, -length / 2)], 0, 1),
-  ];
-  return mergeGeometries(parts);
-}
-
-const CAR_TYPES = [
-  { weight: 0.5, geometry: carGeometry({ length: 4.4, width: 1.8, bodyHeight: 0.6, cabinLength: 2.3, cabinHeight: 0.55, cabinShift: -0.2 }), kind: "limousine" },
-  { weight: 0.33, geometry: carGeometry({ length: 3.8, width: 1.7, bodyHeight: 0.62, cabinLength: 2.1, cabinHeight: 0.6, cabinShift: -0.25 }), kind: "kompakt" },
-  { weight: 0.17, geometry: carGeometry({ length: 5.3, width: 2.0, bodyHeight: 0.9, cabinLength: 3.6, cabinHeight: 0.85, cabinShift: -0.6 }), kind: "lieferwagen" },
-];
-const CAR_COLORS = ["#f2f2f0", "#f2f2f0", "#c7cacc", "#8e9397", "#2b2e33", "#1b1d21", "#2f4f7f", "#a8222a", "#355a3c", "#c9b99a", "#e0c24a"].map((c) => new THREE.Color(c));
-const PED_COLORS = ["#c0392b", "#2c5aa0", "#2f7a4f", "#e1a83a", "#7b4d9e", "#d9d5cf", "#3b3f45", "#c76b2c", "#4f8fa6", "#8a9a3b"].map((c) => new THREE.Color(c));
-
-function pedestrianGeometry() {
-  return mergeGeometries([
-    ...tag([box(0.14, 0.82, 0.18, "#2d3345", 0.1, 0, 0), box(0.14, 0.82, 0.18, "#2d3345", -0.1, 0, 0)], 0),
-    ...tag([box(0.42, 0.6, 0.24, WHITE, 0, 0.8, 0), box(0.09, 0.56, 0.12, WHITE, 0.26, 0.82, 0), box(0.09, 0.56, 0.12, WHITE, -0.26, 0.82, 0)], 1),
-    ...tag([box(0.2, 0.22, 0.2, "#e0b494", 0, 1.4, 0), box(0.215, 0.08, 0.215, "#3a2a1c", 0, 1.56, 0)], 0),
-  ]);
-}
-
-function tintedMaterial() {
-  const uniforms = { uNightGlow: { value: 0 } };
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.2 });
-  material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = "attribute float aTint; attribute float aGlow; varying float vGlow;\n" + shader.vertexShader
-      .replace("#include <color_vertex>", "vColor = vec3( 1.0 ); vColor *= color; vColor *= mix( vec3( 1.0 ), instanceColor.xyz, aTint ); vGlow = aGlow;");
-    shader.fragmentShader = "varying float vGlow; uniform float uNightGlow;\n" + shader.fragmentShader
-      .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\n totalEmissiveRadiance += vGlow * vColor.rgb * uNightGlow * 1.6;");
-  };
-  material.customProgramCacheKey = () => "ambient-v1";
-  return { material, uniforms };
-}
-
 // --- Szene -----------------------------------------------------------------------------------------------------------------
+
+const CAR_MAX = 260, PED_MAX = 360, DOG_MAX = 90;
+const HIGH_DETAIL_DISTANCE = 140;
+const CAR_COLORS = ["#f2f2f0", "#f2f2f0", "#c7cacc", "#8e9397", "#2b2e33", "#1b1d21", "#2f4f7f", "#a8222a", "#355a3c", "#c9b99a", "#e0c24a", "#5b6670"].map((c) => new THREE.Color(c));
+const PED_COLORS = ["#c0392b", "#2c5aa0", "#2f7a4f", "#e1a83a", "#7b4d9e", "#d9d5cf", "#3b3f45", "#c76b2c", "#4f8fa6", "#8a9a3b", "#e8e4dc", "#b04a7a"].map((c) => new THREE.Color(c));
+const DOG_COLORS = ["#7a5230", "#1c1a19", "#d6c2a0", "#8b8b8b", "#4a3020", "#e9e4da"].map((c) => new THREE.Color(c));
+const DOG_SHARE = 0.14;
 
 export function initAmbient(ctx) {
   const { scene3d, terrain, layers, buildings } = ctx;
@@ -152,7 +102,8 @@ export function initAmbient(ctx) {
   const carLines = roads.filter((r) => CAR_CLASSES[r.c] && !r.t).map((r) => {
     const closed = r.p.length > 6 && r.p[0] === r.p[r.p.length - 2] && r.p[1] === r.p[r.p.length - 1];
     const roundabout = closed && walk(r.p, 5).length * 5 < 160;
-    return { p: r.p, cls: r.c, oneway: roundabout ? loopDirection(r.p) : 0 };
+    const layout = roadLayout(r);
+    return { p: r.p, cls: r.c, oneway: r.ow || (roundabout ? loopDirection(r.p) : 0), lanes: layout.lanes, width: layout.width };
   });
   const carNet = buildNetwork(carLines);
 
@@ -171,7 +122,7 @@ export function initAmbient(ctx) {
   const walkLines = roads.filter((r) => (r.c === "path" || r.c === "track") && !r.t).map((r) => ({ p: r.p, cls: "path" }));
   for (const road of roads) {
     if (!SIDEWALK_CLASSES.includes(road.c) || road.t) continue;
-    const offset = ROAD_WIDTH[road.c] / 2 + 1.1;
+    const offset = roadLayout(road).width / 2 + 1.1;
     for (const side of [1, -1]) {
       let run = [];
       const flush = () => { if (run.length >= 6) walkLines.push({ p: run.flat(), cls: "sidewalk" }); run = []; };
@@ -196,28 +147,41 @@ export function initAmbient(ctx) {
   };
   const carGrid = gridOf(carNet), walkGrid = gridOf(walkNet);
 
-  const { material, uniforms } = tintedMaterial();
+  const environment = (() => { try { return skyEnvironment(scene3d.renderer); } catch { return null; } })();
+  const { material: carMat, uniforms: carUniforms } = carMaterial(environment);
+  const figureMat = figureMaterial();
   const group = new THREE.Group();
   group.name = "ambient";
-  const carMeshes = CAR_TYPES.map((type) => {
-    const mesh = new THREE.InstancedMesh(type.geometry, material, CAR_MAX);
-    mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; mesh.count = 0;
-    mesh.setColorAt(0, CAR_COLORS[0]);
+  const instanced = (geometry, material, max, shadow) => {
+    const mesh = new THREE.InstancedMesh(geometry, material, max);
+    mesh.castShadow = shadow; mesh.receiveShadow = true; mesh.frustumCulled = false; mesh.count = 0;
+    mesh.setColorAt(0, new THREE.Color(1, 1, 1));
     group.add(mesh);
     return mesh;
-  });
-  const pedMesh = new THREE.InstancedMesh(pedestrianGeometry(), material, PED_MAX);
-  pedMesh.castShadow = true; pedMesh.receiveShadow = true; pedMesh.frustumCulled = false; pedMesh.count = 0;
-  pedMesh.setColorAt(0, PED_COLORS[0]);
-  group.add(pedMesh);
+  };
+  const carHigh = CAR_KINDS.map((kind) => instanced(kind.high, carMat, CAR_MAX, true));
+  const carLow = CAR_KINDS.map((kind) => instanced(kind.low, carMat, CAR_MAX, false));
+  const pedMesh = instanced(pedestrianGeometry(PED_MAX), figureMat, PED_MAX, true);
+  const dogMesh = instanced(dogGeometry(DOG_MAX), figureMat, DOG_MAX, true);
+  const leashMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.012, 0.012, 1), new THREE.MeshStandardMaterial({ color: 0xb02828, roughness: 0.8 }), DOG_MAX);
+  leashMesh.frustumCulled = false; leashMesh.count = 0;
+  group.add(leashMesh);
   scene3d.scene.add(group);
 
-  const pick = (items) => { let r = Math.random(), total = items.reduce((s, i) => s + i.weight, 0); r *= total; for (const item of items) { r -= item.weight; if (r <= 0) return item; } return items[0]; };
-  const cars = Array.from({ length: CAR_MAX }, () => ({ kind: "car", line: null, type: CAR_TYPES.indexOf(pick(CAR_TYPES)), color: CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)], speed: 0, base: 0 }));
-  const peds = Array.from({ length: PED_MAX }, () => ({ kind: "ped", line: null, color: PED_COLORS[Math.floor(Math.random() * PED_COLORS.length)], speed: 1.2 + Math.random() * 0.4, base: 0, scale: 0.92 + Math.random() * 0.16, phase: Math.random() * 6.28 }));
+  const pick = (items) => { let r = Math.random() * items.reduce((s, i) => s + i.weight, 0); for (const item of items) { r -= item.weight; if (r <= 0) return item; } return items[0]; };
+  const random = (list) => list[Math.floor(Math.random() * list.length)];
+  const cars = Array.from({ length: CAR_MAX }, () => ({ kind: "car", line: null, type: CAR_KINDS.indexOf(pick(CAR_KINDS)), color: random(CAR_COLORS), speed: 0, base: 0, lane: Math.floor(Math.random() * 4) }));
+  const peds = Array.from({ length: PED_MAX }, () => {
+    const dog = Math.random() < DOG_SHARE;
+    const shirt = random(PED_COLORS).clone().offsetHSL((Math.random() - 0.5) * 0.05, 0, (Math.random() - 0.5) * 0.14);
+    return { kind: "ped", line: null, dog, color: shirt, dogColor: random(DOG_COLORS), speed: (dog ? 1.0 : 1.2) + Math.random() * 0.4, base: 0, scale: 0.93 + Math.random() * 0.14, phase: Math.random() * 6.28, dogPhase: 0, seed: Math.random() };
+  });
 
   const frustum = new THREE.Frustum(), projection = new THREE.Matrix4();
-  const temp = {}, state = { enabled: true, radius: 0, activeCars: 0, activePeds: 0 };
+  const temp = {}, state = { enabled: true, radius: 0, activeCars: 0, activePeds: 0, visibleCars: 0, visiblePeds: 0, visibleDogs: 0 };
+
+  // Autobahn: linke Spur schneller, rechte langsamer
+  const laneFactor = (line, lane) => (line.cls === "motorway" && line.lanes.length > 1 ? 1.08 - 0.16 * ((lane % line.lanes.length) / (line.lanes.length - 1)) : 1);
 
   function place(agent, net, grid, target, radius, avoidView) {
     for (let attempt = 0; attempt < 30; attempt++) {
@@ -226,15 +190,14 @@ export function initAmbient(ctx) {
       const entries = grid.get(`${Math.floor(px / 80)}:${Math.floor(pz / 80)}`);
       if (!entries) continue;
       const [line, seg] = entries[Math.floor(Math.random() * entries.length)];
-      const weight = agent.kind === "car" ? CAR_CLASSES[line.cls].weight : (line.cls === "sidewalk" ? 1 : 0.5);
+      const weight = agent.kind === "car" ? CAR_CLASSES[line.cls].weight : (line.cls === "sidewalk" ? 1 : 0.6);
       if (Math.random() > weight) continue;
       const f = Math.random(), x = line.p[seg * 2] + (line.p[seg * 2 + 2] - line.p[seg * 2]) * f, z = line.p[seg * 2 + 1] + (line.p[seg * 2 + 3] - line.p[seg * 2 + 1]) * f;
       if (avoidView) { const y = terrain.heightAt(x, z) ?? 0; if (frustum.containsPoint(new THREE.Vector3(x, y, z))) continue; }
       agent.line = line; agent.seg = seg;
       agent.dir = line.oneway || (Math.random() < 0.5 ? 1 : -1);
       agent.t = f * (line.cum[seg + 1] - line.cum[seg]);
-      const classSpeed = agent.kind === "car" ? CAR_CLASSES[line.cls].speed : agent.speed;
-      agent.base = agent.kind === "car" ? classSpeed * (0.85 + Math.random() * 0.3) : agent.speed;
+      agent.base = agent.kind === "car" ? CAR_CLASSES[line.cls].speed * (0.85 + Math.random() * 0.3) * laneFactor(line, agent.lane) : agent.speed;
       agent.speed = agent.base;
       return true;
     }
@@ -242,24 +205,29 @@ export function initAmbient(ctx) {
     return false;
   }
 
-  const up = new THREE.Vector3(0, 1, 0), position = new THREE.Vector3(), scale = new THREE.Vector3(), q = new THREE.Quaternion(), qPitch = new THREE.Quaternion(), matrix = new THREE.Matrix4(), xAxis = new THREE.Vector3(1, 0, 0);
+  const up = new THREE.Vector3(0, 1, 0), zAxis = new THREE.Vector3(0, 0, 1), xAxis = new THREE.Vector3(1, 0, 0);
+  const position = new THREE.Vector3(), scale = new THREE.Vector3(), q = new THREE.Quaternion(), qPitch = new THREE.Quaternion(), matrix = new THREE.Matrix4();
+  const camera = scene3d.camera, ground = new THREE.Vector3(), handPoint = new THREE.Vector3(), collarPoint = new THREE.Vector3(), leashDirection = new THREE.Vector3();
   let enabledByMode = true;
 
-  scene3d.onFrame((delta, _now, distance) => {
-    const sim = ctx.ground?.state.mode !== "aerial" && ctx.ground?.state.mode !== "map";
-    enabledByMode = sim;
-    group.visible = state.enabled && sim && distance < ACTIVE_DISTANCE;
+  scene3d.onFrame((delta, now, distance) => {
+    const mode = ctx.ground?.state.mode;
+    enabledByMode = mode !== "aerial" && mode !== "map";
+    group.visible = state.enabled && enabledByMode && distance < ACTIVE_DISTANCE;
     if (!group.visible) return;
-    const dt = Math.min(0.1, delta);
+    const dt = Math.min(0.1, delta), clock = now / 1000;
     const target = scene3d.controls.target;
     const radius = THREE.MathUtils.clamp(distance * 1.2, 120, 650);
-    const night = ctx.sky?.state.night ?? 0;
-    uniforms.uNightGlow.value = night;
+    const night = ctx.sky?.state.night ?? 0, day = ctx.sky?.state.dayFactor ?? 1, cloud = ctx.sky?.state.cloudCover ?? 0;
+    carUniforms.uNightGlow.value = night;
+    carMat.envMapIntensity = 0.1 + 1.0 * day * (1 - 0.65 * cloud);
     const weather = ctx.weather?.state.condition;
-    const carCount = Math.round(THREE.MathUtils.clamp(CAR_MAX * (radius / 650) ** 1.3, 14, CAR_MAX) * (1 - 0.5 * night));
-    const pedCount = Math.round(THREE.MathUtils.clamp(PED_MAX * (radius / 650) ** 1.3, 10, PED_MAX) * (1 - 0.8 * night) * (weather?.rain || weather?.snow ? 0.5 : 1));
-    scene3d.camera.updateMatrixWorld();
-    frustum.setFromProjectionMatrix(projection.multiplyMatrices(scene3d.camera.projectionMatrix, scene3d.camera.matrixWorldInverse));
+    const carCount = Math.round(THREE.MathUtils.clamp(CAR_MAX * (radius / 650) ** 1.3, 14, CAR_MAX) * (1 - 0.45 * night));
+    const pedCount = Math.round(THREE.MathUtils.clamp(PED_MAX * (radius / 650) ** 1.3, 14, PED_MAX) * (1 - 0.5 * night) * (weather?.rain || weather?.snow ? 0.6 : 1));
+    // aus der Ferne vergrössert, damit Autos und Personen als Punkte erkennbar bleiben (symbolisch)
+    const carBoost = THREE.MathUtils.clamp(distance / 450, 1, 2.2), pedBoost = THREE.MathUtils.clamp(distance / 150, 1, 3.4);
+    camera.updateMatrixWorld();
+    frustum.setFromProjectionMatrix(projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const reseed = state.radius === 0 || radius > state.radius * 1.35 || radius < state.radius / 1.6;
     if (reseed) state.radius = radius;
     const process = (list, active, previous, net, grid) => {
@@ -278,22 +246,22 @@ export function initAmbient(ctx) {
       const a = cars[i];
       if (!a.line) continue;
       a.s = a.line.cum[a.seg] + a.t;
-      if (!byLine.has(a.line)) byLine.set(a.line, []);
-      byLine.get(a.line).push(a);
+      const key = `${a.line.id}:${a.lane % Math.max(1, a.line.lanes.length)}`;
+      if (!byLine.has(key)) byLine.set(key, []);
+      byLine.get(key).push(a);
     }
-    for (const list of byLine.values()) {
-      for (const a of list) {
-        let gap = Infinity, leader = null;
-        for (const b of list) {
-          if (b === a || b.dir !== a.dir) continue;
-          const g = a.dir > 0 ? b.s - a.s : a.s - b.s;
-          if (g > 0 && g < gap) { gap = g; leader = b; }
-        }
-        a.speed = leader && gap < 5 + a.base * 1.2 ? Math.min(a.base, gap < 6 ? 0 : leader.speed * 0.95) : a.base;
+    for (const list of byLine.values()) for (const a of list) {
+      let gap = Infinity, leader = null;
+      for (const b of list) {
+        if (b === a || b.dir !== a.dir) continue;
+        const g = a.dir > 0 ? b.s - a.s : a.s - b.s;
+        if (g > 0 && g < gap) { gap = g; leader = b; }
       }
+      a.speed = leader && gap < 5 + a.base * 1.2 ? Math.min(a.base, gap < 6 ? 0 : leader.speed * 0.95) : a.base;
     }
 
-    const counts = [0, 0, 0];
+    const high = CAR_KINDS.map(() => 0), low = CAR_KINDS.map(() => 0);
+    let carTotal = 0;
     for (let i = 0; i < carCount; i++) {
       const a = cars[i];
       if (!a.line) continue;
@@ -301,21 +269,26 @@ export function initAmbient(ctx) {
       sample(a, temp);
       const away = Math.hypot(temp.x - target.x, temp.z - target.z) > radius * 1.25;
       if (!alive || away) { place(a, carNet, carGrid, target, radius, true); if (!a.line) continue; sample(a, temp); }
-      const lane = ROAD_WIDTH[a.line.cls] / 4;
+      const lane = a.line.lanes.length ? a.line.lanes[a.lane % a.line.lanes.length] : a.line.width / 4;
       const x = temp.x - temp.tz * lane, z = temp.z + temp.tx * lane;
-      const y = (terrain.heightAt(x, z) ?? 0) + 0.32;
+      const y = (terrain.heightAt(x, z) ?? 0) + 0.3;
       const ahead = terrain.heightAt(x + temp.tx * 1.8, z + temp.tz * 1.8), behind = terrain.heightAt(x - temp.tx * 1.8, z - temp.tz * 1.8);
       const pitch = ahead !== null && behind !== null ? -Math.atan2(ahead - behind, 3.6) : 0;
       q.setFromAxisAngle(up, Math.atan2(temp.tx, temp.tz)).multiply(qPitch.setFromAxisAngle(xAxis, pitch));
-      matrix.compose(position.set(x, y, z), q, scale.set(1, 1, 1));
-      const mesh = carMeshes[a.type];
+      matrix.compose(position.set(x, y, z), q, scale.set(carBoost, carBoost, carBoost));
+      const near = ground.set(x, y, z).distanceToSquared(camera.position) < HIGH_DETAIL_DISTANCE * HIGH_DETAIL_DISTANCE;
+      const mesh = (near ? carHigh : carLow)[a.type], counts = near ? high : low;
       mesh.setMatrixAt(counts[a.type], matrix);
       mesh.setColorAt(counts[a.type], a.color);
-      counts[a.type]++;
+      counts[a.type]++; carTotal++;
     }
-    carMeshes.forEach((mesh, i) => { mesh.count = counts[i]; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; });
+    CAR_KINDS.forEach((_, i) => {
+      for (const [mesh, counts] of [[carHigh[i], high], [carLow[i], low]]) { mesh.count = counts[i]; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; }
+    });
+    state.visibleCars = carTotal;
 
-    let pedTotal = 0;
+    let pedTotal = 0, dogTotal = 0;
+    const pedPhase = pedMesh.geometry.attributes.aPhase, dogPhase = dogMesh.geometry.attributes.aPhase;
     for (let i = 0; i < pedCount; i++) {
       const a = peds[i];
       if (!a.line) continue;
@@ -323,16 +296,43 @@ export function initAmbient(ctx) {
       sample(a, temp);
       const away = Math.hypot(temp.x - target.x, temp.z - target.z) > radius * 1.25;
       if (!alive || away) { place(a, walkNet, walkGrid, target, radius, true); if (!a.line) continue; sample(a, temp); }
-      a.phase += a.speed * dt * 4.2;
-      const y = (terrain.heightAt(temp.x, temp.z) ?? 0) + 0.34 + Math.abs(Math.sin(a.phase)) * 0.035;
-      q.setFromAxisAngle(up, Math.atan2(temp.tx, temp.tz) + Math.sin(a.phase) * 0.05);
-      matrix.compose(position.set(temp.x, y, temp.z), q, scale.set(a.scale, a.scale, a.scale));
+      a.phase += a.speed * dt * 4.5;
+      const k = a.scale * pedBoost;
+      const y = (terrain.heightAt(temp.x, temp.z) ?? 0) + 0.34;
+      const heading = Math.atan2(temp.tx, temp.tz);
+      q.setFromAxisAngle(up, heading);
+      matrix.compose(position.set(temp.x, y + Math.abs(Math.sin(a.phase)) * 0.03 * k, temp.z), q, scale.set(k, k, k));
       pedMesh.setMatrixAt(pedTotal, matrix);
       pedMesh.setColorAt(pedTotal, a.color);
+      pedPhase.array[pedTotal] = a.phase;
       pedTotal++;
+      if (a.dog && dogTotal < DOG_MAX) {
+        // Hund an der Leine: links vor dem Besitzer, schwankt in Abstand und Seite
+        const lead = (1.15 + 0.35 * Math.sin(clock * 0.8 + a.seed * 6)) * k, side = (0.5 + 0.22 * Math.sin(clock * 0.5 + a.seed * 9)) * k;
+        const dx = temp.x + temp.tx * lead + temp.tz * side, dz = temp.z + temp.tz * lead - temp.tx * side;
+        const dy = (terrain.heightAt(dx, dz) ?? y - 0.34) + 0.34, dk = k * (0.85 + a.seed * 0.3);
+        a.dogPhase += a.speed * dt * 8;
+        q.setFromAxisAngle(up, heading + Math.sin(clock * 1.3 + a.seed * 5) * 0.18);
+        matrix.compose(position.set(dx, dy, dz), q, scale.set(dk, dk, dk));
+        dogMesh.setMatrixAt(dogTotal, matrix);
+        dogMesh.setColorAt(dogTotal, a.dogColor);
+        dogPhase.array[dogTotal] = a.dogPhase;
+        handPoint.set(temp.x + temp.tz * 0.28 * k, y + 0.9 * k, temp.z - temp.tx * 0.28 * k);
+        collarPoint.set(dx + temp.tx * 0.27 * dk, dy + 0.4 * dk, dz + temp.tz * 0.27 * dk);
+        leashDirection.subVectors(collarPoint, handPoint);
+        const length = leashDirection.length();
+        q.setFromUnitVectors(zAxis, leashDirection.normalize());
+        matrix.compose(position.copy(handPoint).addScaledVector(leashDirection, length / 2), q, scale.set(Math.max(1, dk), Math.max(1, dk), length));
+        leashMesh.setMatrixAt(dogTotal, matrix);
+        dogTotal++;
+      }
     }
-    pedMesh.count = pedTotal; pedMesh.instanceMatrix.needsUpdate = true;
+    pedMesh.count = pedTotal; pedMesh.instanceMatrix.needsUpdate = true; pedPhase.needsUpdate = true;
     if (pedMesh.instanceColor) pedMesh.instanceColor.needsUpdate = true;
+    dogMesh.count = dogTotal; dogMesh.instanceMatrix.needsUpdate = true; dogPhase.needsUpdate = true;
+    if (dogMesh.instanceColor) dogMesh.instanceColor.needsUpdate = true;
+    leashMesh.count = dogTotal; leashMesh.instanceMatrix.needsUpdate = true;
+    state.visiblePeds = pedTotal; state.visibleDogs = dogTotal;
   });
 
   layers.add({

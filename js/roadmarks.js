@@ -1,13 +1,39 @@
-// Strassenmarkierungen: gestrichelte Mittellinie und durchgezogene Randlinien für zweispurige Strassen.
-// OSM enthält hier keine Spurzahl; zweispurig wird aus der Strassenklasse angenommen (symbolisch).
+// Strassenmarkierungen und Fahrstreifen: gestrichelte Mittel- bzw. Spurtrennlinien, durchgezogene Randlinien.
+// Autobahnen und Einbahnstrassen nutzen Richtung (`ow`) und Spurzahl (`ln`) aus OSM; sonst gilt die Strassenklasse (symbolisch).
 
-export const ROAD_WIDTH = { motorway: 11, primary: 8, secondary: 7, tertiary: 6, minor: 5, service: 3.5, track: 3, path: 1.6 };
-const MARKED = {
-  primary: { dash: [3, 6], edge: true }, secondary: { dash: [3, 6], edge: true },
-  tertiary: { dash: [3, 6], edge: false }, minor: { dash: [2, 4], edge: false },
-};
+export const ROAD_WIDTH = { motorway: 10, primary: 8, secondary: 7, tertiary: 6, minor: 5, service: 3.5, track: 3, path: 1.6 };
+const LANE_WIDTH_MOTORWAY = 3.75;
 const MIN_LENGTH = 14;
 const EDGE_INSET = 0.4;
+
+/**
+ * Fahrbahnbreite, Fahrstreifenmitten, Trennlinien und Randlinien (Versatz in Fahrtrichtung nach rechts, in Metern).
+ * Einbahn-Fahrbahnen (`ow`) haben `ln` Streifen; sonst gilt Rechtsverkehr mit je einem Streifen (`ln` Streifen gesamt, mindestens 2).
+ */
+export function roadLayout(road) {
+  const base = ROAD_WIDTH[road.c] ?? 4;
+  const oneway = Boolean(road.ow);
+  if (road.c === "motorway") {
+    const lanes = Math.max(1, road.ln || (oneway ? 2 : 4));
+    if (oneway) {
+      const width = lanes * LANE_WIDTH_MOTORWAY + 2.5, left = -width / 2 + 0.4;
+      const centres = Array.from({ length: lanes }, (_, i) => left + LANE_WIDTH_MOTORWAY * (i + 0.5));
+      return { width, lanes: centres, dividers: Array.from({ length: lanes - 1 }, (_, i) => left + LANE_WIDTH_MOTORWAY * (i + 1)), edges: [left, left + LANE_WIDTH_MOTORWAY * lanes], dash: [6, 12] };
+    }
+    const width = Math.max(8.5, lanes * 3.5 + 1.5);
+    return { width, lanes: [width / 4], dividers: [0], edges: [-(width / 2 - EDGE_INSET), width / 2 - EDGE_INSET], dash: [6, 12] };
+  }
+  if (oneway) {
+    const lanes = Math.max(1, road.ln || 1), width = Math.max(base, lanes * 3.2 + 1);
+    return { width, lanes: Array.from({ length: lanes }, (_, i) => (i - (lanes - 1) / 2) * 3.2), dividers: lanes > 1 ? Array.from({ length: lanes - 1 }, (_, i) => (i - (lanes - 2) / 2) * 3.2) : [], edges: [], dash: [3, 6] };
+  }
+  const marked = { primary: { edge: true, dash: [3, 6] }, secondary: { edge: true, dash: [3, 6] }, tertiary: { edge: false, dash: [3, 6] }, minor: { edge: false, dash: [2, 4] } }[road.c];
+  return {
+    width: base, lanes: [base / 4], dividers: marked ? [0] : [], edges: marked?.edge ? [-(base / 2 - EDGE_INSET), base / 2 - EDGE_INSET] : [], dash: marked?.dash ?? [3, 6],
+  };
+}
+
+export const roadWidth = (road) => roadLayout(road).width;
 
 /** Punkte im Abstand `step` entlang einer Polylinie mit Laufmeter und Richtung. */
 export function walk(p, step) {
@@ -35,15 +61,15 @@ export function markingLines(roads, index) {
   const dashes = [], edges = [];
   const crossing = (sample, owner, margin) => {
     const other = index.nearest(sample.x, sample.z, 14, owner);
-    return other !== null && other.distance < (ROAD_WIDTH[roads[other.owner].c] ?? 4) / 2 + margin;
+    return other !== null && other.distance < roadWidth(roads[other.owner]) / 2 + margin;
   };
   roads.forEach((road, owner) => {
-    const rule = MARKED[road.c];
-    if (!rule || road.t) return;
+    if (!["motorway", "primary", "secondary", "tertiary", "minor"].includes(road.c) || road.t) return;
+    const layout = roadLayout(road);
+    if (!layout.dividers.length && !layout.edges.length) return;
     const fine = walk(road.p, 1);
     if (fine.length < MIN_LENGTH) return;
-    const half = ROAD_WIDTH[road.c] / 2;
-    const [dash, gap] = rule.dash;
+    const [dash, gap] = layout.dash;
     const runs = (samples, keep, offset, target) => {
       let run = [];
       const flush = () => { if (run.length >= 2) target.push(run.flatMap(([x, z]) => [x, z])); run = []; };
@@ -52,10 +78,10 @@ export function markingLines(roads, index) {
       }
       flush();
     };
-    runs(fine, (s) => s.d % (dash + gap) < dash && s.d > 2 && !crossing(s, owner, 1.2), 0, dashes);
-    if (rule.edge) {
+    for (const offset of layout.dividers) runs(fine, (s) => s.d % (dash + gap) < dash && s.d > 2 && !crossing(s, owner, 1.2), offset, dashes);
+    if (layout.edges.length) {
       const coarse = walk(road.p, 2);
-      for (const side of [1, -1]) runs(coarse, (s) => !crossing(s, owner, 1.0), side * (half - EDGE_INSET), edges);
+      for (const offset of layout.edges) runs(coarse, (s) => !crossing(s, owner, 1.0), offset, edges);
     }
   });
   return { dashes, edges };
