@@ -199,12 +199,45 @@ def download_gwr() -> Path:
     return folder
 
 
+def overpass_queries(bbox: str) -> dict[str, str]:
+    header = "[out:json][timeout:240];"
+    return {
+        "roads": f'{header}(way["highway"]({bbox});way["railway"~"^(rail|narrow_gauge|light_rail|funicular|tram|rack)$"]({bbox});'
+                 f'way["aerialway"]({bbox}););out tags geom;',
+        "water": f'{header}(way["natural"="water"]({bbox});relation["natural"="water"]({bbox});'
+                 f'way["waterway"~"^(river|stream|canal)$"]({bbox}););out geom;',
+        "pois": f'{header}(node["amenity"]({bbox});node["shop"]({bbox});node["tourism"]({bbox});node["historic"]({bbox});'
+                f'node["leisure"~"^(playground|pitch|sports_centre|swimming_pool|marina|slipway|park)$"]({bbox});'
+                f'node["public_transport"]({bbox});node["railway"~"^(station|halt|tram_stop)$"]({bbox});'
+                f'way["amenity"]["name"]({bbox});way["tourism"]["name"]({bbox});way["shop"]["name"]({bbox}););out tags center;',
+        "routes": f'{header}relation["route"~"^(bus|train|ferry|railway|light_rail)$"]({bbox});out geom;',
+        "trees": f'{header}node["natural"="tree"]({bbox});out;',
+        "places": f'{header}(node["place"~"^(city|town|village|hamlet|suburb|neighbourhood|locality|isolated_dwelling)$"]["name"]({bbox});'
+                  f'node["natural"~"^(peak|bay|cape)$"]["name"]({bbox}););out;',
+    }
+
+
+def download_osm(buffered, only: set[str] | None = None) -> dict[str, dict]:
+    """OpenStreetMap-Auszug über die Overpass-API (ODbL), je Thema in pipeline/cache/osm/ zwischengespeichert."""
+    west, south, east, north = wgs84_bbox(buffered)
+    bbox = f"{south:.5f},{west:.5f},{north:.5f},{east:.5f}"
+    result = {}
+    for name, query in overpass_queries(bbox).items():
+        if only and name not in only:
+            continue
+        result[name] = cached_json(config.OVERPASS_URL, config.CACHE_DIR / "osm" / f"{name}.json", post=query)
+        print(f"OSM {name}: {len(result[name].get('elements', []))} Elemente")
+    return result
+
+
 def main(argv: list[str]) -> None:
-    wanted = set(argv) or {"boundary", "terrain", "buildings", "ortho", "gwr"}
+    wanted = set(argv) or {"boundary", "terrain", "buildings", "ortho", "gwr", "osm"}
     if "gwr" in wanted:
         download_gwr()
     boundary, buffered, origin, properties = study_area()
     print(f"Gemeinde {properties['gemname']} (BFS {properties['gde_nr']}), Stand {properties['jahr']}, Ursprung {origin}")
+    if "osm" in wanted:
+        download_osm(buffered)
     if "terrain" in wanted:
         download_terrain(buffered)
     if "buildings" in wanted:

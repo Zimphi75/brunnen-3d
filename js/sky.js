@@ -107,12 +107,12 @@ export function createSky({ scene, renderer, camera, latitude, longitude }) {
     const degrees = altitude / RAD;
     const day = smoothstep(-6, 8, degrees);
     state.dayFactor = day;
-    const cloud = 1 - 0.65 * state.cloudCover;
+    const cloud = 1 - 0.6 * state.cloudCover;
     uniforms.sunPosition.value.copy(state.direction);
     uniforms.rayleigh.value = 0.4 + 1.2 * day;
     sun.intensity = 2.5 * smoothstep(-1, 14, degrees) * cloud;
     sun.color.setRGB(1, 0.78 + 0.22 * smoothstep(2, 22, degrees), 0.55 + 0.45 * smoothstep(2, 28, degrees));
-    hemisphere.intensity = (0.08 + 0.6 * day) * (1 - 0.25 * state.cloudCover);
+    hemisphere.intensity = (0.08 + 0.6 * day) * (1 + 0.6 * state.cloudCover);
     moon.intensity = 0.22 * (1 - day);
     renderer.toneMappingExposure = 0.5 + 0.45 * day;
     const fogColor = new THREE.Color().setRGB(0.04, 0.06, 0.1).lerp(new THREE.Color(0.75, 0.83, 0.9), day);

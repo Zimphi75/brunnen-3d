@@ -9,6 +9,13 @@ import { createCameraRig, createPicker } from "./controls.js";
 import { createLayerManager } from "./layers.js";
 import { createInspector } from "./inspector.js";
 import { createSky, zurichParts, zurichToDate } from "./sky.js";
+import { initDataLayers } from "./features.js";
+import { initPois } from "./pois.js";
+import { initSearch } from "./search.js";
+import { initAnalysis } from "./analysis.js";
+import { initTransport } from "./transport.js";
+import { initWeather } from "./weather.js";
+import { initHistory } from "./history.js";
 
 const $ = (selector) => document.querySelector(selector);
 const errors = [];
@@ -81,13 +88,13 @@ async function start() {
   await orthoPromise;
   Object.assign(ctx, { buildings, records: records?.buildings ?? [], codes: codes ?? {}, addresses: addresses ?? [] });
 
-  setupUi(ctx);
+  await setupUi(ctx);
   $("#loading").classList.add("done");
   setTimeout(() => $("#loading").remove(), 700);
   window.brunnen = ctx; // Debug- und Testzugriff
 }
 
-function setupUi(ctx) {
+async function setupUi(ctx) {
   const { scene3d, terrain, buildings, frame, meta } = ctx;
   const { camera, controls } = scene3d;
 
@@ -133,6 +140,8 @@ function setupUi(ctx) {
     id: "buildings", label: "Gebäude", color: "#d8cfc0", available: Boolean(buildings), note: "buildings3d.bin fehlt",
     count: buildings ? buildings.data.count.toLocaleString("de-CH") : "", apply: (v) => { if (buildings) buildings.mesh.visible = v; },
   });
+
+  await initDataLayers(ctx);
 
   // Gebäudefarben
   const modeBox = $("#color-mode");
@@ -195,6 +204,9 @@ function setupUi(ctx) {
     onClick({ hit, ground, ray }, event) {
       for (const handler of ctx.clickHandlers) if (handler({ hit, ground, ray, event })) return;
       if (hit?.kind === "building") selectBuilding(hit.index);
+      else if (hit?.kind === "poi") { buildings?.select(-1); ctx.showPoi(hit.index); }
+      else if (hit?.kind === "stop") { buildings?.select(-1); ctx.showStop(hit.index); }
+      else if (hit?.kind === "vehicle") { buildings?.select(-1); ctx.showVehicle(hit.mesh); }
       else if (!hit) { buildings?.select(-1); inspector.hide(); }
     },
   });
@@ -251,6 +263,13 @@ function setupUi(ctx) {
   setNow();
   ctx.timeState = state;
   ctx.applyTime = applyTime;
+
+  await initPois(ctx);
+  await initTransport(ctx);
+  await initSearch(ctx);
+  initAnalysis(ctx);
+  initWeather(ctx);
+  initHistory(ctx);
 
   renderLegend();
   console.info(`Brunnen 3D bereit: ${buildings?.stats().buildings ?? 0} Gebäude, ${terrain.stats().triangles} Geländedreiecke`);
