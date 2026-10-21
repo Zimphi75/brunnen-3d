@@ -2,8 +2,6 @@
 
 Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit Brunnen, Ingenbohl, Vierwaldstättersee und angrenzender Landschaft. Die Anwendung läuft komplett im Browser (Three.js) und basiert auf offenen Schweizer Geodaten. Es gibt keine erfundenen Gebäude, Attribute oder Messwerte: Was in den Quellen fehlt, wird als «nicht erfasst» angezeigt.
 
-Architektonisches Vorbild ist [speicher.mlanalytica.com](https://speicher.mlanalytica.com/) (statische Dateien, vorberechnete Binärdaten, Vanilla-JS mit ES-Modulen). Es wurde kein Quellcode oder Asset übernommen.
-
 ## Funktionen
 
 - Gelände (swissALTI3D), Luftbild (SWISSIMAGE, in Blicknähe zusätzlich scharf nachgeladen), 2316 Gebäude (swissBUILDINGS3D 3.0 beta, mit GWR-Attributen), Strassen, Wege, Bahn, Gewässer, 54'000 Bäume, Gemeindegrenze, Points of Interest, Ortsnamen
