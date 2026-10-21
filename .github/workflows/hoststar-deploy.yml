@@ -61,7 +61,7 @@ jobs:
           retention-days: 3
 
   deploy:
-    if: ${{ vars.HOSTSTAR_FTP_ENABLED == 'true' }}
+    if: ${{ vars.HOSTSTAR_SFTP_ENABLED == 'true' }}
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -71,12 +71,13 @@ jobs:
           name: hoststar-site
           path: _site
 
-      - name: Deploy to Hoststar with FTPS
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Deploy to Hoststar with SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.6
         with:
-          server: ${{ secrets.HOSTSTAR_FTP_SERVER }}
-          username: ${{ secrets.HOSTSTAR_FTP_USERNAME }}
-          password: ${{ secrets.HOSTSTAR_FTP_PASSWORD }}
-          protocol: ftps
-          local-dir: _site/
-          server-dir: ${{ secrets.HOSTSTAR_FTP_DIRECTORY }}/
+          server: ${{ secrets.HOSTSTAR_SFTP_SERVER }}
+          username: ${{ secrets.HOSTSTAR_SFTP_USERNAME }}
+          password: ${{ secrets.HOSTSTAR_SFTP_PASSWORD }}
+          port: 5544
+          sftp_only: true
+          local_path: _site/*
+          remote_path: ./

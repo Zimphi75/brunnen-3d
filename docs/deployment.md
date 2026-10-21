@@ -22,21 +22,22 @@ Nicht nötig: `pipeline/`, `tests/`, `.venv/`, `docs/`.
 
 ## Automatisch auf Hoststar veröffentlichen
 
-Das GitHub-Repository enthält den Workflow `.github/workflows/hoststar-deploy.yml`. Bei jedem Push auf `main` baut GitHub Actions die Datenpipeline und Three.js, führt die pytest-Tests aus und stellt daraus den statischen Website-Ordner zusammen. Der Upload zu Hoststar läuft über FTPS. Manuelle Builds lassen sich unter **Actions → Build and deploy to Hoststar → Run workflow** starten.
+Das GitHub-Repository enthält den Workflow `.github/workflows/hoststar-deploy.yml`. Bei jedem Push auf `main` baut GitHub Actions die Datenpipeline und Three.js, führt die pytest-Tests aus und stellt daraus den statischen Website-Ordner zusammen. Der Upload zu Hoststar läuft über SFTP (Port 5544). Manuelle Builds lassen sich unter **Actions → Build and deploy to Hoststar → Run workflow** starten.
 
 Vor dem ersten Deploy im GitHub-Repository unter **Settings → Secrets and variables → Actions** konfigurieren:
 
 | Typ | Name | Wert |
 |---|---|---|
-| Secret | `HOSTSTAR_FTP_SERVER` | FTP-Servername aus Hoststars My Panel |
-| Secret | `HOSTSTAR_FTP_USERNAME` | FTP-Benutzername |
-| Secret | `HOSTSTAR_FTP_PASSWORD` | FTP-Passwort |
-| Secret | `HOSTSTAR_FTP_DIRECTORY` | Zielverzeichnis der Website, z. B. das im My Panel angezeigte Domain-Verzeichnis |
-| Variable | `HOSTSTAR_FTP_ENABLED` | `true` |
+| Secret | `HOSTSTAR_SFTP_SERVER` | Servername aus My Panel, z. B. `lx68.hoststar.hosting` |
+| Secret | `HOSTSTAR_SFTP_USERNAME` | separater SFTP-Benutzer für Brunnen 3D |
+| Secret | `HOSTSTAR_SFTP_PASSWORD` | Passwort dieses SFTP-Benutzers |
+| Variable | `HOSTSTAR_SFTP_ENABLED` | `true` |
 
-Das Zielverzeichnis sollte ausschliesslich für Brunnen 3D verwendet werden: Der FTP-Workflow synchronisiert den Website-Inhalt dorthin. Die FTP-Zugangsdaten nie in Dateien oder Commits eintragen. Der Workflow erwartet explizites FTPS auf dem Standardport 21. Falls Hoststar für das Hosting nur unverschlüsseltes FTP oder einen abweichenden Port freigibt, muss das Protokoll im Workflow angepasst werden.
+In Hoststar zuerst einen eigenen Ordner für die Website anlegen (empfohlen: `brunnen3d`) und einen separaten FTP-Benutzer erstellen, der ausschliesslich auf diesen Ordner beschränkt ist. Das SFTP-Konto startet dann in diesem Ordner; der Workflow lädt nach `./` hoch. Lege optional die Subdomain `brunnen3d.multikanal.ch` so an, dass ihr Webroot genau auf diesen Ordner zeigt. Den Domain-Hauptordner `/home/ch71104/web` nicht als Ziel verwenden, wenn dort bereits eine Website liegt.
 
-Die Site wird erst nach dem Setzen von `HOSTSTAR_FTP_ENABLED` veröffentlicht. Ohne diese Variable werden Build, Datengenerierung und Tests ausgeführt, der Deploy-Job bleibt übersprungen.
+Die Zugangsdaten nie in Dateien oder Commits eintragen. Hoststar zeigt für das Hosting SFTP auf Port 5544. Der SFTP-Deploy-Workflow erstellt das entfernte Zielverzeichnis nicht selbst; es muss vor dem ersten Deploy bereits existieren.
+
+Die Site wird erst nach dem Setzen von `HOSTSTAR_SFTP_ENABLED` veröffentlicht. Ohne diese Variable werden Build, Datengenerierung und Tests ausgeführt, der Deploy-Job bleibt übersprungen.
 
 ## Empfehlungen für den Betrieb
 
