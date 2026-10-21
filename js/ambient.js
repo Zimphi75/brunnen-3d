@@ -87,7 +87,7 @@ const loopDirection = (p) => {
 
 // --- Szene -----------------------------------------------------------------------------------------------------------------
 
-const CAR_MAX = 260, PED_MAX = 360, DOG_MAX = 90;
+const CAR_MAX = 130, PED_MAX = 360, DOG_MAX = 90;
 const HIGH_DETAIL_DISTANCE = 140;
 const CAR_COLORS = ["#f2f2f0", "#f2f2f0", "#c7cacc", "#8e9397", "#2b2e33", "#1b1d21", "#2f4f7f", "#a8222a", "#355a3c", "#c9b99a", "#e0c24a", "#5b6670"].map((c) => new THREE.Color(c));
 const PED_COLORS = ["#c0392b", "#2c5aa0", "#2f7a4f", "#e1a83a", "#7b4d9e", "#d9d5cf", "#3b3f45", "#c76b2c", "#4f8fa6", "#8a9a3b", "#e8e4dc", "#b04a7a"].map((c) => new THREE.Color(c));
@@ -222,7 +222,7 @@ export function initAmbient(ctx) {
     carUniforms.uNightGlow.value = night;
     carMat.envMapIntensity = 0.1 + 1.0 * day * (1 - 0.65 * cloud);
     const weather = ctx.weather?.state.condition;
-    const carCount = Math.round(THREE.MathUtils.clamp(CAR_MAX * (radius / 650) ** 1.3, 14, CAR_MAX) * (1 - 0.45 * night));
+    const carCount = Math.round(THREE.MathUtils.clamp(CAR_MAX * (radius / 650) ** 1.3, 7, CAR_MAX) * (1 - 0.45 * night));
     const pedCount = Math.round(THREE.MathUtils.clamp(PED_MAX * (radius / 650) ** 1.3, 14, PED_MAX) * (1 - 0.5 * night) * (weather?.rain || weather?.snow ? 0.6 : 1));
     // aus der Ferne vergrössert, damit Autos und Personen als Punkte erkennbar bleiben (symbolisch)
     const carBoost = THREE.MathUtils.clamp(distance / 450, 1, 2.2), pedBoost = THREE.MathUtils.clamp(distance / 150, 1, 3.4);
