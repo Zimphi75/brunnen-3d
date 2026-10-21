@@ -19,6 +19,7 @@ export function createScene(canvas) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.info.autoReset = false;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xbfd4e4);
@@ -54,9 +55,21 @@ export function createScene(canvas) {
   composer.addPass(new OutputPass());
 
   const settings = { ambientOcclusion: true, bloom: false };
+  // Transparente Überlagerungen (Wasser, Grenzvorhang, Regen, Markierungen) dürfen die AO-Tiefe nicht verfälschen.
+  const aoExcluded = new Set();
+  if (aoPass) {
+    const originalRender = aoPass.render.bind(aoPass);
+    aoPass.render = (...args) => {
+      const hidden = [...aoExcluded].filter((object) => object.visible);
+      hidden.forEach((object) => { object.visible = false; });
+      originalRender(...args);
+      hidden.forEach((object) => { object.visible = true; });
+    };
+  }
   const frameCallbacks = new Set();
   let lastFrame = performance.now();
   let fps = 60;
+  let frameInfo = { calls: 0, triangles: 0 };
 
   function resize() {
     const width = canvas.clientWidth, height = canvas.clientHeight;
@@ -80,16 +93,18 @@ export function createScene(canvas) {
     for (const callback of frameCallbacks) callback(delta, now, distance);
     if (aoPass) aoPass.enabled = settings.ambientOcclusion;
     bloomPass.enabled = settings.bloom;
+    renderer.info.reset();
     composer.render(delta);
+    frameInfo = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
   return {
-    renderer, scene, camera, controls, composer, settings,
+    renderer, scene, camera, controls, composer, settings, aoExcluded,
     hasAmbientOcclusion: Boolean(aoPass),
     onFrame(callback) { frameCallbacks.add(callback); return () => frameCallbacks.delete(callback); },
     get fps() { return fps; },
-    renderInfo: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),
+    renderInfo: () => ({ ...frameInfo, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),
   };
 }

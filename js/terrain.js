@@ -4,6 +4,10 @@ import * as THREE from "three";
 const CHUNK_CELLS = 64;
 const SKIRT_DEPTH = 30;
 
+// Gibt dem Browser Zeit zum Zeichnen, ohne von requestAnimationFrame abzuhängen (pausiert in Hintergrund-Tabs).
+const channel = new MessageChannel();
+const yieldToUi = () => new Promise((resolve) => { channel.port1.onmessage = resolve; channel.port2.postMessage(0); });
+
 export class Terrain {
   constructor(dem, frame) {
     this.dem = dem;
@@ -78,7 +82,8 @@ export class Terrain {
         const centerX = this.minX + ((i0 + i1) / 2) * this.dem.cell;
         const centerZ = this.maxZ - ((j0 + j1) / 2) * this.dem.cell;
         const distance = Math.hypot(centerX - nearCenter.x, centerZ - nearCenter.z);
-        const step = distance < nearRadius ? 1 : distance < nearRadius * 2.2 ? 2 : 4;
+        let step = distance < nearRadius ? 1 : distance < nearRadius * 2.4 ? 2 : 4;
+        if (this.#isFlat(i0, i1, j0, j1)) step = 16; // Seefläche: wenige Dreiecke genügen
         const mesh = new THREE.Mesh(this.#chunkGeometry(i0, i1, j0, j1, step), this.material);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
@@ -87,11 +92,23 @@ export class Terrain {
         this.chunks.push(mesh);
         if (++done % 6 === 0) {
           onProgress?.(done / total);
-          await new Promise(requestAnimationFrame);
+          await yieldToUi();
         }
       }
     }
     onProgress?.(1);
+  }
+
+  #isFlat(i0, i1, j0, j1) {
+    let min = Infinity, max = -Infinity;
+    for (let j = j0; j <= j1; j += 4) {
+      for (let i = i0; i <= i1; i += 4) {
+        const h = this.gridHeight(i, j);
+        if (h < min) min = h;
+        if (h > max) max = h;
+      }
+    }
+    return max - min < 0.3;
   }
 
   #chunkGeometry(i0, i1, j0, j1, step) {

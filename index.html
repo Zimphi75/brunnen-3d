@@ -40,14 +40,20 @@
   <aside class="panel" id="layers-panel" aria-label="Ebenen und Funktionen">
     <h2>Ebenen</h2>
     <div id="layer-list"></div>
-    <h2>Gebäude einfärben</h2>
-    <div class="seg" id="color-mode" role="radiogroup" aria-label="Gebäude einfärben nach"></div>
-    <div id="color-legend" class="legend"></div>
-    <h2>Zeitachse</h2>
-    <div id="history-box"></div>
-    <h2>Werkzeuge</h2>
-    <div class="seg" id="tool-list"></div>
-    <p id="tool-hint" class="note"></p>
+    <details open>
+      <summary>Gebäude einfärben</summary>
+      <div class="seg" id="color-mode" role="radiogroup" aria-label="Gebäude einfärben nach"></div>
+      <div id="color-legend" class="legend"></div>
+    </details>
+    <details>
+      <summary>Zeitachse</summary>
+      <div id="history-box"></div>
+    </details>
+    <details open>
+      <summary>Werkzeuge</summary>
+      <div class="seg" id="tool-list"></div>
+      <p id="tool-hint" class="note"></p>
+    </details>
   </aside>
 
   <aside class="panel" id="inspector" hidden aria-live="polite">

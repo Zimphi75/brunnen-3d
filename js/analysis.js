@@ -10,6 +10,7 @@ export function initAnalysis(ctx) {
   const overlay = new THREE.Group();
   overlay.name = "analysis";
   scene3d.scene.add(overlay);
+  scene3d.aoExcluded.add(overlay);
   const tools = new Map();
   let active = null;
 

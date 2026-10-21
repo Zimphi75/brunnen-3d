@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<title>Brunnen 3D – Browser-Tests</title>
+<script type="importmap">
+{ "imports": { "three": "../public/vendor/three/build/three.module.js", "three/addons/": "../public/vendor/three/examples/jsm/" } }
+</script>
+<style>body{font:14px system-ui;margin:20px}.pass{color:#1a7f37}.fail{color:#b42318;font-weight:600}</style>
+</head>
+<body>
+<h1>Brunnen 3D – Browser-Tests</h1>
+<p>Aufruf: <code>python serve.py</code>, dann <code>http://127.0.0.1:8080/tests/unit.html</code>. Ergebnis in <code>window.testResults</code>.</p>
+<ul id="results"></ul>
+<script type="module" src="unit.js"></script>
+</body>
+</html>

@@ -69,7 +69,7 @@ async function start() {
     return texture;
   }).catch((error) => { reportError("Luftbild (ortho.jpg) fehlt oder ist fehlerhaft. Pipeline: python -m pipeline.process_terrain", error); progress.finish("ortho"); });
 
-  await terrain.build({ nearCenter: home, nearRadius: 2600, onProgress: (f) => setLoading(0.15 + 0.45 * f, "Gelände wird aufgebaut …") });
+  await terrain.build({ nearCenter: home, nearRadius: 1500, onProgress: (f) => setLoading(0.15 + 0.45 * f, "Gelände wird aufgebaut …") });
   progress.finish("terrain", "Gebäude werden geladen …");
 
   const [buildingBuffer, records, codes, addresses] = await Promise.all([
@@ -89,6 +89,7 @@ async function start() {
   Object.assign(ctx, { buildings, records: records?.buildings ?? [], codes: codes ?? {}, addresses: addresses ?? [] });
 
   await setupUi(ctx);
+  ctx.readyAt = performance.now();
   $("#loading").classList.add("done");
   setTimeout(() => $("#loading").remove(), 700);
   window.brunnen = ctx; // Debug- und Testzugriff
@@ -270,6 +271,19 @@ async function setupUi(ctx) {
   initAnalysis(ctx);
   initWeather(ctx);
   initHistory(ctx);
+
+  layers.add({ id: "shadows", label: "Schattenwurf", color: "#555", visible: true, apply: (v) => sky.setShadows(v) });
+  layers.add({ id: "ao", label: "Ambient Occlusion", color: "#777", visible: scene3d.hasAmbientOcclusion, available: scene3d.hasAmbientOcclusion, note: "Nicht verfügbar", apply: (v) => { scene3d.settings.ambientOcclusion = v; } });
+  layers.add({ id: "bloom", label: "Bloom (Leuchten)", color: "#999", visible: false, apply: (v) => { scene3d.settings.bloom = v; } });
+
+  ctx.performanceReport = async (seconds = 2) => {
+    await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+    return {
+      fps: Math.round(scene3d.fps), ...scene3d.renderInfo(), terrain: terrain.stats(), buildings: buildings?.stats(),
+      heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null,
+      readyAfterMs: Math.round(ctx.readyAt ?? 0),
+    };
+  };
 
   renderLegend();
   console.info(`Brunnen 3D bereit: ${buildings?.stats().buildings ?? 0} Gebäude, ${terrain.stats().triangles} Geländedreiecke`);

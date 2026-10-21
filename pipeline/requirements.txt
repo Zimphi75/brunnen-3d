@@ -1,0 +1,12 @@
+# Getestet mit Python 3.12 (Python 3.14 hat für einige Pakete noch keine Wheels)
+fiona>=1.10
+mapbox-earcut>=2.0
+numpy>=2.0
+pandas>=2.2
+pillow>=11
+pyproj>=3.7
+rasterio>=1.4
+requests>=2.32
+scipy>=1.14
+shapely>=2.0
+pytest>=8

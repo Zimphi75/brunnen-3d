@@ -40,6 +40,7 @@ export function initWeather(ctx) {
   particles.frustumCulled = false;
   particles.visible = false;
   scene3d.scene.add(particles);
+  scene3d.aoExcluded.add(particles);
 
   const state = { condition: null, effects: true, mode: "none", wind: 0 };
 

@@ -65,6 +65,7 @@ export async function initTransport(ctx) {
 
   // Linien
   const lineGroup = new THREE.Group();
+  scene3d.aoExcluded.add(lineGroup);
   for (const [mode, style] of Object.entries(MODE)) {
     const polylines = lines.filter((l) => l.m === mode).flatMap((l) => l.lines);
     if (!polylines.length) continue;

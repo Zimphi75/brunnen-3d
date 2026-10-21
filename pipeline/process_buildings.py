@@ -71,38 +71,47 @@ def triangulate_face(rings: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray, n
 
 
 def building_mesh(geometry: dict, origin, elevation_offset: float):
-    """Alle Flächen eines Gebäudes -> (Positionen, Indizes, Oberflächenklassen) im lokalen System."""
-    positions, indices, surfaces = [], [], []
-    base = 0
-    normals = []
+    """Alle Flächen eines Gebäudes -> (Positionen, Indizes, Oberflächenklassen) im lokalen System.
+
+    Jede Fläche wird einzeln nach aussen ausgerichtet: Dächer zeigen nach oben, Böden nach unten,
+    Wände vom Gebäudeschwerpunkt weg. Das ist unabhängig von der Ringrichtung der Quelldaten.
+    """
+    faces = []
     for polygon in geometry["coordinates"]:
         result = triangulate_face([np.asarray(ring) for ring in polygon])
-        if result is None:
-            continue
-        vertices, triangles, normal = result
+        if result is not None:
+            faces.append(result)
+    if not faces:
+        return None
+    all_vertices = np.concatenate([vertices for vertices, _, _ in faces])
+    middle = (all_vertices[:, 2].min() + all_vertices[:, 2].max()) / 2
+    centre_xy = all_vertices[:, :2].mean(axis=0)
+
+    positions, indices, surfaces = [], [], []
+    base = 0
+    for vertices, triangles, normal in faces:
+        slope = abs(normal[2])
+        height = vertices[:, 2].mean()
+        kind = 0 if slope <= 0.2 else 1 if height >= middle else 2
+        if kind == 1:
+            flip = normal[2] < 0
+        elif kind == 2:
+            flip = normal[2] > 0
+        else:
+            flip = float(np.dot(normal[:2], vertices[:, :2].mean(axis=0) - centre_xy)) < 0
+        if flip:
+            triangles = triangles[:, ::-1]
         positions.append(vertices)
         indices.append(triangles.reshape(-1) + base)
-        base += len(vertices)
-        kind = 1 if normal[2] > 0.2 else 2 if normal[2] < -0.6 else 0
         surfaces.append(np.full(len(vertices), kind, dtype="uint8"))
-        normals.append((normal, len(vertices)))
-    if not positions:
-        return None
+        base += len(vertices)
+
     vertices = np.concatenate(positions)
-    triangles = np.concatenate(indices).reshape(-1, 3)
-    # Gebäudeweit nach aussen ausrichten (Mehrheit der Flächennormalen zeigt vom Schwerpunkt weg).
-    centroid = vertices.mean(axis=0)
-    a, b, c = (vertices[triangles[:, k]] for k in range(3))
-    face_normals = np.cross(b - a, c - a)
-    outward = np.sum(face_normals * (a - centroid), axis=1)
-    areas = np.linalg.norm(face_normals, axis=1)
-    if np.sum(np.sign(outward) * areas) < 0:
-        triangles = triangles[:, ::-1]
     local = np.empty_like(vertices, dtype="float32")
     local[:, 0] = vertices[:, 0] - origin[0]
     local[:, 1] = vertices[:, 2] - elevation_offset
     local[:, 2] = -(vertices[:, 1] - origin[1])
-    return local, triangles.astype("uint32"), np.concatenate(surfaces), vertices
+    return local, np.concatenate(indices).reshape(-1, 3).astype("uint32"), np.concatenate(surfaces), vertices
 
 
 def load_gwr() -> tuple[pd.DataFrame, pd.DataFrame, dict]:

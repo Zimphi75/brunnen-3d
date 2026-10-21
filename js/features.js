@@ -163,6 +163,7 @@ export async function initDataLayers(ctx) {
   }
 
   const waterGroup = waterFile ? safe("Gewässer", () => buildWater(waterFile, terrain)) : null;
+  if (waterGroup) scene3d.aoExcluded.add(waterGroup);
   layers.add({
     id: "water", label: "Gewässer", color: "#2f7396", available: Boolean(waterGroup), note: "water.json fehlt",
     apply: (v) => { if (!waterGroup) return; waterGroup.visible = v; if (v && !waterGroup.parent) scene.add(waterGroup); },
@@ -192,6 +193,7 @@ export async function initDataLayers(ctx) {
     const rings = municipality.polygons.map((rings) => rings[0]);
     return buildCurtain(rings, { terrain, height: 120, color: "#ff5a36" });
   }) : null;
+  if (curtain) scene3d.aoExcluded.add(curtain);
   layers.add({
     id: "boundary", label: "Gemeindegrenze", color: "#e0472b", available: Boolean(curtain), note: "municipality.json fehlt",
     apply: (v) => { if (!curtain) return; curtain.visible = v; if (v && !curtain.parent) scene.add(curtain); },

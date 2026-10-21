@@ -65,6 +65,8 @@ const smoothstep = (edge0, edge1, x) => {
   return t * t * (3 - 2 * t);
 };
 
+const SCRATCH_COLOR = new THREE.Color();
+
 export function createSky({ scene, renderer, camera, latitude, longitude }) {
   const sky = new Sky();
   sky.scale.setScalar(20000);
@@ -112,9 +114,11 @@ export function createSky({ scene, renderer, camera, latitude, longitude }) {
     uniforms.rayleigh.value = 0.4 + 1.2 * day;
     sun.intensity = 2.5 * smoothstep(-1, 14, degrees) * cloud;
     sun.color.setRGB(1, 0.78 + 0.22 * smoothstep(2, 22, degrees), 0.55 + 0.45 * smoothstep(2, 28, degrees));
-    hemisphere.intensity = (0.08 + 0.6 * day) * (1 + 0.6 * state.cloudCover);
-    moon.intensity = 0.22 * (1 - day);
-    renderer.toneMappingExposure = 0.5 + 0.45 * day;
+    hemisphere.intensity = (0.3 + 0.5 * day) * (1 + 0.6 * state.cloudCover * day);
+    hemisphere.color.set(0x2a3c66).lerp(SCRATCH_COLOR.set(0xcfe3ff), day);
+    hemisphere.groundColor.set(0x141a24).lerp(SCRATCH_COLOR.set(0x6a7360), day);
+    moon.intensity = 0.7 * (1 - day);
+    renderer.toneMappingExposure = 0.85 + 0.1 * day;
     const fogColor = new THREE.Color().setRGB(0.04, 0.06, 0.1).lerp(new THREE.Color(0.75, 0.83, 0.9), day);
     scene.fog.color.copy(fogColor);
     scene.fog.density = 0.00004 + 0.0004 * state.fogBoost;
