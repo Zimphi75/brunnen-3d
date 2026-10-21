@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brunnen 3D – Ingenbohl SZ</title>
+<meta name="description" content="Interaktiver digitaler Zwilling der Gemeinde Ingenbohl SZ aus offenen Schweizer Geodaten.">
+<link rel="stylesheet" href="css/main.css">
+<script type="importmap">
+{ "imports": {
+  "three": "./public/vendor/three/build/three.module.js",
+  "three/addons/": "./public/vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="scene" tabindex="0" aria-label="3D-Modell von Ingenbohl"></canvas>
+  <div id="labels"></div>
+
+  <section class="panel" id="brand" aria-label="Suche">
+    <div class="brand-row">
+      <h1>Brunnen 3D</h1>
+      <span class="brand-sub">Ingenbohl SZ</span>
+    </div>
+    <div class="search">
+      <input id="search-input" type="search" placeholder="Adresse, Strasse, Gebäude, Ort suchen" autocomplete="off" aria-label="Suche">
+      <ul id="search-results" hidden></ul>
+    </div>
+  </section>
+
+  <section class="panel" id="view-panel" aria-label="Ansicht">
+    <button class="icon-btn" id="btn-reset" title="Kamera zurücksetzen" aria-label="Kamera zurücksetzen">⟲</button>
+    <button class="icon-btn" id="btn-top" title="Vogelperspektive" aria-label="Vogelperspektive">⬒</button>
+    <button class="icon-btn" id="btn-oblique" title="Schrägansicht" aria-label="Schrägansicht">◪</button>
+    <select id="preset-select" aria-label="Kameraposition"></select>
+    <button class="icon-btn" id="btn-theme" title="Hell/Dunkel" aria-label="Hell- oder Dunkelmodus">◐</button>
+  </section>
+
+  <aside class="panel" id="layers-panel" aria-label="Ebenen und Funktionen">
+    <h2>Ebenen</h2>
+    <div id="layer-list"></div>
+    <h2>Gebäude einfärben</h2>
+    <div class="seg" id="color-mode" role="radiogroup" aria-label="Gebäude einfärben nach"></div>
+    <div id="color-legend" class="legend"></div>
+    <h2>Zeitachse</h2>
+    <div id="history-box"></div>
+    <h2>Werkzeuge</h2>
+    <div class="seg" id="tool-list"></div>
+    <p id="tool-hint" class="note"></p>
+  </aside>
+
+  <aside class="panel" id="inspector" hidden aria-live="polite">
+    <button class="icon-btn close" id="inspector-close" aria-label="Schliessen">✕</button>
+    <div id="inspector-body"></div>
+  </aside>
+
+  <section class="panel" id="sky-panel" aria-label="Sonne und Wetter">
+    <div class="sky-row">
+      <button class="icon-btn" id="btn-play" title="Tagesverlauf abspielen" aria-label="Tagesverlauf abspielen">▶</button>
+      <input type="range" id="time-slider" min="0" max="1439" step="5" aria-label="Uhrzeit">
+      <output id="time-label" class="num">--:--</output>
+      <input type="date" id="date-input" aria-label="Datum">
+      <button class="btn" id="btn-now">Jetzt</button>
+    </div>
+    <div class="sky-row small">
+      <span id="sun-info" class="num"></span>
+      <span id="weather-info"></span>
+    </div>
+  </section>
+
+  <div id="statusbar" class="num" aria-live="off"></div>
+
+  <div id="loading" role="status">
+    <div class="loading-card">
+      <h2>Brunnen 3D</h2>
+      <div class="bar"><div id="loading-bar"></div></div>
+      <p id="loading-text">Lade Daten …</p>
+    </div>
+  </div>
+  <div id="error-banner" hidden role="alert"></div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

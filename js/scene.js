@@ -1,0 +1,95 @@
+// Renderer, Kamera, Navigation und Nachbearbeitung (Ambient Occlusion, Bloom).
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+export function createScene(canvas) {
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+  } catch (error) {
+    throw new Error(`WebGL ist nicht verfügbar (${error.message}). Bitte einen aktuellen Browser mit Hardwarebeschleunigung verwenden.`);
+  }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xbfd4e4);
+
+  const camera = new THREE.PerspectiveCamera(50, 1, 2, 40000);
+  camera.position.set(0, 3000, 4000);
+
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.maxPolarAngle = Math.PI * 0.495;
+  controls.minDistance = 15;
+  controls.maxDistance = 16000;
+  controls.zoomToCursor = true;
+  controls.screenSpacePanning = false;
+
+  const composer = new EffectComposer(renderer);
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
+  let aoPass = null;
+  try {
+    aoPass = new GTAOPass(scene, camera, 1, 1);
+    aoPass.updateGtaoMaterial({ radius: 6, distanceExponent: 1.4, thickness: 4, scale: 1.1, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
+    aoPass.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+    aoPass.blendIntensity = 0.9;
+    composer.addPass(aoPass);
+  } catch (error) {
+    console.warn("Ambient Occlusion nicht verfügbar:", error);
+  }
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.12, 0.6, 0.92);
+  bloomPass.enabled = false;
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
+
+  const settings = { ambientOcclusion: true, bloom: false };
+  const frameCallbacks = new Set();
+  let lastFrame = performance.now();
+  let fps = 60;
+
+  function resize() {
+    const width = canvas.clientWidth, height = canvas.clientHeight;
+    renderer.setSize(width, height, false);
+    composer.setSize(width, height);
+    camera.aspect = width / Math.max(1, height);
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(canvas);
+  resize();
+
+  function frame(now) {
+    const delta = Math.min(0.1, (now - lastFrame) / 1000);
+    lastFrame = now;
+    fps += (1 / Math.max(delta, 1e-3) - fps) * 0.05;
+    controls.update();
+    // Nahebene folgt dem Abstand zum Blickpunkt: hält die Tiefenauflösung hoch.
+    const distance = camera.position.distanceTo(controls.target);
+    const near = THREE.MathUtils.clamp(distance / 150, 0.5, 60);
+    if (Math.abs(near - camera.near) > near * 0.1) { camera.near = near; camera.updateProjectionMatrix(); }
+    for (const callback of frameCallbacks) callback(delta, now, distance);
+    if (aoPass) aoPass.enabled = settings.ambientOcclusion;
+    bloomPass.enabled = settings.bloom;
+    composer.render(delta);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  return {
+    renderer, scene, camera, controls, composer, settings,
+    hasAmbientOcclusion: Boolean(aoPass),
+    onFrame(callback) { frameCallbacks.add(callback); return () => frameCallbacks.delete(callback); },
+    get fps() { return fps; },
+    renderInfo: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),
+  };
+}

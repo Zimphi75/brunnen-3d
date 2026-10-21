@@ -1,0 +1,61 @@
+{
+  "dem": {
+    "file": "dem.bin",
+    "format": "uint16-le, row-major, j=Süd->Nord, i=West->Ost",
+    "extent": {
+      "min_e": 2684150,
+      "min_n": 1203830,
+      "nx": 1534,
+      "ny": 984,
+      "cell": 5
+    },
+    "heightScale": 0.1,
+    "elevationOffset": 430.0,
+    "minHeight": 433.2837829589844,
+    "maxHeight": 1697.816650390625,
+    "origin": [
+      2688000,
+      1206300
+    ],
+    "crs": "EPSG:2056",
+    "source": "swisstopo swissALTI3D",
+    "sourceResolutionM": 2
+  },
+  "ortho": {
+    "file": "ortho.jpg",
+    "width": 3832,
+    "height": 2458,
+    "extent": [
+      2684150,
+      1203830,
+      2691815,
+      1208745
+    ],
+    "resolutionM": 2,
+    "source": "swisstopo SWISSIMAGE 10 cm (2-m-Kacheln)"
+  },
+  "buildings": {
+    "files": [
+      "buildings3d.bin",
+      "buildings.json",
+      "addresses.json",
+      "codes.json"
+    ],
+    "count": 2316,
+    "inMunicipality": 2010,
+    "withGwr": 2238,
+    "withYearBuilt": 660,
+    "source": "swisstopo swissBUILDINGS3D 3.0 beta (Building_solid, Floor), BFS GWR",
+    "tiles": [
+      "1151-43_2024",
+      "1151-44_2022",
+      "1152-33_2022",
+      "1171-21_2022",
+      "1171-22_2025",
+      "1172-11_2022"
+    ],
+    "skippedTypes": [
+      "Gebaeude unsichtbar"
+    ]
+  }
+}
