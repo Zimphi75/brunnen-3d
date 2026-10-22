@@ -25,11 +25,9 @@ export async function initAlmanac(ctx) {
   const [statistics, sources, manifest] = await Promise.all([loadOptionalJson("statistics.json"), loadOptionalJson("sources.json"), loadOptionalJson("manifest.json")]);
   ctx.sources = sources;
   const modal = $("#almanac"), body = $("#almanac-body"), tabs = $("#almanac-tabs");
-  const backButton = $("#almanac-back");
   const TABS = ["Übersicht", "Gebäude", "Grundstücke", "Energie", "Abstimmungen", "Datenqualität", "Quellen"];
+  const imprintAddress = ctx.addresses?.find(([label]) => label === "Parkstrasse 29, 6440 Brunnen");
   let votes = null;
-  let activeTab = null;
-  const tabHistory = [];
 
   function overview() {
     const g = statistics?.gwr, m = ctx.municipality, b = meta.buildings;
@@ -42,7 +40,27 @@ export async function initAlmanac(ctx) {
       ${stat(`${fmt(meta.dem?.minHeight)}–${fmt(meta.dem?.maxHeight)} m`, "Höhenbereich im Modell")}
     </div>
     <p id="wiki" class="note">Einleitung wird geladen …</p>
-    <p class="note">Alle Zahlen stammen aus offenen Quellen (Details unter «Quellen»). Fassaden und Fenster der Dorfansicht sind gestalterisch und keine Messung.</p>`;
+    <p class="note">Alle Zahlen stammen aus offenen Quellen (Details unter «Quellen»). Fassaden und Fenster der Dorfansicht sind gestalterisch und keine Messung.</p>
+    <section class="imprint" aria-labelledby="imprint-title">
+      <h3 id="imprint-title">Impressum</h3>
+      <p><strong>Brunnen 3D – Eine private 3D-Visualisierung</strong></p>
+      <p>Diese Webapplikation wurde von mir, Philipp Zimmermann, als privates Projekt eigenständig entwickelt. Sie dient der interaktiven Erkundung und Visualisierung von Brunnen und der Gemeinde Ingenbohl.</p>
+      <p>Das Projekt verfolgt ausschliesslich nichtkommerzielle Zwecke und steht in keiner offiziellen Verbindung zur Gemeinde Ingenbohl oder zu den verwendeten Datenanbietern.</p>
+      <h4>Verantwortlich für den Inhalt</h4>
+      <address>Philipp Zimmermann<br>
+        <span class="imprint-address">Parkstrasse 29
+          <button type="button" class="icon-btn imprint-location" data-imprint-action="location" aria-label="Parkstrasse 29 im 3D-Modell anzeigen" title="Parkstrasse 29 im 3D-Modell anzeigen"${imprintAddress && ctx.searchChoose ? "" : " disabled"}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/></svg>
+          </button>
+        </span><br>6440 Brunnen<br>Schweiz
+      </address>
+      <h4>Kontakt</h4>
+      <p>Für Fragen, Anregungen oder Hinweise freue ich mich über eine Nachricht.</p>
+      <p class="imprint-contact">E-Mail: <button type="button" class="btn" data-imprint-action="email">E-Mail anzeigen</button></p>
+      <h4>Haftung und Datenquellen</h4>
+      <p>Die dargestellten geografischen Daten, Gebäudeinformationen und Simulationen können Ungenauigkeiten enthalten. Es besteht kein Anspruch auf Vollständigkeit oder Richtigkeit.</p>
+      <p>Die verwendeten Datenquellen und entsprechenden Quellenhinweise werden separat ausgewiesen.</p>
+    </section>`;
   }
   function buildingsTab() {
     const g = statistics?.gwr;
@@ -109,10 +127,7 @@ export async function initAlmanac(ctx) {
     return `<dl class="src">${sources.datasets.map((d) => `<dt>${esc(d.title)}</dt><dd>${esc(d.provider)} · ${esc(d.license)} · <a href="${esc(d.terms)}" target="_blank" rel="noopener">Bedingungen</a><br><span class="note">${esc(d.coverage ?? "")}${d.notes ? ` · ${esc(d.notes)}` : ""}</span></dd>`).join("")}</dl>`;
   }
 
-  async function show(tab, pushHistory = true) {
-    if (pushHistory && activeTab && activeTab !== tab) tabHistory.push(activeTab);
-    activeTab = tab;
-    backButton.disabled = tabHistory.length === 0;
+  async function show(tab) {
     tabs.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
     if (tab === "Abstimmungen") body.innerHTML = await votesTab();
     else body.innerHTML = { "Übersicht": overview, "Gebäude": buildingsTab, "Grundstücke": parcelsTab, "Energie": energyTab, "Datenqualität": quality, "Quellen": sourcesTab }[tab]();
@@ -125,11 +140,23 @@ export async function initAlmanac(ctx) {
   }
   tabs.innerHTML = TABS.map((t) => `<button type="button" role="tab" data-tab="${t}" aria-selected="false">${t}</button>`).join("");
   tabs.addEventListener("click", (event) => { const t = event.target.closest("button")?.dataset.tab; if (t) show(t); });
-  backButton.addEventListener("click", () => {
-    const previous = tabHistory.pop();
-    if (previous) show(previous, false);
+  body.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-imprint-action]");
+    if (button?.dataset.imprintAction === "location" && imprintAddress && ctx.searchChoose) {
+      const [label, e, n, building] = imprintAddress;
+      modal.hidden = true;
+      ctx.searchChoose({ type: "Adresse", label, e, n, building });
+    } else if (button?.dataset.imprintAction === "email") {
+      const mailbox = String.fromCharCode(112, 104, 105, 108, 105, 112, 112);
+      const domain = String.fromCharCode(117, 110, 115, 101, 114, 101, 45, 104, 111, 109, 101, 112, 97, 103, 101, 46, 99, 104);
+      const link = document.createElement("a");
+      link.href = `mailto:${mailbox}@${domain}`;
+      link.textContent = `${mailbox} [at] ${domain}`;
+      button.replaceWith(link);
+      link.focus();
+    }
   });
-  const open = (tab = "Übersicht") => { modal.hidden = false; tabHistory.length = 0; activeTab = null; show(tab, false); };
+  const open = (tab = "Übersicht") => { modal.hidden = false; show(tab); };
   $("#btn-almanac").addEventListener("click", () => open());
   $("#almanac-close").addEventListener("click", () => { modal.hidden = true; });
   modal.addEventListener("click", (event) => { if (event.target === modal) modal.hidden = true; });

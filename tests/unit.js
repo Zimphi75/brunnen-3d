@@ -277,20 +277,36 @@ test("Ebenen: nach Nutzeraufgabe gruppiert und mit Aktivzählern", () => {
   assert(!list.querySelector(":scope > .layer-row"), "Layer dürfen nicht ungegliedert bleiben");
 });
 
-test("Almanach: Zurück navigiert im Dialog statt ihn zu schliessen", async () => {
+test("Almanach: direkte Tab-Navigation ohne Zurück-Button", async () => {
   const elements = new Map();
-  for (const selector of ["#almanac", "#almanac-body", "#almanac-tabs", "#btn-almanac", "#almanac-close", "#almanac-back"]) {
+  for (const selector of ["#almanac", "#almanac-body", "#almanac-tabs", "#btn-almanac", "#almanac-close"]) {
     elements.set(selector, document.createElement(selector === "#almanac-tabs" ? "nav" : "div"));
   }
   elements.get("#almanac").hidden = true;
-  const ctx = { $: (selector) => elements.get(selector), meta: {}, records: [] };
+  let chosenAddress = null;
+  const address = ["Parkstrasse 29, 6440 Brunnen", 2688661.8, 1205890.2, 1421];
+  const ctx = { $: (selector) => elements.get(selector), meta: {}, records: [], addresses: [address], searchChoose: (entry) => { chosenAddress = entry; } };
   await initAlmanac(ctx);
   elements.get("#btn-almanac").click();
   elements.get("#almanac-tabs").querySelector('[data-tab="Grundstücke"]').click();
   assert(elements.get("#almanac-tabs").querySelector('[data-tab="Grundstücke"]').getAttribute("aria-selected") === "true");
-  elements.get("#almanac-back").click();
+  elements.get("#almanac-tabs").querySelector('[data-tab="Übersicht"]').click();
   assert(elements.get("#almanac-tabs").querySelector('[data-tab="Übersicht"]').getAttribute("aria-selected") === "true");
-  assert(elements.get("#almanac").hidden === false && elements.get("#almanac-back").disabled === true);
+  assert(elements.get("#almanac").hidden === false);
+  elements.get("#almanac-close").click();
+  assert(elements.get("#almanac").hidden === true);
+  ctx.almanac.open("Grundstücke");
+  assert(elements.get("#almanac").hidden === false);
+  assert(elements.get("#almanac-tabs").querySelector('[data-tab="Grundstücke"]').getAttribute("aria-selected") === "true");
+  elements.get("#almanac-tabs").querySelector('[data-tab="Übersicht"]').click();
+  const body = elements.get("#almanac-body");
+  assert(body.querySelector(".imprint")?.textContent.includes("Philipp Zimmermann"), "Impressum fehlt auf der Übersicht");
+  assert(!body.innerHTML.includes("mailto:"), "E-Mail darf vor der Nutzeraktion nicht verlinkt sein");
+  body.querySelector('[data-imprint-action="email"]').click();
+  assert(body.querySelector('a[href="mailto:philipp@unsere-homepage.ch"]'), "E-Mail wird erst bei Klick zusammengesetzt");
+  body.querySelector('[data-imprint-action="location"]').click();
+  assert(elements.get("#almanac").hidden === true, "Adresslink muss die Infobox schliessen");
+  assert(chosenAddress?.label === address[0] && chosenAddress?.building === address[3], "Adresslink muss die richtige Liegenschaft auswählen");
 });
 
 test("Gelände: Plattenrand hat Lippe und geschichtete Seitenwand", async () => {

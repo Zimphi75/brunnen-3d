@@ -106,12 +106,10 @@ h3 { font-size: 15px; margin: 10px 0 6px; }
 select, input[type="date"], input[type="search"] { background: var(--field); border: 1px solid var(--rule); border-radius: var(--r-ctl); padding: 6px 9px; }
 select.wide { width: 100%; }
 
-#brand { top: 14px; left: 14px; width: 320px; padding: 12px 14px; z-index: 5; }
-.brand-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
-.brand-row h1 { font-size: 20px; white-space: nowrap; }
-.brand-sub { color: var(--ink-3); font-size: 12.5px; }
+#brand, #clock-btn, #view-panel { height: 48px; }
+#brand { top: 14px; left: 14px; width: 320px; padding: 5px 7px; z-index: 5; }
 .search { position: relative; }
-.search input { width: 100%; }
+.search input { display: block; width: 100%; height: 36px; }
 #search-results { position: absolute; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; max-height: 320px; overflow: auto;
   background: var(--panel-solid); border: 1px solid var(--rule); border-radius: var(--r-ctl); box-shadow: var(--shadow); z-index: 8; }
 #search-results li { padding: 6px 8px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
@@ -404,7 +402,7 @@ details[open] > summary::before { transform: rotate(90deg); }
 .tag.warn { background: rgba(192, 138, 26, .18); color: #8a6212; }
 
 #dock { right: 14px; bottom: 14px; padding: 6px; z-index: 4; }
-#statusbar { position: absolute; left: 14px; bottom: 14px; font-size: 11.5px; color: var(--ink-2); background: var(--panel); border: 1px solid var(--rule); border-radius: 999px; padding: 3px 10px; pointer-events: none; }
+#statusbar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); white-space: nowrap; font-size: 11.5px; color: var(--ink-2); background: var(--panel); border: 1px solid var(--rule); border-radius: 999px; padding: 3px 10px; pointer-events: none; }
 
 #almanac { position: absolute; inset: 0; z-index: 15; display: grid; place-items: center; background: rgba(10, 20, 18, .35); padding: 16px; }
 .sheet { position: relative; width: min(1280px, 100%); height: min(900px, calc(100% - 32px)); max-height: calc(100% - 32px); display: flex; flex-direction: column; overflow: hidden; background: var(--panel-solid); }
@@ -416,6 +414,19 @@ details[open] > summary::before { transform: rotate(90deg); }
 .tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--accent); }
 #almanac-body { min-height: 0; padding: 20px; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
 #almanac-body p { margin: 0; max-width: 70ch; }
+.imprint { flex: none; display: grid; gap: 12px; margin-top: 12px; padding: 22px; border: 1px solid var(--rule); border-top: 3px solid var(--accent); border-radius: 8px; background: var(--field); overflow-wrap: anywhere; }
+.imprint h3 { margin: 0; font-size: 22px; }
+.imprint h4 { margin: 8px 0 0; font-size: 14px; }
+.imprint address { font-style: normal; }
+.imprint-address { display: inline-flex; align-items: center; gap: 8px; }
+.imprint-location { flex: none; color: var(--accent); background: var(--accent-soft); }
+.imprint-location svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; animation: imprint-pin 2.4s ease-in-out infinite; }
+.imprint-location:hover svg, .imprint-location:focus-visible svg { animation-play-state: paused; }
+.imprint-location:disabled { opacity: .45; cursor: default; }
+.imprint-location:disabled svg { animation: none; }
+.imprint-contact { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+@keyframes imprint-pin { 0%, 70%, 100% { transform: translateY(0); } 35% { transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .imprint-location svg { animation: none; } }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
 .stat { border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; }
 .stat .num { font-size: 22px; }
@@ -453,36 +464,37 @@ details[open] > summary::before { transform: rotate(90deg); }
   #inspector { width: min(380px, calc(100vw - 24px)); }
   .building-mode-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
-@media (min-width: 601px) and (max-width: 1244px) {
-  #clock-btn { top: 116px; left: 50%; transform: translateX(-50%); }
-  #sky-panel { top: 164px; }
+@media (min-width: 761px) and (max-width: 1244px) {
+  #clock-btn { top: 70px; left: 50%; transform: translateX(-50%); }
+  #sky-panel { top: 126px; }
 }
 @media (min-width: 1245px) and (max-width: 1299px) {
   #clock-btn { top: 14px; left: calc(50% - 25px); transform: translateX(-50%); }
 }
-@media (max-width: 600px) {
-  .navigation-hint-card { width: min(248px, calc(100vw - 24px)); padding: 10px 13px 12px; }
-  .hint-gesture { height: 88px; }
-  #brand { top: 8px; left: 8px; width: calc(100vw - 16px); padding: 9px 11px; }
-  .brand-row { margin-bottom: 5px; }
-  .brand-row h1 { font-size: 18px; }
-  .brand-sub { font-size: 11px; }
-  #clock-btn { top: 98px; left: 8px; right: 8px; transform: none; width: auto; grid-template-columns: 136px minmax(0, 1fr) 24px; padding: 5px 7px; gap: 6px; }
+@media (max-width: 760px) {
+  #brand, #clock-btn, #view-panel { height: 38px; }
+  #brand { top: 8px; left: 8px; width: calc(100vw - 16px); padding: 3px 7px; }
+  .search input { height: 30px; }
+  #clock-btn { top: 54px; left: 8px; right: 8px; transform: none; width: auto; grid-template-columns: 136px minmax(0, 1fr) 24px; padding: 5px 7px; gap: 6px; }
   #clock-time { font-size: 16px; }
   #clock-wx { display: block; font-size: 11px; }
   .clock-chevron { width: 21px; height: 21px; }
-  #view-panel { top: 142px; left: 8px; right: 8px; justify-content: space-between; gap: 0; padding: 3px 2px; }
-  #view-panel .toolbar-button { flex-basis: 23px; width: 23px; height: 30px; }
+  #view-panel { top: 100px; left: 8px; right: 8px; display: grid; grid-template-columns: 30px 1px repeat(2, 30px) 1px repeat(2, 30px) 1px minmax(0, 1fr) 30px; gap: 4px; padding: 3px 4px; }
+  #view-panel .toolbar-button { width: 30px; height: 30px; }
   #view-panel .toolbar-icon { width: 19px; height: 19px; }
-  #view-panel .toolbar-divider { flex-basis: 1px; margin: 0 2px; height: 19px; }
+  #view-panel .toolbar-divider { margin: 0; height: 19px; }
   .toolbar-position { gap: 2px; padding: 2px 3px; }
   .toolbar-pin { width: 15px; height: 15px; }
-  #preset-select { max-width: 92px; padding: 3px 1px; font-size: 10px; }
-  #sky-panel { top: 188px; left: 8px; right: 8px; transform: none; width: auto; max-height: calc(100% - 212px); }
+  #preset-select { flex: 1; width: 100%; max-width: none; padding: 3px 1px; font-size: 10px; }
+  #sky-panel { top: 146px; left: 8px; right: 8px; transform: none; width: auto; max-height: calc(100% - 170px); }
+  #statusbar { display: none; }
+}
+@media (max-width: 600px) {
+  .navigation-hint-card { width: min(248px, calc(100vw - 24px)); padding: 10px 13px 12px; }
+  .hint-gesture { height: 88px; }
   #sky-panel-content { padding-left: 11px; padding-right: 11px; }
   .sky-head { padding-left: 11px; padding-right: 11px; }
   .weather-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #statusbar { left: 8px; bottom: 112px; }
   #map-dock { left: 8px; bottom: 8px; max-width: calc(100vw - 16px); padding: 5px; gap: 2px; }
   #base-map-cards .map-card { width: 62px; height: 84px; font-size: 9.5px; }
   .map-card-preview { width: 52px; }
@@ -496,7 +508,7 @@ details[open] > summary::before { transform: rotate(90deg); }
   #map-dock[data-expanded="true"] { flex-wrap: wrap; }
   #map-dock[data-expanded="true"] #quick-access { width: 100%; justify-content: space-around; }
   #quick-panel { left: 8px; bottom: 104px; width: min(350px, calc(100vw - 16px)); }
-  #quick-panel[data-mode="buildings"], #quick-panel[data-mode="traffic"] { top: 188px; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: none; }
+  #quick-panel[data-mode="buildings"], #quick-panel[data-mode="traffic"] { top: 146px; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: none; }
   #layers-panel { top: auto; bottom: 108px; left: 8px; right: 8px; width: auto; max-height: calc(100% - 170px); }
   .map-details-head { padding: 10px 12px 8px; }
   .map-details-scroll { padding: 8px 12px 12px; }
