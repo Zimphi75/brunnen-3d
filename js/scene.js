@@ -22,7 +22,7 @@ export function createScene(canvas) {
   renderer.info.autoReset = false;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xbfd4e4);
+  scene.background = new THREE.Color(0x8abce3);
 
   const camera = new THREE.PerspectiveCamera(50, 1, 2, 40000);
   camera.position.set(0, 3000, 4000);

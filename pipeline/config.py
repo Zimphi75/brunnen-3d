@@ -31,5 +31,11 @@ GEOADMIN_API = "https://api3.geo.admin.ch/rest/services/all/MapServer"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 GWR_URL = "https://public.madd.bfs.admin.ch/sz.zip"
 WMS_URL = "https://wms.geo.admin.ch/"
+WFS_URL = "https://map.geo.sz.ch/mapserv_proxy"
+WFS_PARCEL_TYPENAME = "ms:ch.sz.a018.amtliche_vermessung.liegenschaften.grundstueck"
+WFS_PLANNING_TYPES = {
+	"grundnutzung": "ms:ch.sz.a094b.oereb.raumplanung.nutzungsplanung_kommunal.ingenbohl.grundnutzung",
+	"ueberlagernd": "ms:ch.sz.a094b.oereb.raumplanung.nutzungsplanung_kommunal.ingenbohl.ueberlagernde_festlegung",
+}
 
 USER_AGENT = "brunnen-3d/0.1 (lokale Datenpipeline)"

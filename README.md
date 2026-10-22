@@ -44,8 +44,8 @@ uv pip install --python .venv/bin/python -r pipeline/requirements.txt
 ## Datenpipeline
 
 ```bash
-.venv/bin/python -m pipeline.run_all             # alle Schritte
-.venv/bin/python -m pipeline.run_all osm export  # einzelne Schritte
+.venv/bin/python -m pipeline.run_all                   # alle Schritte
+.venv/bin/python -m pipeline.run_all parcels export   # einzelne Schritte
 ```
 
 Die Schritte `terrain`, `buildings`, `osm`, `trees`, `pv`, `votes` und `export` können mehrfach ausgeführt werden. Downloads werden in `pipeline/cache/` zwischengespeichert und nicht erneut geladen. Beschreibung, Binärformate und Konfiguration: [docs/data-pipeline.md](docs/data-pipeline.md).
@@ -65,7 +65,7 @@ Jeder statische Webserver genügt (siehe [docs/deployment.md](docs/deployment.md
 
 ```bash
 .venv/bin/python -m pytest -q          # Pipeline-Funktionen und Datendateien
-# Browser-Tests (33): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
+# Browser-Tests (34): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
 ```
 
 ## Projektstruktur
@@ -133,10 +133,10 @@ Die Zahlen stehen auch im Almanach («Datenqualität») und stammen aus `public/
 - **Abstimmungen**: Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert (derzeit 2025-05-18 und 2023-03-12). Die Quelle sendet keine CORS-Header; darum zieht die Pipeline die Daten (`votes.json`).
 - **Photovoltaik**: Das Register kennt weder Modulzahl noch Modullage. Die gezeichnete Belegung ist eine Annahme (Modulgrösse 1.75 × 1.05 m, Wirkungsgrad nach Baujahr, bevorzugt Süd-, sonst Ost-/Westflächen, Randabstand 0.3 m). Freistehende Anlagen (2) und Fassadenanteile (Neigung ab 60°) werden nicht auf dem Dach gezeichnet. Dachflächen stammen aus swissBUILDINGS3D (Beta). Auf Gebäuden mit grosser Anlage reicht die Dachfläche oft nicht; dann ist die Anlage nur teilweise gezeichnet und das steht im Informationspanel.
 - **Strassenmarkierung und Verkehr sind symbolisch.** OSM enthält hier keine Spurzahl und keine Einbahnrichtung: zweispurig wird aus der Strassenklasse angenommen, Einbahn nur bei Kreiseln. Es gibt weder Verkehrszählungen noch Personenzahlen; Dichte und Wege sind Annahmen (Strassenklasse, Bebauung in der Nähe). Trottoirs sind aus der Strassenbreite abgeleitet, nicht aus OSM-Daten. Auf Autobahnen sind Richtung und Spurzahl aus OSM übernommen; Spurwechsel und Überholen gibt es nicht. Tunnelstrecken (Axenstrasse) sind ausgenommen.
-- **Nicht umgesetzt**: Solarpotenzial der Dächer (BFE sonnendach.ch), Isochronen, Objektprofil, Fahrmodus, STATPOP, Grundstücke und ÖREB, swissNAMES3D.
+- **Nicht umgesetzt**: Solarpotenzial der Dächer (BFE sonnendach.ch), Isochronen und Fuss-/Velorouting, Fahrmodus, swissNAMES3D. STATPOP/STATENT sind als 100-m-Raster integriert; die Zellwerte sind keine Gebäudewerte.
 - **Nicht getestet**: iPhone/Safari und schwache GPUs. Die Leistungswerte stammen von einem Apple-Silicon-Rechner (Chrome), siehe [docs/architecture.md](docs/architecture.md).
 - Die Pipeline ist auf Ingenbohl konfiguriert (`pipeline/config.py`); der GWR-Auszug ist auf den Kanton SZ festgelegt.
 
 ## Nächste Schritte
 
-Siehe Abschnitt «Offene Punkte und technische Schulden» in [docs/architecture.md](docs/architecture.md): Solarpotenzial der Dächer (sonnendach.ch), Isochronen und Fussgänger-Erreichbarkeit, Objektprofil, Fahrmodus, STATPOP-Hektarraster, swissNAMES3D, Grundstücke/ÖREB, Gebäudesockel, Test auf iPhone/Safari, Chunking der Gebäude.
+Siehe Abschnitt «Offene Punkte und technische Schulden» in [docs/architecture.md](docs/architecture.md): Solarpotenzial der Dächer (sonnendach.ch), Isochronen und Fuss-/Velorouting, Fahrmodus, swissNAMES3D, Gebäudesockel, Test auf iPhone/Safari, Chunking der Gebäude.

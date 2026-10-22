@@ -72,10 +72,11 @@ export function createSky({ scene, renderer, camera, latitude, longitude, shadow
   sky.scale.setScalar(20000);
   scene.add(sky);
   const uniforms = sky.material.uniforms;
-  uniforms.turbidity.value = 3.5;
-  uniforms.rayleigh.value = 1.3;
-  uniforms.mieCoefficient.value = 0.004;
+  uniforms.turbidity.value = 2.6;
+  uniforms.rayleigh.value = 2.2;
+  uniforms.mieCoefficient.value = 0.0025;
   uniforms.mieDirectionalG.value = 0.8;
+  sky.visible = false;
 
   const sun = new THREE.DirectionalLight(0xffffff, 3);
   sun.castShadow = true;
@@ -126,7 +127,7 @@ export function createSky({ scene, renderer, camera, latitude, longitude, shadow
     state.night = 1 - smoothstep(-7, 2, degrees);
     const cloud = 1 - 0.6 * state.cloudCover;
     uniforms.sunPosition.value.copy(state.direction);
-    uniforms.rayleigh.value = 0.4 + 1.2 * day;
+    uniforms.rayleigh.value = 0.5 + 1.7 * day;
     sun.intensity = 2.5 * smoothstep(-1, 14, degrees) * cloud;
     sun.color.setRGB(1, 0.78 + 0.22 * smoothstep(2, 22, degrees), 0.55 + 0.45 * smoothstep(2, 28, degrees));
     hemisphere.intensity = (0.55 + 0.25 * day) * (1 + 0.6 * state.cloudCover * day);
@@ -134,11 +135,11 @@ export function createSky({ scene, renderer, camera, latitude, longitude, shadow
     hemisphere.groundColor.set(0x141a24).lerp(SCRATCH_COLOR.set(0x6a7360), day);
     moon.intensity = 1.1 * (1 - day);
     renderer.toneMappingExposure = 0.85 + 0.1 * day;
-    const fogColor = new THREE.Color().setRGB(0.04, 0.06, 0.1).lerp(new THREE.Color(0.75, 0.83, 0.9), day);
+    const fogColor = new THREE.Color(0x101827).lerp(SCRATCH_COLOR.set(0x8abce3), day);
     scene.fog.color.copy(fogColor);
     // Bei Nacht liefert der Preetham-Himmel einen braunen Ton; dann ersetzt ein dunkles Blau den Himmel.
-    sky.visible = day > 0.03;
-    scene.background = scene.background.set(0x070b16).lerp(SCRATCH_COLOR.set(0xbfd4e4), day);
+    sky.visible = false;
+    scene.background = scene.background.set(0x070b16).lerp(SCRATCH_COLOR.set(0x8abce3), day);
     starMaterial.opacity = Math.max(0, 1 - state.cloudCover) * Math.pow(state.night, 2) * 0.9;
     stars.visible = starMaterial.opacity > 0.01;
     scene.fog.density = 0.00004 + 0.0004 * state.fogBoost;

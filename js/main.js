@@ -10,6 +10,7 @@ import { createLayerManager } from "./layers.js";
 import { createInspector } from "./inspector.js";
 import { createSky, zurichParts, zurichToDate } from "./sky.js";
 import { initDataLayers } from "./features.js";
+import { initParcels } from "./parcels.js";
 import { initPois } from "./pois.js";
 import { initTransport } from "./transport.js";
 import { initLighting } from "./lighting.js";
@@ -23,10 +24,66 @@ import { initHires } from "./hires.js";
 import { initGround } from "./ground.js";
 import { initAmbient } from "./ambient.js";
 import { initAlmanac } from "./almanac.js";
+import { buildLocationRating } from "./location-rating.js";
+import { fetchBuildingEnvironment } from "./environment.js";
+import { initDemographicLayers } from "./demographics.js";
 
 const $ = (selector) => document.querySelector(selector);
 const errors = [];
 const lowPower = matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4;
+const LOADING_MESSAGES = [
+  "Die Höhenlinien bekommen noch ihre Frisur.",
+  "Wir zählen die Häuser. Die letzten stehen etwas verstreut.",
+  "Die Bäume ordnen ihre Kronen.",
+  "Ein paar Berge rücken noch ins Bild.",
+  "Die Daten nehmen den schönen Umweg.",
+];
+let loadingMessageTimer;
+
+function startLoadingMessages() {
+  const note = $("#loading-note");
+  let index = 0;
+  const update = () => { note.textContent = LOADING_MESSAGES[index++ % LOADING_MESSAGES.length]; };
+  update();
+  loadingMessageTimer = setInterval(update, 2600);
+}
+
+function animateNightToLive(ctx) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const endDate = ctx.simDate();
+  const endParts = zurichParts(endDate);
+  let startDate = zurichToDate(endParts.year, endParts.month, endParts.day, 4 * 60);
+  if (startDate >= endDate) {
+    const previousDay = zurichParts(new Date(endDate.getTime() - 36 * 3600 * 1000));
+    startDate = zurichToDate(previousDay.year, previousDay.month, previousDay.day, 4 * 60);
+  }
+  Object.assign(ctx.timeState, zurichParts(startDate));
+  ctx.applyTime();
+
+  const duration = 10;
+  let elapsed = 0, lastUpdate = 0, removeFrame = () => {};
+  const interrupt = () => {
+    removeFrame();
+    for (const [id, event] of [["#time-slider", "input"], ["#date-input", "change"], ["#btn-now", "click"], ["#btn-play", "click"]]) {
+      $(id).removeEventListener(event, interrupt);
+    }
+  };
+  const onFrame = (delta) => {
+    elapsed = Math.min(duration, elapsed + delta);
+    if (elapsed - lastUpdate < 0.1 && elapsed < duration) return;
+    lastUpdate = elapsed;
+    const t = elapsed / duration;
+    const eased = t * t * (3 - 2 * t);
+    const time = new Date(startDate.getTime() + (endDate.getTime() - startDate.getTime()) * eased);
+    Object.assign(ctx.timeState, zurichParts(time));
+    ctx.applyTime();
+    if (t >= 1) interrupt();
+  };
+  removeFrame = ctx.scene3d.onFrame(onFrame);
+  for (const [id, event] of [["#time-slider", "input"], ["#date-input", "change"], ["#btn-now", "click"], ["#btn-play", "click"]]) {
+    $(id).addEventListener(event, interrupt);
+  }
+}
 
 function reportError(message, error) {
   console.error(message, error ?? "");
@@ -51,6 +108,7 @@ const PRESETS = [
 
 async function start() {
   const started = performance.now();
+  startLoadingMessages();
   const progress = createProgress(setLoading).add("meta", 0.5).add("dem", 1).add("terrain", 2).add("ortho", 2).add("buildings", 2);
 
   const meta = await loadJson("metadata.json");
@@ -97,7 +155,16 @@ async function start() {
   Object.assign(ctx, { buildings, records: records?.buildings ?? [], codes: codes ?? {}, addresses: addresses ?? [] });
 
   await setupUi(ctx);
+  animateNightToLive(ctx);
   ctx.readyAt = performance.now() - started;
+  const originView = ctx.presets.find((preset) => preset.id === "gemeinde");
+  const destination = new THREE.Vector3(-50, ctx.terrain.heightAt(-50, 400) ?? 0, 400);
+  ctx.rig.spiralTo({
+    startTarget: originView.target.clone(), startDistance: originView.distance, startHeading: originView.heading, startTilt: originView.tilt,
+    target: destination, distance: 1400, heading: originView.heading, tilt: THREE.MathUtils.degToRad(40), duration: 10, turns: 1,
+    instant: matchMedia("(prefers-reduced-motion: reduce)").matches,
+  });
+  clearInterval(loadingMessageTimer);
   $("#loading").classList.add("done");
   setTimeout(() => $("#loading").remove(), 700);
   window.brunnen = ctx; // Debug- und Testzugriff
@@ -127,7 +194,10 @@ async function setupUi(ctx) {
   $("#btn-reset").addEventListener("click", home);
   $("#btn-top").addEventListener("click", () => rig.topDown());
   $("#btn-oblique").addEventListener("click", () => rig.oblique());
-  goPreset("gemeinde", true);
+  $("#btn-rotate-ccw").addEventListener("click", () => rig.rotate(-90));
+  $("#btn-rotate-cw").addEventListener("click", () => rig.rotate(90));
+  const initialView = presets.find((preset) => preset.id === "gemeinde");
+  rig.flyTo({ target: initialView.target.clone(), distance: initialView.distance, heading: initialView.heading, tilt: initialView.tilt, instant: true });
 
   const root = document.documentElement;
   root.dataset.theme = localStorage.getItem("brunnen3d-theme") ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
@@ -145,6 +215,7 @@ async function setupUi(ctx) {
     count: buildings ? (buildings.data.count - buildings.stats().hiddenDemolished).toLocaleString("de-CH") : "", apply: (v) => { if (buildings) buildings.mesh.visible = v; },
   });
   await initDataLayers(ctx);
+  await initParcels(ctx);
 
   // Darstellung (Gebäudefarben)
   const modeSelect = $("#color-mode"), legendBox = $("#color-legend");
@@ -163,17 +234,92 @@ async function setupUi(ctx) {
     if (index >= 0) { if (!addressesByBuilding.has(index)) addressesByBuilding.set(index, []); addressesByBuilding.get(index).push(label); }
   });
   ctx.addressesByBuilding = addressesByBuilding;
-  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => buildings?.select(-1) });
+  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => { buildings?.select(-1); ctx.parcels?.selectBuilding(-1); } });
   ctx.inspector = inspector;
+  const environmentalCache = new Map();
+  const demographicCache = new Map();
+  let environmentalRequestId = 0;
+    const classPeers = new Map();
+    ctx.records.forEach((record) => {
+      const classCode = record.gwr?.class;
+      if (!record.inMunicipality || !classCode) return;
+      if (!classPeers.has(classCode)) classPeers.set(classCode, []);
+      classPeers.get(classCode).push(record);
+    });
+    const buildingComparison = (record) => {
+      const peers = classPeers.get(record.gwr?.class) ?? [];
+      const definitions = [["Grundfläche GWR", "footprintAreaGwr", "m²", 0], ["Geschosse", "floors", "", 0], ["Wohnungen", "dwellings", "", 0]];
+      const metrics = definitions.flatMap(([label, key, unit, digits]) => {
+        const value = record.gwr?.[key];
+        const values = peers.map((peer) => peer.gwr?.[key]).filter(Number.isFinite).sort((a, b) => a - b);
+        if (!Number.isFinite(value) || values.length < 10) return [];
+        const atOrBelow = values.filter((peerValue) => peerValue <= value).length;
+        const bins = key === "footprintAreaGwr"
+          ? [...Array.from({ length: 10 }, (_, i) => ({ min: i * 100, max: (i + 1) * 100, label: `${i * 100}-${(i + 1) * 100}` })), { min: 1000, max: Infinity, label: "1'000+" }]
+          : key === "floors"
+            ? [...Array.from({ length: 10 }, (_, i) => ({ min: i + 1, max: i + 2, label: String(i + 1) })), { min: 11, max: Infinity, label: "11+" }]
+            : [{ min: 0, max: 1, label: "0" }, { min: 1, max: 3, label: "1-2" }, ...Array.from({ length: 4 }, (_, i) => ({ min: i + 3, max: i + 4, label: String(i + 3) })), { min: 7, max: 9, label: "7-8" }, { min: 9, max: 11, label: "9-10" }, { min: 11, max: 16, label: "11-15" }, { min: 16, max: 21, label: "16-20" }, { min: 21, max: Infinity, label: "21+" }];
+        const histogram = bins.map((bin) => ({ ...bin, count: values.filter((peerValue) => peerValue >= bin.min && peerValue < bin.max).length, selected: value >= bin.min && value < bin.max }));
+        const mean = values.reduce((sum, peerValue) => sum + peerValue, 0) / values.length;
+        const deviation = Math.sqrt(values.reduce((sum, peerValue) => sum + (peerValue - mean) ** 2, 0) / values.length);
+        const skewness = deviation ? values.reduce((sum, peerValue) => sum + ((peerValue - mean) / deviation) ** 3, 0) / values.length : 0;
+        const distribution = skewness > 0.8 ? "rechtsschief" : skewness < -0.8 ? "linksschief" : "annähernd symmetrisch";
+        return [{ label, value, unit, digits, percentile: Math.round((100 * atOrBelow) / values.length), median: values[Math.floor(values.length / 2)], count: values.length, histogram, distribution }];
+      });
+      if (!metrics.length) return null;
+      return { group: ctx.codes.GKLAS?.[record.gwr.class] ?? `GWR-Klasse ${record.gwr.class}`, count: peers.length, metrics };
+    };
+    const nearbyForBuilding = (record) => {
+      if (!ctx.pois || !ctx.transport?.stops) return [];
+      const point = frame.toLocal(record.center[0], record.center[1]);
+      const closest = (items, predicate) => items.filter(predicate).map((item) => ({ item, distance: Math.round(Math.hypot(item.x - point.x, item.z - point.z)) })).sort((a, b) => a.distance - b.distance)[0];
+      const results = [];
+      const supermarket = closest(ctx.pois, (poi) => poi.s === "supermarket");
+      if (supermarket) results.push({ label: "Supermarkt", name: supermarket.item.n, distance: supermarket.distance });
+      for (const [mode, label] of [["bus", "Bushaltestelle"], ["train", "Bahnhof"]]) {
+        const stop = closest(ctx.transport.stops, (entry) => entry.m === mode);
+        if (stop) results.push({ label, name: stop.item.n, distance: stop.distance });
+      }
+      return results;
+    };
   ctx.selectBuilding = (index) => {
     buildings.select(index);
-    inspector.showBuilding(ctx.records[index], { addresses: addressesByBuilding.get(index) ?? [], elevationOffset: frame.elevationOffset, pv: ctx.pv?.byBuilding.get(index) ?? [] });
+    ctx.parcels?.selectBuilding(index);
+    const record = ctx.records[index];
+    const requestId = ++environmentalRequestId;
+    const demographicCellKey = `${Math.floor(record.center[0] / 100) * 100}:${Math.floor(record.center[1] / 100) * 100}`;
+    const cacheKey = record.egid ?? record.id;
+    const osmSource = ctx.sources?.datasets?.find((dataset) => dataset.title.startsWith("OpenStreetMap"));
+    inspector.showBuilding(record, {
+      addresses: addressesByBuilding.get(index) ?? [], elevationOffset: frame.elevationOffset, pv: ctx.pv?.byBuilding.get(index) ?? [],
+      comparison: buildingComparison(record), nearby: nearbyForBuilding(record), gwrExportDate: meta.statistics?.gwrExportDate,
+      rating: buildLocationRating({ record, frame, pois: ctx.pois ?? [], stops: ctx.transport?.stops ?? [], places: ctx.places ?? [], osmSource }),
+      environmental: { status: "loading", indicators: [] },
+      demographics: { status: "loading" },
+    });
+    let environmental = environmentalCache.get(cacheKey);
+    if (!environmental) {
+      environmental = fetchBuildingEnvironment(record.center);
+      environmentalCache.set(cacheKey, environmental);
+    }
+    void environmental.then((result) => {
+      if (requestId === environmentalRequestId) inspector.updateBuildingEnvironment(result);
+    });
+    let demographics = demographicCache.get(demographicCellKey);
+    if (!demographics) {
+      demographics = ctx.demographics.forBuilding(record).catch(() => ({ population: null, employment: null, cellSizeM: 100, bounds: null, geometry: null }));
+      demographicCache.set(demographicCellKey, demographics);
+    }
+    void demographics.then((result) => {
+      if (requestId === environmentalRequestId) inspector.updateBuildingDemographics({ ...result, status: "ready" });
+    });
   };
 
   const providers = [];
   if (buildings) providers.push({ kind: "building", enabled: () => buildings.mesh.visible, pick: (ray) => buildings.pick(ray) });
   ctx.providers = providers;
   ctx.clickHandlers = [];
+  initDemographicLayers(ctx);
   const status = $("#statusbar");
   let statusText = "";
   const canvas = $("#scene");
@@ -191,6 +337,7 @@ async function setupUi(ctx) {
     onClick({ hit, ground, ray }, event) {
       for (const handler of ctx.clickHandlers) if (handler({ hit, ground, ray, event })) return;
       buildings?.select(-1);
+      ctx.parcels?.selectBuilding(-1);
       if (hit?.kind === "building") ctx.selectBuilding(hit.index);
       else if (hit?.kind === "poi") ctx.showPoi(hit.index);
       else if (hit?.kind === "stop") ctx.showStop(hit.index);
@@ -315,6 +462,7 @@ async function setupUi(ctx) {
 }
 
 start().catch((error) => {
+  clearInterval(loadingMessageTimer);
   reportError(`Start fehlgeschlagen: ${error.message}`, error);
   $("#loading-text").textContent = "Start fehlgeschlagen.";
 });

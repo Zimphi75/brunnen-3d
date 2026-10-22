@@ -3,6 +3,17 @@ import * as THREE from "three";
 
 const CHUNK_CELLS = 64;
 const SKIRT_DEPTH = 30;
+const PLATE_DEPTH = 150;
+const PLATE_LIP = 3;
+const PLATE_BANDS = [
+  { from: 0, to: 30, color: 0x78573a },
+  { from: 30, to: 36, color: 0x9a754a },
+  { from: 36, to: 82, color: 0x684b35 },
+  { from: 82, to: 88, color: 0x987249 },
+  { from: 88, to: 132, color: 0x594330 },
+  { from: 132, to: 140, color: 0x806044 },
+  { from: 140, to: PLATE_DEPTH, color: 0x3c342e },
+];
 
 // Gibt dem Browser Zeit zum Zeichnen, ohne von requestAnimationFrame abzuhängen (pausiert in Hintergrund-Tabs).
 const channel = new MessageChannel();
@@ -159,7 +170,76 @@ export class Terrain {
         }
       }
     }
+    this.#buildPlate();
     onProgress?.(1);
+  }
+
+  #buildPlate() {
+    const { nx, ny, cell } = this.dem;
+    const points = [];
+    const add = (i, j, outsideX, outsideZ) => {
+      const x = this.minX + i * cell;
+      const z = this.maxZ - j * cell;
+      points.push({ x, z, y: this.gridHeight(i, j), outerX: x + outsideX * PLATE_LIP, outerZ: z + outsideZ * PLATE_LIP });
+    };
+    const stride = 8;
+    for (let i = 0; i < nx - 1; i += stride) add(i, 0, i === 0 ? -1 : 0, 1);
+    add(nx - 1, 0, 1, 1);
+    for (let j = stride; j < ny - 1; j += stride) add(nx - 1, j, 1, 0);
+    add(nx - 1, ny - 1, 1, -1);
+    for (let i = nx - 1 - stride; i > 0; i -= stride) add(i, ny - 1, 0, -1);
+    add(0, ny - 1, -1, -1);
+    for (let j = ny - 1 - stride; j > 0; j -= stride) add(0, j, -1, 0);
+
+    const plate = new THREE.Group();
+    plate.name = "terrain-plate";
+    const lipPositions = new Float32Array(points.length * 6);
+    const lipIndices = [];
+    for (let i = 0; i < points.length; i++) {
+      const point = points[i];
+      lipPositions.set([point.x, point.y, point.z, point.outerX, point.y, point.outerZ], i * 6);
+      const a = i * 2, b = ((i + 1) % points.length) * 2;
+      lipIndices.push(a, a + 1, b, a + 1, b + 1, b);
+    }
+    const lipGeometry = new THREE.BufferGeometry();
+    lipGeometry.setAttribute("position", new THREE.BufferAttribute(lipPositions, 3));
+    lipGeometry.setIndex(lipIndices);
+    lipGeometry.computeVertexNormals();
+    const lip = new THREE.Mesh(lipGeometry, new THREE.MeshStandardMaterial({ color: 0x806244, roughness: 1, side: THREE.DoubleSide }));
+    lip.name = "terrain-plate-lip";
+    lip.receiveShadow = true;
+    plate.add(lip);
+
+    const wallPositions = [];
+    const wallColors = [];
+    const wallIndices = [];
+    const colorScratch = new THREE.Color();
+    for (const band of PLATE_BANDS) {
+      const start = wallPositions.length / 3;
+      colorScratch.setHex(band.color);
+      for (const point of points) {
+        wallPositions.push(point.outerX, point.y - band.from, point.outerZ, point.outerX, point.y - band.to, point.outerZ);
+        wallColors.push(colorScratch.r, colorScratch.g, colorScratch.b, colorScratch.r, colorScratch.g, colorScratch.b);
+      }
+      for (let i = 0; i < points.length; i++) {
+        const next = (i + 1) % points.length;
+        const top = start + i * 2, bottom = top + 1, nextTop = start + next * 2, nextBottom = nextTop + 1;
+        wallIndices.push(top, bottom, nextTop, bottom, nextBottom, nextTop);
+      }
+    }
+    const wallGeometry = new THREE.BufferGeometry();
+    wallGeometry.setAttribute("position", new THREE.Float32BufferAttribute(wallPositions, 3));
+    wallGeometry.setAttribute("color", new THREE.Float32BufferAttribute(wallColors, 3));
+    wallGeometry.setIndex(wallIndices);
+    wallGeometry.computeVertexNormals();
+    wallGeometry.computeBoundingBox();
+    wallGeometry.computeBoundingSphere();
+    const wall = new THREE.Mesh(wallGeometry, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide, flatShading: true }));
+    wall.name = "terrain-plate-side";
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    plate.add(wall);
+    this.group.add(plate);
   }
 
   #isFlat(i0, i1, j0, j1) {

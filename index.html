@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Brunnen 3D – Ingenbohl SZ</title>
 <meta name="description" content="Lebendiges 3D-Modell von Ingenbohl SZ aus offenen Schweizer Daten: Gebäude, Gelände, Verkehr, Energie und Abstimmungen, unter dem echten Himmel.">
-<meta name="theme-color" content="#e9eee8">
+<meta name="theme-color" content="#b6d3e8">
 <link rel="stylesheet" href="css/main.css">
 <script type="importmap">
 { "imports": {
@@ -53,6 +53,8 @@
     <button class="icon-btn" id="btn-reset" title="Kamera zurücksetzen (H)" aria-label="Kamera zurücksetzen">⟲</button>
     <button class="icon-btn" id="btn-top" title="Vogelperspektive (T)" aria-label="Vogelperspektive">⬒</button>
     <button class="icon-btn" id="btn-oblique" title="Schrägansicht" aria-label="Schrägansicht">◪</button>
+    <button class="icon-btn" id="btn-rotate-ccw" type="button" title="90 Grad gegen den Uhrzeigersinn" aria-label="Karte 90 Grad gegen den Uhrzeigersinn drehen">↶</button>
+    <button class="icon-btn" id="btn-rotate-cw" type="button" title="90 Grad im Uhrzeigersinn" aria-label="Karte 90 Grad im Uhrzeigersinn drehen">↷</button>
     <select id="preset-select" aria-label="Kameraposition"></select>
     <button class="icon-btn" id="btn-theme" title="Hell/Dunkel" aria-label="Hell- oder Dunkelmodus">◐</button>
   </section>
@@ -94,7 +96,7 @@
 
   <div id="almanac" hidden>
     <div class="panel sheet" role="dialog" aria-modal="true" aria-labelledby="almanac-title">
-      <div class="sheet-head"><h2 id="almanac-title">Ingenbohl in Zahlen</h2><button class="btn" id="almanac-close">Schliessen</button></div>
+      <div class="sheet-head"><div class="sheet-head-main"><button class="btn" id="almanac-back" type="button" aria-label="Zurück" title="Zurück" disabled>← Zurück</button><h2 id="almanac-title">Ingenbohl in Zahlen</h2></div><button class="btn" id="almanac-close">Schliessen</button></div>
       <div class="tabs" id="almanac-tabs" role="tablist"></div>
       <div id="almanac-body"></div>
     </div>
@@ -102,7 +104,7 @@
 
   <div id="statusbar" class="num" aria-live="off"></div>
   <div id="loading" role="status">
-    <div class="loading-card"><h2>Brunnen 3D</h2><div class="bar"><div id="loading-bar"></div></div><p id="loading-text">Lade Daten …</p></div>
+    <div class="loading-card"><span class="loading-spinner" aria-hidden="true"></span><h2>Brunnen 3D</h2><div class="bar"><div id="loading-bar"></div></div><p id="loading-text">Lade Daten …</p><p id="loading-note" class="loading-note" aria-live="polite">Die Höhenlinien bekommen noch ihre Frisur.</p></div>
   </div>
   <div id="error-banner" hidden role="alert"></div>
 </div>

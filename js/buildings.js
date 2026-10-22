@@ -22,9 +22,9 @@ const PERIODS = {
 export function buildYear(record) {
   const gwr = record.gwr;
   if (!gwr) return null;
-  if (gwr.yearBuilt) return { year: gwr.yearBuilt, exact: true };
+  if (gwr.yearBuilt) return { year: gwr.yearBuilt, exact: true, from: gwr.yearBuilt, to: gwr.yearBuilt };
   const period = PERIODS[gwr.periodBuilt];
-  return period ? { year: period.mid, exact: false, label: period.label } : null;
+  return period ? { year: period.mid, exact: false, label: period.label, from: period.from, to: period.to } : null;
 }
 
 const TYPE_GROUPS = [

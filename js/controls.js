@@ -16,31 +16,72 @@ export function createCameraRig({ camera, controls, terrain, onFrame }) {
     return new THREE.Vector3(target.x + back.x * horizontal, target.y + offset.y, target.z + back.z * horizontal);
   }
 
-  function flyTo({ target, distance, heading = 0, tilt = THREE.MathUtils.degToRad(55), duration = 1.4, instant = false }) {
+  function targetOnTerrain(target) {
     const ground = terrain.heightAt(target.x, target.z);
-    const to = target.clone();
-    if (ground !== null && (target.y === undefined || target.y < ground)) to.y = ground;
+    const result = target.clone();
+    if (ground !== null && (target.y === undefined || target.y < ground)) result.y = ground;
+    return result;
+  }
+
+  function flyTo({ target, distance, heading = 0, tilt = THREE.MathUtils.degToRad(55), duration = 1.4, instant = false, onComplete }) {
+    const to = targetOnTerrain(target);
     const destination = place(to, distance, heading, tilt);
     if (instant) {
+      animation = null;
       camera.position.copy(destination);
       controls.target.copy(to);
       controls.update();
+      onComplete?.();
       return;
     }
     animation = {
       t: 0, duration,
       fromPosition: camera.position.clone(), toPosition: destination,
-      fromTarget: controls.target.clone(), toTarget: to,
+      fromTarget: controls.target.clone(), toTarget: to, onComplete,
+    };
+  }
+
+  function spiralTo({ startTarget, startDistance, startHeading = 0, startTilt = THREE.MathUtils.degToRad(55), target, distance, heading = startHeading, tilt = startTilt, duration = 6, turns = 1, instant = false, onComplete }) {
+    const from = targetOnTerrain(startTarget);
+    const to = targetOnTerrain(target);
+    if (instant) {
+      animation = null;
+      camera.position.copy(place(to, distance, heading, tilt));
+      controls.target.copy(to);
+      controls.update();
+      onComplete?.();
+      return;
+    }
+    camera.position.copy(place(from, startDistance, startHeading, startTilt));
+    controls.target.copy(from);
+    controls.update();
+    animation = {
+      kind: "spiral", t: 0, duration, turns,
+      fromTarget: from, toTarget: to, startDistance, distance,
+      startHeading, heading, startTilt, tilt, onComplete,
     };
   }
 
   onFrame((delta) => {
-    if (!animation) return;
-    animation.t = Math.min(1, animation.t + delta / animation.duration);
-    const k = ease(animation.t);
-    camera.position.lerpVectors(animation.fromPosition, animation.toPosition, k);
-    controls.target.lerpVectors(animation.fromTarget, animation.toTarget, k);
-    if (animation.t >= 1) animation = null;
+    const current = animation;
+    if (!current) return;
+    current.t = Math.min(1, current.t + delta / current.duration);
+    const k = ease(current.t);
+    if (current.kind === "spiral") {
+      const target = current.fromTarget.clone().lerp(current.toTarget, k);
+      const distance = current.startDistance + (current.distance - current.startDistance) * k;
+      const heading = current.startHeading + (current.heading - current.startHeading + Math.PI * 2 * current.turns) * k;
+      const tilt = current.startTilt + (current.tilt - current.startTilt) * k;
+      camera.position.copy(place(target, distance, heading, tilt));
+      controls.target.copy(target);
+    } else {
+      camera.position.lerpVectors(current.fromPosition, current.toPosition, k);
+      controls.target.lerpVectors(current.fromTarget, current.toTarget, k);
+    }
+    if (current.t >= 1) {
+      animation = null;
+      current.onComplete?.();
+    }
   });
   controls.addEventListener("start", () => { animation = null; });
 
@@ -51,7 +92,7 @@ export function createCameraRig({ camera, controls, terrain, onFrame }) {
   }
 
   return {
-    flyTo,
+    flyTo, spiralTo,
     currentView,
     rotate(degrees) { const v = currentView(); flyTo({ target: controls.target.clone(), distance: v.distance, heading: v.heading + THREE.MathUtils.degToRad(degrees), tilt: v.tilt, duration: 0.45 }); },
     topDown() { const v = currentView(); flyTo({ target: controls.target.clone(), distance: v.distance, heading: v.heading, tilt: THREE.MathUtils.degToRad(1), duration: 0.9 }); },

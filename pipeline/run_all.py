@@ -8,11 +8,12 @@ from __future__ import annotations
 import sys
 import time
 
-from . import export, process_buildings, process_osm, process_terrain, process_pv, process_trees, process_votes
+from . import export, process_buildings, process_osm, process_parcels, process_terrain, process_pv, process_trees, process_votes
 
 STEPS = {
     "terrain": lambda: process_terrain.main([]),
     "buildings": process_buildings.main,
+    "parcels": process_parcels.main,
     "osm": process_osm.main,
     "trees": process_trees.main,
     "pv": process_pv.main,

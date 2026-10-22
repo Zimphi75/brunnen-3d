@@ -3,8 +3,9 @@
 Die Pipeline (`pipeline/`) lädt die Rohdaten, verarbeitet sie und schreibt browseroptimierte Dateien nach `public/data/`. Sie ist wiederholbar: Downloads landen in `pipeline/cache/` und werden bei erneuter Ausführung nicht wiederholt (Löschen des Ordners erzwingt einen frischen Abruf).
 
 ```bash
-.venv/bin/python -m pipeline.run_all            # terrain buildings osm trees pv votes export
+.venv/bin/python -m pipeline.run_all            # terrain buildings parcels osm trees pv votes export
 .venv/bin/python -m pipeline.run_all buildings  # einzelner Schritt
+.venv/bin/python -m pipeline.run_all parcels    # Parzellen und Gebäudeverknüpfung
 .venv/bin/python -m pipeline.download osm       # nur Download
 ```
 
@@ -26,15 +27,16 @@ Das Untersuchungsgebiet ist das Rechteck um die gepufferte Gemeindegrenze (für 
 2. **Lokaler Ursprung**: gerundeter Mittelpunkt der Gemeinde-Bounding-Box.
 3. **Gelände** (`process_terrain.py`): swissALTI3D-Kacheln (2 m) werden zu einem 5-m-Raster gemittelt, auf Uint16 quantisiert (0.1 m).
 4. **Gebäude** (`process_buildings.py`): swissBUILDINGS3D-Kacheln (neueste je Kachel) lesen, Flächen triangulieren (earcut nach Projektion auf die dominante Ebene, mit Löchern), je Fläche nach aussen ausrichten, Oberflächenklasse bestimmen, mit GWR über EGID verknüpfen (Gebäude ohne EGID über die Lage im GWR-Grundriss, 37 Treffer), Adressen aus GWR-Eingängen exportieren. Bestehende GWR-Gebäude ohne 3D-Modell gehen nach `gwr_unmatched.json`; als abgebrochen registrierte Gebäude (Status 1007/1008) bleiben im Modell, werden aber im Browser ausgeblendet.
-5. **OSM** (`process_osm.py`): Strassen, Bahn, Seilbahnen, Gewässer (Multipolygone zusammengesetzt), POI, Linien, Haltestellen, Ortsnamen; Zuschnitt auf das Gebiet.
-6. **Bäume** (`process_trees.py`): Ausschnitt des Vegetationshöhenmodells per HTTP-Bereichsabfrage, Gaussglättung, lokale Maxima ≥ 3 m (Fenster 5 m), Kronenradius aus Höhe geschätzt.
-7. **Luftbild** (`process_terrain.build_ortho`): SWISSIMAGE-Kacheln zu einem JPEG; Ausdehnung identisch mit dem Höhenraster.
-8. **Dachfarben** (`roof_colors.py`, aus `process_buildings`): SWISSIMAGE-WMS-Kacheln (1 km, Zwischenspeicher), Median der Pixel auf den Dachflächen jedes Gebäudes → `roofColor` in `buildings.json`.
-9. **Photovoltaik** (`process_pv.py`): BFE-Anlagenregister (CSV-ZIP, 340'000 Anlagen), Unterkategorie Photovoltaik; Zuordnung zum 3D-Gebäude über die EGID, sonst über die Koordinate (Dachprojektion, höchstens 6 m Abstand); Teilanlagen mit Ausrichtung und Neigung aus `PlantDetail` → `pv.json`.
-10. **Abstimmungen** (`process_votes.py`): BFS-voteinfo-JSON je Abstimmungstag (per `curl`, System-Zertifikate), Ja-Anteil der Gemeinde, des Kantons und der Schweiz → `votes.json`.
-11. **Export** (`export.py`): `municipality.json`, `statistics.json` (GWR-Aggregate), `sources.json` (Herkunft, Lizenz, Abrufdatum), `manifest.json` (SHA-256 der Eingabedateien).
+5. **Parzellen und Nutzungsplanung** (`process_parcels.py`): AV-Grundstücke, Grundnutzung und überlagernde ÖREB-Fachdaten über den Schwyzer WFS beziehen, GML 3.2 in LV95 einlesen und auf das Untersuchungsgebiet zuschneiden. Gebäude werden anhand ihres Modellmittelpunkts räumlich Parzellen und Planungsflächen zugeordnet. Der AV-WFS liefert Grundstücksnummer, Gemeinde und Fläche, aber kein EGRID; Eigentümerdaten werden nicht bezogen. Das Nutzungsplanungs-Schema liefert `typ`, `legend_text` und `geolink`, aber keine Rechtsverbindlichkeit oder Gültigkeit.
+6. **OSM** (`process_osm.py`): Strassen, Bahn, Seilbahnen, Gewässer (Multipolygone zusammengesetzt), POI, Linien, Haltestellen, Ortsnamen; Zuschnitt auf das Gebiet.
+7. **Bäume** (`process_trees.py`): Ausschnitt des Vegetationshöhenmodells per HTTP-Bereichsabfrage, Gaussglättung, lokale Maxima ≥ 3 m (Fenster 5 m), Kronenradius aus Höhe geschätzt.
+8. **Luftbild** (`process_terrain.build_ortho`): SWISSIMAGE-Kacheln zu einem JPEG; Ausdehnung identisch mit dem Höhenraster.
+9. **Dachfarben** (`roof_colors.py`, aus `process_buildings`): SWISSIMAGE-WMS-Kacheln (1 km, Zwischenspeicher), Median der Pixel auf den Dachflächen jedes Gebäudes → `roofColor` in `buildings.json`.
+10. **Photovoltaik** (`process_pv.py`): BFE-Anlagenregister (CSV-ZIP, 340'000 Anlagen), Unterkategorie Photovoltaik; Zuordnung zum 3D-Gebäude über die EGID, sonst über die Koordinate (Dachprojektion, höchstens 6 m Abstand); Teilanlagen mit Ausrichtung und Neigung aus `PlantDetail` → `pv.json`.
+11. **Abstimmungen** (`process_votes.py`): BFS-voteinfo-JSON je Abstimmungstag (per `curl`, System-Zertifikate), Ja-Anteil der Gemeinde, des Kantons und der Schweiz → `votes.json`.
+12. **Export** (`export.py`): `municipality.json`, `statistics.json` (GWR-Aggregate), `sources.json` (Herkunft, Lizenz, Abrufdatum), `manifest.json` (SHA-256 der Eingabedateien).
 
-`metadata.json` wird von den Schritten abschnittsweise ergänzt (`dem`, `ortho`, `buildings`, `osm`, `trees`, `municipality`, `statistics`) und ist die Verbindung zwischen Pipeline und Frontend (Ursprung, Raster, Höhenversatz).
+`metadata.json` wird von den Schritten abschnittsweise ergänzt (`dem`, `ortho`, `buildings`, `parcels`, `osm`, `trees`, `municipality`, `statistics`) und ist die Verbindung zwischen Pipeline und Frontend (Ursprung, Raster, Höhenversatz, Abdeckung und Qualität).
 
 ## Koordinatensystem
 
@@ -86,6 +88,8 @@ Kopf (4 × uint32: `"TRE1"`, Version, Anzahl, 0), dann `Float32[n]` x, `Float32[
 
 ### JSON-Dateien
 
+- `parcels.json`: `{ crs, sourceCrs, retrieved, source, matchMethod, parcels: [ { id, number, municipality, areaM2, link, rings: [[[x, z], ...]], buildingIds } ] }`. `buildings.json` enthält je Gebäude zusätzlich `parcels` mit den zugeordneten Parzellen. Zuordnungsmethode: LV95-Modellmittelpunkt liegt innerhalb der Parzellengeometrie; EGRID ist in diesem WFS nicht enthalten.
+- `planning.json`: `{ crs, sourceCrs, retrieved, source, warning, available, errors, features: [ { id, kind, type, label, link, rings: [[[x, z], ...]] } ] }`. `buildings.json` enthält je Gebäude zusätzlich `landUse` mit Grundnutzungs- und überlagernden Festlegungen am Gebäudemittelpunkt. Das gelieferte Schema enthält keine Rechtsverbindlichkeit und keinen Gültigkeitszeitraum.
 - `roads.json`: `{ roads: [ { id, c (Klasse), n, b (Brücke), t (Tunnel), l (Layer), lit (beleuchtet, OSM), ow (Einbahn: +1 in Punktfolge, -1 dagegen, 0 beidseitig; Kreisel +1), ln (Spurzahl laut OSM oder 0), p [x0, z0, x1, z1, …] } ] }`
 - `lamps.json`: `{ lamps: [ [x, z, art] ] }`, `art` 0 = OSM-Knoten, 1 = entlang `lit=yes`-Strassen modelliert (Abstand rund 35 m)
 - `gwr_unmatched.json`: `{ buildings: [ { egid, e, n, address, inMunicipality, gwr } ] }`, bestehende Registergebäude ohne 3D-Modell
@@ -101,4 +105,4 @@ Kopf (4 × uint32: `"TRE1"`, Version, Anzahl, 0), dann `Float32[n]` x, `Float32[
 
 ## Tests der Pipeline
 
-`tests/test_pipeline.py` prüft Triangulation und Orientierung (Würfel, Loch), Extent und Koordinaten sowie – wenn vorhanden – Grössen, Header (Format v2) und Konsistenz der erzeugten Dateien, Dachfarben, Laternen, Registergebäude ohne Modell, Abstimmungen, Abdeckungskennzahlen, Manifest und die Dokumentation von Lizenz und Herkunft je Datensatz (19 Tests).
+`tests/test_pipeline.py` prüft Triangulation und Orientierung (Würfel, Loch), Extent und Koordinaten sowie – wenn vorhanden – Grössen, Header (Format v2) und Konsistenz der erzeugten Dateien, Dachfarben, Laternen, Registergebäude ohne Modell, Abstimmungen, Abdeckungskennzahlen, Manifest, AV-/ÖREB-GML und räumliche Gebäudezuordnung sowie die Dokumentation von Lizenz und Herkunft je Datensatz (26 Tests).

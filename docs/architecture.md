@@ -7,6 +7,8 @@ flowchart LR
   subgraph Quellen
     S[swisstopo STAC / API]
     B[BFS GWR]
+    ST[STATPOP / STATENT]
+    A[Kanton SZ AV-/ÖREB-WFS]
     O[OpenStreetMap Overpass]
     V[WSL/BAFU Vegetationshöhen]
   end
@@ -14,6 +16,7 @@ flowchart LR
     D[download.py]
     T[process_terrain.py]
     G[process_buildings.py]
+    P[process_parcels.py]
     M[process_osm.py]
     R[process_trees.py]
     Q[process_votes.py]
@@ -29,21 +32,26 @@ flowchart LR
   end
   subgraph Laufzeit-APIs
     W[Open-Meteo]
-    P[transport.opendata.ch]
+    OTD[transport.opendata.ch]
     Z[swisstopo WMS Zeitreise]
+    DW[GeoAdmin WMS: STATPOP / STATENT Raster]
   end
   S --> D
   B --> D
+  A --> P
   O --> D
   V --> D
   D --> T & G & M & R & Q & PV & E
   C --> G
   G --> PV
-  T & G & M & R & Q & PV & E --> F
+  G --> P
+  T & G & P & M & R & Q & PV & E --> F
   F --> JS
   W --> JS
-  P --> JS
+  OTD --> JS
   Z --> JS
+  DW --> JS
+  ST --> DW
 ```
 
 Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.opendata.ch, swisstopo-WMS) erlauben CORS-Zugriffe direkt aus dem Browser. Die Abstimmungsdaten des BFS erlauben das nicht (und umfassen 6 MB je Tag); die Pipeline zieht darum die Gemeinderesultate einmal nach `votes.json`. Die Datenhaltung besteht aus statischen JSON-Dateien, Binärdateien und Texturen. Ein Proxy (FastAPI oder Node) mit Caching wäre nur nötig, wenn eine API kein CORS bietet oder Schlüssel geschützt werden müssen (zum Beispiel für ÖV-Echtzeitpositionen mit opentransportdata.swiss-Token).
@@ -56,6 +64,7 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | three.js r160 lokal in `public/vendor/` (per Skript) | Offline lauffähig, feste Version, GTAOPass vorhanden |
 | LV95 (EPSG:2056) als Quellsystem, lokale Koordinaten für Three.js | Float32-Genauigkeit: `x = E - E0`, `y = Höhe - 430 m`, `z = -(N - N0)`; Ursprung (2'688'000, 1'206'300) |
 | Gebäude als ein zusammengeführtes Mesh mit einem Shader | Ein Draw-Call. Pro Vertex stehen Fassaden-/Dachfarbe, Fläche-Typ, Geschosszahl und Ladenstil als Attribute bereit; Fenster, Läden und Dachziegel entstehen prozedural im Fragment-Shader (kein Geometrie- oder Texturaufwand). Auswahl über eigenen AABB- und Dreiecks-Picker |
+| Gebäude ↔ Parzelle | AV-Grundstücke aus dem Schwyzer WFS werden anhand des LV95-Modellmittelpunkts räumlich zugeordnet. Das AV-Schema stellt in diesem Dienst kein EGRID bereit; die Zuordnung ist deshalb keine amtliche Identifikatorverknüpfung und Eigentümerdaten werden nicht bezogen. |
 | Photovoltaik als Instanzen auf Dachebenen | Die Register-Anlagen werden zur Laufzeit auf die Dachebenen gelegt (rund 20'000 Module, 3 Draw-Calls, nur unter 2.2 km Blickabstand sichtbar). Gemessen ist nur das Register; Modulzahl und -lage sind eine dokumentierte Simulation |
 | Verkehr nur in Blicknähe | Höchstens 130 Autos und 360 Personen, Startpunkte im Ring um den Blickpunkt (nie im Bild), Anzahl wächst mit dem Blickabstand, bei Nacht, Regen und Schnee weniger; die Bewegung ist reine Rechnung auf Polylinien ohne Physik |
 | Fahrzeuge und Ausstattung als Bausatz (`models.js`) | Wenige Quader und Zylinder mit Vertexfarben, per `InstancedMesh`/Gruppen eingesetzt: schlank, einheitlich, kein Asset-Download. Einzelne Fotomodelle wären teurer in Grösse und Pflege |
@@ -98,6 +107,7 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | `search.js` | Index und Suche (Adressen, Strassen, Gebäude, POI, Orte, Koordinaten) |
 | `analysis.js` | Werkzeuge, Erweiterungspunkt `ctx.analysis.register()` |
 | `almanac.js` | Almanach: Zahlen, Energie, Abstimmungen, Datenqualität, Quellen |
+| `demographics.js` | STATPOP/STATENT: 100-m-Rasterkarten, GeoAdmin-Zellabfrage, Zellklick und Gebäudeumfeldwerte |
 | `controls.js` | Kameraflug, Voreinstellungen, Drehen per Taste, Zeigerinteraktion (Picker-Provider) |
 | `layers.js`, `inspector.js` | Ebenenliste, Informationspanel (alle Texte werden maskiert) |
 
@@ -123,7 +133,7 @@ Messung in der Anwendung: `await window.brunnen.performanceReport()`. Die Werte 
 
 - Solarpotenzial und PV-Modi (BFE sonnendach.ch), Objektprofil, Fahrmodus: nicht umgesetzt.
 - Isochronen, Fussgänger-Erreichbarkeit und Velorouten: Erweiterungspunkt vorhanden (`ctx.analysis.register`), Routing-Graph aus `roads.json` fehlt.
-- STATPOP/STATENT-Hektarraster, swissNAMES3D, Parzellen und ÖREB (Kanton Schwyz): nicht integriert.
+- STATPOP/STATENT sind als dynamische 100-m-Rasterlayer und Zellwerte integriert. Einwohner- und VZÄ-Werte gelten nur für die Rasterzelle, nicht für einzelne Gebäude oder Personen; Zuverlässigkeitscodes sind noch nicht interpretiert. swissNAMES3D ist nicht integriert. AV-Parzellen und ÖREB-Grundnutzungs-/Überlagerungsflächen sind als Umrisslayer vorhanden; die Gebäudezuordnung basiert auf dem Mittelpunkt, weil kein EGRID geliefert wird. Rechtsverbindlichkeit und Gültigkeit liefert das abgerufene Nutzungsplanungs-Feature-Schema nicht.
 - Gebäude: Sockel fehlen (an Hängen kann der Fuss schweben); Fassaden, Fensterläden und Fenster sind gestalterisch.
 - Tunnel werden nicht dargestellt (ausgeblendet), Brücken folgen dem Gelände.
 - Test auf iPhone/Safari und schwachen GPUs steht aus; die Qualitätsstufe ist eine Annahme (Touch oder höchstens 4 Kerne).

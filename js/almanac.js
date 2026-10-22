@@ -23,9 +23,13 @@ async function loadVotes() {
 export async function initAlmanac(ctx) {
   const { $, meta, records } = ctx;
   const [statistics, sources, manifest] = await Promise.all([loadOptionalJson("statistics.json"), loadOptionalJson("sources.json"), loadOptionalJson("manifest.json")]);
+  ctx.sources = sources;
   const modal = $("#almanac"), body = $("#almanac-body"), tabs = $("#almanac-tabs");
-  const TABS = ["Übersicht", "Gebäude", "Energie", "Abstimmungen", "Datenqualität", "Quellen"];
+  const backButton = $("#almanac-back");
+  const TABS = ["Übersicht", "Gebäude", "Grundstücke", "Energie", "Abstimmungen", "Datenqualität", "Quellen"];
   let votes = null;
+  let activeTab = null;
+  const tabHistory = [];
 
   function overview() {
     const g = statistics?.gwr, m = ctx.municipality, b = meta.buildings;
@@ -46,6 +50,22 @@ export async function initAlmanac(ctx) {
     return `<div class="cols"><div><h3>Gebäude nach Bauperiode (GWR)</h3>${bars(Object.entries(g.byPeriod).sort())}</div>
       <div><h3>Gebäude nach Klasse</h3>${bars(Object.entries(g.byClass).slice(0, 10))}</div></div>
       <p class="note">GWR-Stand ${esc(g.exportDate)}; nur bestehende Gebäude in ${esc(g.municipality)}.</p>`;
+  }
+  function parcelsTab() {
+    const p = meta.parcels;
+    if (!p?.file) return "<p>Parzellendaten fehlen (Pipeline: python -m pipeline.run_all parcels).</p>";
+    const features = ctx.parcels?.planning ?? [];
+    const featureCounts = count(features, (feature) => feature.kind === "grundnutzung" ? "Grundnutzung" : "Überlagernde Festlegung");
+    const buildingsWithPlanning = records.filter((record) => record.landUse?.length).length;
+    return `<div class="stats">
+      ${stat(fmt(p.count), "Parzellen im Untersuchungsgebiet")}
+      ${stat(`${fmt(p.matchedBuildings)} von ${fmt(records.length)}`, "Gebäude mit zugeordneter Parzelle")}
+      ${stat(fmt(p.planning?.features), "Nutzungsplanungsflächen")}
+      ${stat(`${fmt(buildingsWithPlanning)} von ${fmt(records.length)}`, "Gebäude mit Planungsfläche am Mittelpunkt")}
+    </div>
+    <h3>Nutzungsplanungsflächen</h3>${bars(featureCounts)}
+    <p class="note">Parzellen- und Planungszuordnung über den LV95-Modellmittelpunkt des Gebäudes. Der AV-WFS liefert kein EGRID. Die Nutzungsplanungs-Features enthalten keine Rechtsverbindlichkeit oder Gültigkeit; daraus wird keine amtliche Rechtsauskunft abgeleitet.</p>
+    <p class="note">Quelle: Amtliche Vermessung und ÖREB-Fachdaten Nutzungsplanung, Kanton Schwyz. Abrufstand ${esc(p.retrieved ?? "unbekannt")}.</p>`;
   }
   function energyTab() {
     const entries = count(records.filter((r) => r.inMunicipality), (r) => heatingGroup(r)?.label ?? "Keine Angabe im GWR");
@@ -89,10 +109,13 @@ export async function initAlmanac(ctx) {
     return `<dl class="src">${sources.datasets.map((d) => `<dt>${esc(d.title)}</dt><dd>${esc(d.provider)} · ${esc(d.license)} · <a href="${esc(d.terms)}" target="_blank" rel="noopener">Bedingungen</a><br><span class="note">${esc(d.coverage ?? "")}${d.notes ? ` · ${esc(d.notes)}` : ""}</span></dd>`).join("")}</dl>`;
   }
 
-  async function show(tab) {
+  async function show(tab, pushHistory = true) {
+    if (pushHistory && activeTab && activeTab !== tab) tabHistory.push(activeTab);
+    activeTab = tab;
+    backButton.disabled = tabHistory.length === 0;
     tabs.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
     if (tab === "Abstimmungen") body.innerHTML = await votesTab();
-    else body.innerHTML = { "Übersicht": overview, "Gebäude": buildingsTab, "Energie": energyTab, "Datenqualität": quality, "Quellen": sourcesTab }[tab]();
+    else body.innerHTML = { "Übersicht": overview, "Gebäude": buildingsTab, "Grundstücke": parcelsTab, "Energie": energyTab, "Datenqualität": quality, "Quellen": sourcesTab }[tab]();
     if (tab === "Übersicht") {
       fetch("https://de.wikipedia.org/api/rest_v1/page/summary/Ingenbohl").then((r) => (r.ok ? r.json() : null)).then((w) => {
         const el = $("#wiki");
@@ -102,7 +125,11 @@ export async function initAlmanac(ctx) {
   }
   tabs.innerHTML = TABS.map((t) => `<button type="button" role="tab" data-tab="${t}" aria-selected="false">${t}</button>`).join("");
   tabs.addEventListener("click", (event) => { const t = event.target.closest("button")?.dataset.tab; if (t) show(t); });
-  const open = (tab = "Übersicht") => { modal.hidden = false; show(tab); };
+  backButton.addEventListener("click", () => {
+    const previous = tabHistory.pop();
+    if (previous) show(previous, false);
+  });
+  const open = (tab = "Übersicht") => { modal.hidden = false; tabHistory.length = 0; activeTab = null; show(tab, false); };
   $("#btn-almanac").addEventListener("click", () => open());
   $("#almanac-close").addEventListener("click", () => { modal.hidden = true; });
   modal.addEventListener("click", (event) => { if (event.target === modal) modal.hidden = true; });

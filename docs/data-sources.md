@@ -9,6 +9,10 @@ Die maschinenlesbare Fassung mit Abrufdatum steht in `public/data/sources.json` 
 | SWISSIMAGE 10 cm | swisstopo | STAC `ch.swisstopo.swissimage-dop10` (2-m-Variante) | COG, 48 Kacheln, ca. 6 MB | jeweils neueste Kachel | OGD swisstopo, Quellenangabe |
 | swissBUILDINGS3D 3.0 Beta | swisstopo | STAC `ch.swisstopo.swissbuildings3d_3_0` (Kacheln je Landeskarte-Blatt; Vollabdeckung mit 14 GB wird übersprungen) | FileGDB (`Building_solid`, `Floor`), 6 Kacheln, 36 MB | je Kachel 2022–2025 | OGD swisstopo, Quellenangabe |
 | GWR Kanton SZ | BFS | `https://public.madd.bfs.admin.ch/sz.zip` | CSV (tab-getrennt), 18 MB | täglich (Stand 2026-10-21) | OGD BFS, Quellenangabe (`license.pdf` im Paket) |
+| STATPOP (Einwohner) | BFS via GeoAdmin | WMS/GetFeatureInfo `ch.bfs.volkszaehlung-bevoelkerungsstatistik_einwohner` | Rasterzellen 100 × 100 m, EPSG:2056 | 1990, 2000, 2010–2024; zur Laufzeit | OGD BFS, Quellenangabe |
+| STATENT (Beschäftigte VZÄ) | BFS via GeoAdmin | WMS/GetFeatureInfo `ch.bfs.betriebszaehlungen-beschaeftigte_vollzeitaequivalente` | Rasterzellen 100 × 100 m, EPSG:2056 | verfügbare Erhebungsjahre 1995–2023; zur Laufzeit | OGD BFS, Quellenangabe |
+| Grundstückskataster (AV) | Amt für Geoinformation Kanton Schwyz | WFS 2.0 `https://map.geo.sz.ch/mapserv_proxy`, Feature-Type `ms:ch.sz.a018.amtliche_vermessung.liegenschaften.grundstueck` | GML 3.2, LV95; Grundstücksnummer, Gemeinde, Fläche und Linkfeld | laufend gepflegter WFS; Katalogstand 2026-10-17 | OGD Kanton Schwyz, Quellenangabe (`terms_by`) |
+| ÖREB-Fachdaten: kommunale Nutzungsplanung Ingenbohl | Amt für Geoinformation Kanton Schwyz / Gemeinde Ingenbohl | WFS 2.0 `https://map.geo.sz.ch/mapserv_proxy`; Feature-Types `ms:ch.sz.a094b.oereb.raumplanung.nutzungsplanung_kommunal.ingenbohl.grundnutzung` und `…ueberlagernde_festlegung` | GML 3.2, LV95; Polygon, `typ`, `legend_text`, `geolink` | laut Katalog aktualisiert am 2026-10-08; WFS bei Abruf | OGD Kanton Schwyz, Quellenangabe (`terms_by`); Schema enthält keine Rechtsverbindlichkeit oder Gültigkeit |
 | OpenStreetMap | Mitwirkende | Overpass-API | JSON, rund 2 MB | Abruf | ODbL 1.0 |
 | Vegetationshöhenmodell NFI | WSL/BAFU | STAC `ch.bafu.landesforstinventar-vegetationshoehenmodell`, COG per HTTP-Bereichsabfrage | COG 1 m (nur Ausschnitt gelesen) | Jahr 2025 | ODbL mit DbCL |
 | Photovoltaikanlagen | BFE, Elektrizitätsproduktionsanlagen | STAC `ch.bfe.elektrizitaetsproduktionsanlagen`, Download `…_2056.csv.zip` | CSV, 19 MB (ganze Schweiz) | täglich | OGD BFE, Quellenangabe |
@@ -18,13 +22,15 @@ Die maschinenlesbare Fassung mit Abrufdatum steht in `public/data/sources.json` 
 | Wetter | Open-Meteo | `api.open-meteo.com` (zur Laufzeit) | JSON | aktuell | CC BY 4.0, nicht kommerziell |
 | Abfahrten | opentransportdata.swiss via transport.opendata.ch | `transport.opendata.ch/v1` (zur Laufzeit, CORS offen) | JSON | Fahrplan und Echtzeitprognose | Open Data, Quellenangabe |
 | Zeitreise (historische Karten) | swisstopo | WMS `ch.swisstopo.zeitreihen`, `TIME=JJJJ1231` | Bild, CORS offen | Kartenstände 1864 bis 2021 | OGD swisstopo, Quellenangabe |
+| Gebäude-Umweltindikatoren (on demand) | BAG/BAFU via GeoAdmin | Identify `ch.bag.radonkarte`; WMS GetFeatureInfo `ch.bafu.laerm-{strassenlaerm,bahnlaerm}_{tag,nacht}` und `ch.bafu.geochemischer-bodenatlas_schweiz_{arsen,cadmium,blei}` | Abfrage beim Gebäudeauswählen, LV95-Gebäudemittelpunkt; keine Daten beim App-Start | Lärm: Modell/Verkehrsdaten 2021; Bodenatlas: Probenahme 2011–2015 | GeoAdmin/BAG/BAFU, Quellenangabe |
 
 ## Nicht verwendet oder nicht verfügbar
 
-- **BFS STATPOP/STATENT (Hektarraster)**: offene Daten vorhanden, aber nicht integriert; `statistics.json` enthält nur GWR-Aggregate.
+- **STATPOP/STATENT**: Einwohner und Beschäftigte (VZÄ) werden als 100-m-Rasterzellen beim Gebäudeauswählen und über die zuschaltbaren Rasterlayer abgefragt. Sie sind Zellwerte und werden nicht als individuelle Gebäudewerte interpretiert; `statistics.json` enthält weiterhin nur GWR-Aggregate.
 - **swissNAMES3D**: nicht integriert; Ortsnamen stammen aus OpenStreetMap.
 - **BFE sonnendach.ch**: nicht integriert (Solarpotenzial als spätere Erweiterung).
-- **Grundstücke und ÖREB Kanton Schwyz**: kein geprüfter offener Massendownload; nicht integriert.
+- **Umweltwerte im Gebäudeprofil**: BAG-Radonwahrscheinlichkeit, BAFU-Strassen-/Bahnlärm und geochemischer Bodenatlas werden bei Gebäudeauswahl aus GeoAdmin abgefragt. Sie erscheinen als Umweltindikatoren, nicht im numerischen Nähe-Score: Radon ist eine 1-km-Wahrscheinlichkeit für die Überschreitung von 300 Bq/m³ und keine Gebäudemessung; Lärmwerte sind Rastermodelle und nicht rechtsverbindlich; Bodenmetalle stammen aus einer 1-km-Interpolation des Oberbodens (0–20 cm) und sind nicht parzellenscharf. Ozon und SwissPRTR sind noch nicht in die Gebäudeabfrage integriert.
+- **Grundstücke und ÖREB Kanton Schwyz**: Grundstücksgeometrien sind neu über den AV-WFS eingebunden und räumlich mit Gebäudemittelpunkten verknüpft. ÖREB-/Nutzungsplan-Layer sind verfügbar, aber noch nicht objektbezogen integriert.
 - **Gemessene ÖV-Fahrzeugpositionen**: Die offene Fahrplan-API liefert nur Fahrplan und Echtzeitprognosen. Positionen in der Karte sind entweder Haltestellen (Lage aus OSM) oder als «Fahrplansimulation» gekennzeichnet.
 - **Fassadenfarben, Fensterläden, Fenster, Dachziegel**: nicht in den offenen Daten enthalten. Das «Dorfbild» zeigt sie gestalterisch (aus Gebäude-ID und GWR-Nutzung abgeleitet); nur die Dachfarbe ist gemessen (Luftbild).
 - **Modulzahl und Modullage der Photovoltaik**: nicht im Register (nur Leistung, Standort, Jahr, Bauart, teils Ausrichtung/Neigung). Die 3D-Ansicht simuliert die Belegung der Dachflächen.

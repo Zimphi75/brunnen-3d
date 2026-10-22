@@ -16,6 +16,7 @@ from shapely.geometry import Polygon, box
 from pipeline import config
 from pipeline.common import Extent, compute_extent, to_local
 from pipeline.process_buildings import building_mesh, triangulate_face
+from pipeline.process_parcels import attach_parcels, attach_planning, parse_gml, parse_planning_gml
 
 DATA = config.OUT_DIR
 
@@ -80,6 +81,63 @@ def test_building_mesh_cube_is_closed_and_outward():
     centre = local.mean(axis=0)
     a, b, c = (local[triangles[:, k]] for k in range(3))
     assert np.all(np.sum(np.cross(b - a, c - a) * (a - centre), axis=1) > 0)
+
+
+def test_parcel_gml_extracts_lv95_polygon_and_attributes():
+        raw = b'''<?xml version="1.0"?>
+        <wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0"
+            xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:ms="http://mapserver.gis.umn.edu/mapserver">
+            <wfs:member><ms:ch.sz.a018.amtliche_vermessung.liegenschaften.grundstueck gml:id="parcel.1">
+                <ms:nummer>123</ms:nummer><ms:gde_nm>Ingenbohl</ms:gde_nm><ms:flaechenmass>100</ms:flaechenmass>
+                <ms:lgs_links>https://example.invalid/parcel</ms:lgs_links>
+                <ms:geom><gml:Surface srsName="urn:ogc:def:crs:EPSG::2056"><gml:patches><gml:PolygonPatch>
+                    <gml:exterior><gml:LinearRing><gml:posList srsDimension="2">0 0 10 0 10 10 0 10 0 0</gml:posList></gml:LinearRing></gml:exterior>
+                </gml:PolygonPatch></gml:patches></gml:Surface></ms:geom>
+            </ms:ch.sz.a018.amtliche_vermessung.liegenschaften.grundstueck></wfs:member>
+        </wfs:FeatureCollection>'''
+        parcels = parse_gml(raw)
+        assert len(parcels) == 1
+        assert parcels[0]["id"] == "Ingenbohl:123"
+        assert parcels[0]["areaM2"] == 100
+        assert parcels[0]["geometry"].area == 100
+
+
+def test_buildings_link_to_parcels_by_center_and_keep_unmatched():
+        from shapely.geometry import box
+
+        buildings = [{"center": [5, 5]}, {"center": [20, 20]}]
+        parcels = [{"id": "Ingenbohl:123", "number": "123", "municipality": "Ingenbohl", "areaM2": 100, "geometry": box(0, 0, 10, 10)}]
+        assert attach_parcels(buildings, parcels) == (1, 1)
+        assert buildings[0]["parcels"] == [{"id": "Ingenbohl:123", "number": "123", "municipality": "Ingenbohl", "areaM2": 100}]
+        assert buildings[1]["parcels"] == []
+
+
+def test_planning_gml_extracts_polygon_and_legend_attributes():
+        raw = b'''<?xml version="1.0"?>
+        <wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0"
+            xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:ms="http://mapserver.gis.umn.edu/mapserver">
+            <wfs:member><ms:ch.sz.a094b.oereb.raumplanung.nutzungsplanung_kommunal.ingenbohl.grundnutzung gml:id="zone.1">
+                <ms:typ>W1</ms:typ><ms:legend_text>Wohnzone</ms:legend_text><ms:geolink>https://example.invalid/zone</ms:geolink>
+                <ms:geom><gml:Surface srsName="urn:ogc:def:crs:EPSG::2056"><gml:patches><gml:PolygonPatch>
+                    <gml:exterior><gml:LinearRing><gml:posList srsDimension="2">0 0 10 0 10 10 0 10 0 0</gml:posList></gml:LinearRing></gml:exterior>
+                </gml:PolygonPatch></gml:patches></gml:Surface></ms:geom>
+            </ms:ch.sz.a094b.oereb.raumplanung.nutzungsplanung_kommunal.ingenbohl.grundnutzung></wfs:member>
+        </wfs:FeatureCollection>'''
+        features = parse_planning_gml(raw, "grundnutzung")
+        assert len(features) == 1
+        assert features[0]["id"] == "grundnutzung:zone.1"
+        assert features[0]["label"] == "Wohnzone"
+        assert features[0]["geometry"].area == 100
+
+
+def test_building_land_use_is_spatially_linked_and_unmatched_is_empty():
+        from shapely.geometry import box
+
+        buildings = [{"center": [5, 5]}, {"center": [20, 20]}]
+        planning = [{"id": "zone.1", "kind": "grundnutzung", "type": "W1", "label": "Wohnzone", "link": None, "geometry": box(0, 0, 10, 10)}]
+        assert attach_planning(buildings, planning) == (1, 1)
+        assert buildings[0]["landUse"] == [{"id": "zone.1", "kind": "grundnutzung", "type": "W1", "label": "Wohnzone", "link": None}]
+        assert buildings[1]["landUse"] == []
 
 
 # --- erzeugte Daten -----------------------------------------------------------

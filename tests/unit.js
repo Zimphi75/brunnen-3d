@@ -10,7 +10,14 @@ import { buildNetwork, advance, sample } from "../js/ambient.js";
 import { markingLines, walk, roadLayout } from "../js/roadmarks.js";
 import { parseDem, parseBuildings } from "../js/api.js";
 import { weatherCondition, PRESETS, LIVE_WINDOW_MS } from "../js/weather.js";
-import { esc } from "../js/inspector.js";
+import { createInspector, esc } from "../js/inspector.js";
+import { initAlmanac } from "../js/almanac.js";
+import { Terrain } from "../js/terrain.js";
+import { createCameraRig } from "../js/controls.js";
+import { buildLocationRating } from "../js/location-rating.js";
+import { fetchBuildingEnvironment } from "../js/environment.js";
+import { fetchDemographicCell } from "../js/demographics.js";
+import { createLayerManager } from "../js/layers.js";
 
 const results = [];
 const tests = [];
@@ -56,9 +63,10 @@ test("Zeitzone Zürich: Sommer-/Winterzeit", () => {
 });
 
 test("Baujahr: exakt oder nur Periode, sonst unbekannt", () => {
-  assert(buildYear({ gwr: { yearBuilt: 1987 } }).exact === true);
+  const exact = buildYear({ gwr: { yearBuilt: 1987 } });
+  assert(exact.exact === true && exact.from === 1987 && exact.to === 1987);
   const period = buildYear({ gwr: { periodBuilt: 8013 } });
-  assert(period.exact === false && period.year === 1953 && period.label === "1946 bis 1960");
+  assert(period.exact === false && period.year === 1953 && period.label === "1946 bis 1960" && period.from === 1946 && period.to === 1960);
   assert(buildYear({ gwr: {} }) === null && buildYear({}) === null);
 });
 
@@ -77,6 +85,250 @@ test("Wetter: Codes und Niederschlag", () => {
 
 test("HTML-Maskierung", () => {
   assert(esc('<img src=x onerror="alert(1)">') === "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
+});
+
+test("Gebäude-Inspector zeigt Parzelle und räumliche Zuordnung", () => {
+  const panel = document.createElement("section"), body = document.createElement("div"), closeButton = document.createElement("button");
+  const inspector = createInspector({ panel, body, closeButton, codes: {} });
+  inspector.showBuilding({
+    id: "fixture", type: "Gebaeude Einzelhaus", center: [2688000, 1206300], inMunicipality: true,
+    gwr: {}, parcels: [{ id: "Ingenbohl:123", number: "123", municipality: "Ingenbohl", areaM2: 100 }],
+    landUse: [{ id: "zone.1", kind: "grundnutzung", type: "W1", label: "Wohnzone", link: null }],
+  });
+  assert(!panel.hidden && body.querySelector('[role="tab"][aria-selected="true"]')?.textContent === "Übersicht");
+  assert(body.textContent.includes("Gebäudeprofil") && body.textContent.includes("Gebäude"));
+  assert(!body.querySelector('[data-profile-tab="energy"]') && !body.querySelector('[data-profile-tab="compare"]'));
+  body.querySelector('[data-profile-tab="data"]').click();
+  assert(body.querySelector('[role="tab"][aria-selected="true"]')?.textContent === "Daten & Quellen");
+  assert(body.textContent.includes("Grundstück 1"));
+  assert(body.textContent.includes("123 · 100 m²"));
+  assert(body.textContent.includes("Wohnzone"));
+  assert(body.textContent.includes("Gebäudemittelpunkt innerhalb der Parzellengeometrie; kein EGRID im WFS"));
+  assert(body.textContent.includes("Rechtsverbindlichkeit und Gültigkeit sind im abgerufenen Feature-Schema nicht enthalten"));
+});
+
+test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
+  const panel = document.createElement("section"), body = document.createElement("div"), closeButton = document.createElement("button");
+  const inspector = createInspector({
+    panel, body, closeButton,
+    codes: {
+      GKLAS: { 1122: "Gebäude mit drei oder mehr Wohnungen" }, GKAT: { 1020: "Gebäude mit ausschliesslicher Wohnnutzung" },
+      GSTAT: { 1004: "Gebäude bestehend" }, GWAERZH1: { 7410: "Heizkessel (generisch) für ein Gebäude" },
+    },
+  });
+  const profileRecord = {
+    type: "Gebaeude Einzelhaus", center: [2688933.1, 1205885.9], inMunicipality: true, egid: 257113, height: 13.93, footprintArea: 282.8,
+    gwr: { class: 1122, category: 1020, periodBuilt: 8015, status: 1004, floors: 5, dwellings: 8, heatGenerator: 7410, heatEnergy: 7530, footprintAreaGwr: 283 },
+  };
+  const frame = { toLocal: () => ({ x: 0, z: 0 }) };
+  const rating = buildLocationRating({
+    record: profileRecord, frame,
+    pois: [
+      { n: "Coop", s: "supermarket", x: 173, z: 0 }, { n: "Theresianum", s: "school", x: 593, z: 0 },
+      { n: "Stockfluhe", s: "pitch", x: 1708, z: 0 },
+    ],
+    stops: [{ n: "Kantonalbank", m: "bus", x: 170, z: 0 }, { n: "Brunnen", m: "train", x: 215, z: 0 }],
+    places: [{ n: "Brunnen", k: "village", x: 487, z: 0 }],
+    osmSource: { provider: "OpenStreetMap-Mitwirkende", license: "ODbL 1.0", retrieved: "2026-10-22" },
+  });
+  assert(rating.score === 4.3 && rating.coverage === 100, "Wohnlagen-Score stimmt nicht mit den gewichteten Luftlinien überein");
+  const insufficient = buildLocationRating({ record: profileRecord, frame, pois: [{ n: "Coop", s: "supermarket", x: 173, z: 0 }] });
+  assert(insufficient.score === null && insufficient.coverage === 25, "Unzureichende Datenbasis darf keinen Score erzeugen");
+  const demographics = { status: "ready", cellSizeM: 100, bounds: [2688500, 1205600, 2688600, 1205700], population: { value: 126, year: 2024 }, employment: { value: 4, year: 2023 } };
+  inspector.showBuilding(profileRecord, {
+    addresses: ["Rosengartenstrasse 4, 6440 Brunnen"],
+    comparison: { group: "Gebäude mit drei oder mehr Wohnungen", count: 443, metrics: [{ label: "Grundfläche GWR", value: 283, unit: "m²", percentile: 56, median: 265, count: 443, histogram: [{ label: "200-300", count: 112, selected: true }, { label: "300-400", count: 70, selected: false }], distribution: "rechtsschief" }] },
+    nearby: [{ label: "Supermarkt", name: "Coop", distance: 173 }],
+    environmental: { status: "ready", indicators: [{ id: "radon", label: "Radon", available: true, inRating: false, value: 16, unit: "%", resolutionM: 1000, detail: "Modellierte Wahrscheinlichkeit, den Referenzwert zu überschreiten.", source: "BAG-Radonkarte · GeoAdmin" }] },
+    demographics: { status: "ready", cellSizeM: 100, bounds: [2688500, 1205600, 2688600, 1205700], population: { value: 126, year: 2024 }, employment: { value: 4, year: 2023 } },
+    pv: [{ plant: { kw: 22.28, year: 2023, cat: "angebaut", parts: [[0, 10, 6], [0, 10, 2]] }, requested: 58, placed: 58, onRoof: true }],
+    rating,
+    demographics,
+    gwrExportDate: "2026-10-21",
+  });
+  assert(body.textContent.includes("1971 bis 1980") && body.textContent.includes("Coop") && body.textContent.includes("173 m"), "Übersicht mit Bauperiode und Luftlinien fehlt");
+  assert(!body.querySelector(".profile-age-track") && body.textContent.includes("1971 bis 1980"), "Bauzeit soll als Text statt Heatmap erscheinen");
+  assert(!body.querySelector(".profile-kpis").textContent.includes("Bauzeit") && body.querySelector(".profile-kpis").textContent.includes("Gebäudehöhe"), "Bauzeit ist doppelt oder die Gebäudehöhe fehlt");
+  assert(body.textContent.includes("Abweichung der beiden Angaben: 0.2 m²") && body.textContent.includes("Median 265 m²"), "Grundfläche braucht Differenz und Vergleichskontext");
+  assert(body.textContent.includes("126") && body.textContent.includes("STATPOP 2024") && body.textContent.includes("nicht für dieses Gebäude"), "Rasterwerte müssen als Umfeld und nicht als Gebäudewerte markiert sein");
+  assert(body.textContent.includes("22.3 kW registriert"), "PV-Leistung fehlt in der Übersicht");
+  assert(body.querySelector("[data-rating-toggle]") && body.textContent.includes("4.3"), "Rating-Badge fehlt");
+  body.querySelector("[data-rating-toggle]").click();
+  assert(body.textContent.includes("OpenStreetMap-Mitwirkende") && body.textContent.includes("ÖV-Güteklasse") && body.textContent.includes("Luftlinie"), "Ratingquellen oder nicht verfügbare Kriterien fehlen");
+  assert(body.textContent.includes("Umweltindikatoren · nicht im Nähe-Score") && body.textContent.includes("BAG-Radonkarte · GeoAdmin") && body.textContent.includes("1'000 m"), "Radon muss mit Rasterauflösung separat vom Nähe-Score erscheinen");
+  body.querySelector('[data-profile-tab="compare"]').click();
+  assert(body.textContent.includes("56. Perzentil") && body.textContent.includes("n = 443"), "Vergleichsperzentil oder Stichprobe fehlt");
+  assert(body.querySelectorAll(".profile-histogram-bin").length === 2 && body.querySelector(".profile-histogram-bin.is-current"), "Histogrammsäulen oder Gebäudemarkierung fehlen");
+  assert(body.textContent.includes("keine Normalverteilungskurve angenommen"), "Vergleich soll die empirische Form nicht als normal verteilen");
+  body.querySelector('[data-profile-tab="energy"]').click();
+  assert(body.textContent.includes("Heizöl") && body.textContent.includes("58 von 58 Modulen simuliert"), "Heizöl oder Simulationshinweis fehlt");
+  assert(body.textContent.includes("Jahresertrag ist nicht verfügbar"), "Fehlender PV-Jahresertrag wird nicht transparent erklärt");
+  body.querySelector('[data-profile-tab="data"]').click();
+  assert(body.textContent.includes("GWR-Export 2026-10-21") && body.textContent.includes("EGID"), "Quellenstand oder EGID fehlt");
+});
+
+test("Umweltkarten: GeoAdmin-Werte behalten Auflösung und Modellhinweise", async () => {
+  const calls = [];
+  const fetcher = async (input) => {
+    const url = new URL(input);
+    calls.push(url);
+    if (url.hostname === "api3.geo.admin.ch") {
+      return { ok: true, json: async () => ({ results: [{ bbox: [2688000, 1205000, 2689000, 1206000], attributes: { probability_prozent: 16, confidence: 2897.92 } }] }) };
+    }
+    const layer = url.searchParams.get("QUERY_LAYERS");
+    const value = layer.includes("strassenlaerm_tag") ? "37.9" : layer.includes("radon") ? "16" : "5";
+    return { ok: true, json: async () => ({ bbox: [2688525, 1205685, 2688535, 1205695], features: [{ properties: { value_0: value }, geometry: { coordinates: [2688530, 1205690] } }] }) };
+  };
+  const data = await fetchBuildingEnvironment([2688532.9, 1205692], fetcher);
+  const radon = data.indicators.find((item) => item.id === "radon");
+  const noise = data.indicators.find((item) => item.id === "road-day");
+  const soil = data.indicators.find((item) => item.id === "arsenic");
+  assert(data.status === "ready" && data.indicators.length === 8 && calls.length === 8);
+  assert(radon.value === 16 && radon.resolutionM === 1000 && radon.inRating === false);
+  assert(noise.value === 37.9 && noise.resolutionM === 10 && noise.detail.includes("Nicht rechtsverbindlich"));
+  assert(soil.value === 5 && soil.resolutionM === 1000 && soil.detail.includes("keine parzellenscharfe Aussage"));
+  const unavailable = await fetchBuildingEnvironment([2688532.9, 1205692], async () => ({ ok: false }));
+  assert(unavailable.status === "ready" && unavailable.indicators.every((item) => !item.available));
+});
+
+test("Demografie: GeoAdmin liefert neuestes Jahr mit 100-m-Zellgeometrie", async () => {
+  const fetcher = async (input) => {
+    const url = new URL(input);
+    const isPopulation = url.searchParams.get("layers").includes("bevoelkerungsstatistik");
+    const years = isPopulation ? [2022, 2024] : [2021, 2023];
+    return { ok: true, json: async () => ({ results: years.map((year) => ({
+      bbox: [2688500, 1205600, 2688600, 1205700],
+      geometry: { rings: [[[2688500, 1205600], [2688600, 1205600], [2688600, 1205700], [2688500, 1205700], [2688500, 1205600]]] },
+      attributes: { number: isPopulation ? year - 1898 : year - 2019, i_year: year },
+    })) }) };
+  };
+  const cell = await fetchDemographicCell([2688532.9, 1205692], fetcher);
+  assert(cell.cellSizeM === 100 && cell.bounds[0] === 2688500 && cell.bounds[2] === 2688600);
+  assert(cell.population.value === 126 && cell.population.year === 2024);
+  assert(cell.employment.value === 4 && cell.employment.year === 2023);
+  assert(cell.geometry.rings[0].length === 5);
+});
+
+test("Ebenen: nach Nutzeraufgabe gruppiert und mit Aktivzählern", () => {
+  const list = document.createElement("div");
+  const layers = createLayerManager(list);
+  layers.add({ id: "terrain", label: "Gelände", color: "#888", visible: true });
+  layers.add({ id: "roads", label: "Strassen", color: "#888", visible: false });
+  const groups = [...list.querySelectorAll(":scope > .layer-group")];
+  const base = groups.find((group) => group.textContent.includes("Karte, Gebäude & Grundstücke"));
+  const mobility = groups.find((group) => group.textContent.includes("Mobilität & Verkehr"));
+  assert(base?.open === true, "Grundkarte-Gruppe soll geöffnet starten");
+  assert(base.querySelectorAll(".layer-row").length === 1, "Gelände-Layer fehlt in der Grundkarte-Gruppe");
+  assert(mobility?.open === false, "Mobilität-Gruppe soll eingeklappt starten");
+  assert(mobility.querySelectorAll(".layer-row").length === 1, "Strassen-Layer fehlt in der Mobilität-Gruppe");
+  assert(base.querySelector(".layer-group-count").textContent === "1/1", "Grundkarte-Aktivzähler ist falsch");
+  layers.setVisible("roads", true);
+  assert(mobility.querySelector(".layer-group-count").textContent === "1/1", "Mobilität-Aktivzähler aktualisiert nicht");
+  assert(!list.querySelector(":scope > .layer-row"), "Layer dürfen nicht ungegliedert bleiben");
+});
+
+test("Almanach: Zurück navigiert im Dialog statt ihn zu schliessen", async () => {
+  const elements = new Map();
+  for (const selector of ["#almanac", "#almanac-body", "#almanac-tabs", "#btn-almanac", "#almanac-close", "#almanac-back"]) {
+    elements.set(selector, document.createElement(selector === "#almanac-tabs" ? "nav" : "div"));
+  }
+  elements.get("#almanac").hidden = true;
+  const ctx = { $: (selector) => elements.get(selector), meta: {}, records: [] };
+  await initAlmanac(ctx);
+  elements.get("#btn-almanac").click();
+  elements.get("#almanac-tabs").querySelector('[data-tab="Grundstücke"]').click();
+  assert(elements.get("#almanac-tabs").querySelector('[data-tab="Grundstücke"]').getAttribute("aria-selected") === "true");
+  elements.get("#almanac-back").click();
+  assert(elements.get("#almanac-tabs").querySelector('[data-tab="Übersicht"]').getAttribute("aria-selected") === "true");
+  assert(elements.get("#almanac").hidden === false && elements.get("#almanac-back").disabled === true);
+});
+
+test("Gelände: Plattenrand hat Lippe und geschichtete Seitenwand", async () => {
+  const dem = { nx: 3, ny: 3, cell: 5, minE: 100, minN: 200, scale: 1, values: new Float32Array([10, 11, 12, 11, 12, 13, 12, 13, 14]) };
+  const terrain = new Terrain(dem, { originE: 100, originN: 200 });
+  await terrain.build({ nearCenter: { x: 5, z: -5 }, nearRadius: 10 });
+  const plate = terrain.group.getObjectByName("terrain-plate");
+  const side = plate?.getObjectByName("terrain-plate-side");
+  const lip = plate?.getObjectByName("terrain-plate-lip");
+  assert(side && lip, "Plattenwand oder Randlippe fehlt");
+  near(side.geometry.boundingBox.min.y, 10 - 150, 1e-4, "untere Plattenkante");
+  assert(side.geometry.attributes.color.count === side.geometry.attributes.position.count);
+});
+
+test("Kamera: Startflug nähert sich dem Ziel über die Flugzeit", async () => {
+  const { PerspectiveCamera, Vector3 } = await import("three");
+  const camera = new PerspectiveCamera();
+  camera.position.set(0, 1400, 0);
+  const target = new Vector3();
+  const controls = { target, update() {}, addEventListener() {} };
+  const frames = [];
+  const rig = createCameraRig({ camera, controls, terrain: { heightAt: () => 0 }, onFrame: (callback) => frames.push(callback) });
+  rig.flyTo({ target: target.clone(), distance: 700, heading: 0, tilt: Math.PI / 3, duration: 8 });
+  frames[0](5);
+  const middleDistance = rig.currentView().distance;
+  assert(middleDistance < 1400 && middleDistance > 700, "Flug bewegt die Kamera nicht graduell");
+  frames[0](4);
+  frames[0](5);
+});
+
+test("Kamera: Folgezoom startet erst am Ende der ersten Fahrt", async () => {
+  const { PerspectiveCamera, Vector3 } = await import("three");
+  const camera = new PerspectiveCamera();
+  camera.position.set(0, 1400, 0);
+  const target = new Vector3();
+  const controls = { target, update() {}, addEventListener() {} };
+  const frames = [];
+  const rig = createCameraRig({ camera, controls, terrain: { heightAt: () => 0 }, onFrame: (callback) => frames.push(callback) });
+  let followStarted = false;
+  rig.flyTo({ target: target.clone(), distance: 700, heading: 0, tilt: Math.PI / 3, duration: 8, onComplete: () => {
+    followStarted = true;
+    rig.flyTo({ target: target.clone(), distance: 350, heading: 0, tilt: Math.PI / 3, duration: 4 });
+  } });
+  frames[0](4);
+  assert(!followStarted && rig.currentView().distance > 700);
+  frames[0](4);
+  assert(followStarted);
+  near(rig.currentView().distance, 700, 1e-3, "Startdistanz Folgezoom");
+  frames[0](4);
+  near(rig.currentView().distance, 350, 1e-3, "Enddistanz Folgezoom");
+});
+
+test("Kamera: Kompass dreht in beide Richtungen um 90 Grad", async () => {
+  const { PerspectiveCamera, Vector3 } = await import("three");
+  const camera = new PerspectiveCamera();
+  camera.position.set(0, 1000, 0);
+  const target = new Vector3();
+  const controls = { target, update() {}, addEventListener() {} };
+  const frames = [];
+  const rig = createCameraRig({ camera, controls, terrain: { heightAt: () => 0 }, onFrame: (callback) => frames.push(callback) });
+  rig.flyTo({ target: target.clone(), distance: 1000, heading: 0, tilt: Math.PI / 3, instant: true });
+  rig.rotate(90);
+  frames[0](0.5);
+  near(rig.currentView().heading, Math.PI / 2, 1e-3, "Drehung im Uhrzeigersinn");
+  rig.rotate(-90);
+  frames[0](0.5);
+  near(rig.currentView().heading, 0, 1e-3, "Drehung gegen den Uhrzeigersinn");
+});
+
+test("Kamera: Startsequenz beginnt beim Gemeinde-Reset und sinkt kreisend ins Dorf", async () => {
+  const { PerspectiveCamera, Vector3 } = await import("three");
+  const camera = new PerspectiveCamera();
+  camera.position.set(0, 7000, 0);
+  const target = new Vector3();
+  const controls = { target, update() {}, addEventListener() {} };
+  const frames = [];
+  const rig = createCameraRig({ camera, controls, terrain: { heightAt: () => 38 }, onFrame: (callback) => frames.push(callback) });
+  const origin = new Vector3(0, 0, 0), village = new Vector3(-50, 0, 400);
+  rig.spiralTo({ startTarget: origin, startDistance: 7000, startHeading: 0, startTilt: Math.PI / 3, target: village, distance: 1400, heading: 0, tilt: Math.PI * 40 / 180, duration: 10, turns: 1 });
+  near(rig.currentView().distance, 7000, 1e-3, "Ausgangsdistanz Reset-Preset");
+  assert(controls.target.distanceTo(new Vector3(0, 38, 0)) < 1e-3, "Startpunkt weicht vom Gemeinde-Reset ab");
+  frames[0](5);
+  const middle = rig.currentView();
+  assert(middle.distance < 7000 && middle.distance > 1800, "Sinkflug bewegt sich nicht zwischen Start und Ziel");
+  assert(Math.abs(middle.heading) > 1, "Kamera kreist während des Sinkflugs nicht");
+  frames[0](5);
+  near(rig.currentView().distance, 1400, 1e-3, "Zieldistanz Dorfansicht");
+  assert(controls.target.distanceTo(new Vector3(-50, 38, 400)) < 1e-3, "Endpunkt weicht von der Dorfansicht ab");
 });
 
 test("parseDem prüft die Rastergrösse", () => {
