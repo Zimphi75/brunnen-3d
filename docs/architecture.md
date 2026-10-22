@@ -33,7 +33,6 @@ flowchart LR
   subgraph Laufzeit-APIs
     W[Open-Meteo]
     OTD[transport.opendata.ch]
-    Z[swisstopo WMS Zeitreise]
     DW[GeoAdmin WMS: STATPOP / STATENT Raster]
   end
   S --> D
@@ -49,7 +48,6 @@ flowchart LR
   F --> JS
   W --> JS
   OTD --> JS
-  Z --> JS
   DW --> JS
   ST --> DW
 ```
@@ -103,15 +101,16 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | `transport.js` | Haltestellen, Linien, Abfahrten, Fahrplansimulation |
 | `sky.js` | Sonnenstand (SunCalc-Algorithmus), Himmel, Sterne, Licht, Schatten, Zeitzone Zürich |
 | `weather.js` | Open-Meteo, Vorgaben, Wettereffekte (Overlay und Partikel) |
-| `history.js` | Zeitachse, historische Karten, Vergleich |
+| `history.js` | Eigenständige neutrale Zeitreise, GWR-Jahresfilter, Zustandssicherung und -wiederherstellung |
+| `map-navigation.js` | Kartentyp-Kacheln, Touch-/Hover-Schnellzugriffe, Gebäudemodi und Kartendetails |
 | `search.js` | Index und Suche (Adressen, Strassen, Gebäude, POI, Orte, Koordinaten) |
 | `analysis.js` | Werkzeuge, Erweiterungspunkt `ctx.analysis.register()` |
 | `almanac.js` | Almanach: Zahlen, Energie, Abstimmungen, Datenqualität, Quellen |
 | `demographics.js` | STATPOP/STATENT: 100-m-Rasterkarten, GeoAdmin-Zellabfrage, Zellklick und Gebäudeumfeldwerte |
-| `controls.js` | Kameraflug, Voreinstellungen, Drehen per Taste, Zeigerinteraktion (Picker-Provider) |
+| `controls.js` | Manuelle Kamera-Voreinstellungen und Drehungen, Zeigerinteraktion (Picker-Provider); keine automatische Startfahrt |
 | `layers.js`, `inspector.js` | Ebenenliste, Informationspanel (alle Texte werden maskiert) |
 
-Die Oberfläche (`index.html`, `css/main.css`) folgt gestalterisch dem Vorbild Speicher AR: halbtransparente, unscharf hinterlegte Panels (Identität und Suche oben links, Uhr und Himmel oben Mitte, Ansicht oben rechts, Ebenen links mit einklappbaren Abschnitten, Inspector rechts, Almanach unten rechts), Hell- und Dunkelthema über CSS-Variablen, Systemschriften ohne externe Dienste.
+Die Oberfläche (`index.html`, `css/main.css`) hält die 3D-Karte im Zentrum: Kartentyp-Kacheln und vier Schnellzugriffe liegen unten links; «Mehr» öffnet die gruppierten Kartendetails. Bei Touchgeräten lässt sich die Schnellzugriffsleiste über die Pfeiltaste erweitern. Die Zeitreise nutzt einen eigenen unteren Regler, springt beim Einstieg ohne Animation in die Vogelperspektive, neutralisiert den Boden, setzt Zeit/Wetter auf heute 12:00 und klar, blendet thematische Ebenen aus und stellt beim Verlassen alle vorherigen Zustände einschliesslich Kamera wieder her. Ein per Vertexattribut gespeicherter GWR-Zeitraum steuert den GPU-Dither-Fade ohne einzelne Gebäudeobjekte oder zusätzliche Draw Calls; das Tempo sinkt von 3× auf 0.5× bei 1980, danach bleibt es konstant. Während des Timelapses bewegt sich die Kamera nicht.
 
 Erweiterungspunkte: `ctx.providers` (neue anklickbare Objekte), `ctx.clickHandlers`, `ctx.analysis.register({ id, label, hint, onClick })`, `layers.add({ id, label, apply })`.
 

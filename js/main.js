@@ -4,7 +4,7 @@ import { createFrame, formatLv95, wgs84ToLv95 } from "./geo.js";
 import { loadJson, loadOptionalJson, loadBinary, loadOptionalBinary, parseDem, parseBuildings, createProgress } from "./api.js";
 import { createScene } from "./scene.js";
 import { Terrain } from "./terrain.js";
-import { Buildings, COLOR_MODES } from "./buildings.js";
+import { Buildings, COLOR_MODES, buildYear } from "./buildings.js";
 import { createCameraRig, createPicker } from "./controls.js";
 import { createLayerManager } from "./layers.js";
 import { createInspector } from "./inspector.js";
@@ -20,6 +20,7 @@ import { initSearch } from "./search.js";
 import { initAnalysis } from "./analysis.js";
 import { initWeather } from "./weather.js";
 import { initHistory } from "./history.js";
+import { initMapNavigation } from "./map-navigation.js";
 import { initHires } from "./hires.js";
 import { initGround } from "./ground.js";
 import { initAmbient } from "./ambient.js";
@@ -27,6 +28,8 @@ import { initAlmanac } from "./almanac.js";
 import { buildLocationRating } from "./location-rating.js";
 import { fetchBuildingEnvironment } from "./environment.js";
 import { initDemographicLayers } from "./demographics.js";
+import { initTimeWeatherPanel } from "./time-weather-panel.js";
+import { initNavigationHint } from "./navigation-hint.js";
 
 const $ = (selector) => document.querySelector(selector);
 const errors = [];
@@ -49,7 +52,8 @@ function startLoadingMessages() {
 }
 
 function animateNightToLive(ctx) {
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  ctx.cancelTimeTransition = null;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
   const endDate = ctx.simDate();
   const endParts = zurichParts(endDate);
   let startDate = zurichToDate(endParts.year, endParts.month, endParts.day, 4 * 60);
@@ -62,12 +66,17 @@ function animateNightToLive(ctx) {
 
   const duration = 10;
   let elapsed = 0, lastUpdate = 0, removeFrame = () => {};
+  let resolveTransition;
+  const transitionComplete = new Promise((resolve) => { resolveTransition = resolve; });
   const interrupt = () => {
     removeFrame();
-    for (const [id, event] of [["#time-slider", "input"], ["#date-input", "change"], ["#btn-now", "click"], ["#btn-play", "click"]]) {
+    if (ctx.cancelTimeTransition === interrupt) ctx.cancelTimeTransition = null;
+    for (const [id, event] of [["#time-slider", "input"], ["#date-input", "change"], ["#weather-mode", "click"], ["#btn-play", "click"]]) {
       $(id).removeEventListener(event, interrupt);
     }
+    resolveTransition();
   };
+  ctx.cancelTimeTransition = interrupt;
   const onFrame = (delta) => {
     elapsed = Math.min(duration, elapsed + delta);
     if (elapsed - lastUpdate < 0.1 && elapsed < duration) return;
@@ -80,9 +89,10 @@ function animateNightToLive(ctx) {
     if (t >= 1) interrupt();
   };
   removeFrame = ctx.scene3d.onFrame(onFrame);
-  for (const [id, event] of [["#time-slider", "input"], ["#date-input", "change"], ["#btn-now", "click"], ["#btn-play", "click"]]) {
+  for (const [id, event] of [["#time-slider", "input"], ["#date-input", "change"], ["#weather-mode", "click"], ["#btn-play", "click"]]) {
     $(id).addEventListener(event, interrupt);
   }
+  return transitionComplete;
 }
 
 function reportError(message, error) {
@@ -100,6 +110,7 @@ function setLoading(fraction, text) {
 }
 
 const PRESETS = [
+  { id: "brunnen", label: "Brunnen Zentrum", local: [635, 748], distance: 300, heading: 15, tilt: 58 },
   { id: "gemeinde", label: "Gemeinde Ingenbohl", local: [0, 0], distance: 7000, heading: 15, tilt: 62 },
   { id: "bahnhof", label: "Brunnen Bahnhof", wgs: [46.9992, 8.6101], distance: 650, heading: 0, tilt: 58 },
   { id: "hafen", label: "Brunnen Hafen", wgs: [46.9936, 8.6053], distance: 750, heading: 20, tilt: 62 },
@@ -155,19 +166,14 @@ async function start() {
   Object.assign(ctx, { buildings, records: records?.buildings ?? [], codes: codes ?? {}, addresses: addresses ?? [] });
 
   await setupUi(ctx);
-  animateNightToLive(ctx);
+  const timeTransitionReady = animateNightToLive(ctx);
   ctx.readyAt = performance.now() - started;
-  const originView = ctx.presets.find((preset) => preset.id === "gemeinde");
-  const destination = new THREE.Vector3(-50, ctx.terrain.heightAt(-50, 400) ?? 0, 400);
-  ctx.rig.spiralTo({
-    startTarget: originView.target.clone(), startDistance: originView.distance, startHeading: originView.heading, startTilt: originView.tilt,
-    target: destination, distance: 1400, heading: originView.heading, tilt: THREE.MathUtils.degToRad(40), duration: 10, turns: 1,
-    instant: matchMedia("(prefers-reduced-motion: reduce)").matches,
-  });
   clearInterval(loadingMessageTimer);
   $("#loading").classList.add("done");
   setTimeout(() => $("#loading").remove(), 700);
   window.brunnen = ctx; // Debug- und Testzugriff
+  ctx.navigationHint = initNavigationHint({ root: $("#navigation-hint"), canvas: $("#scene") });
+  Promise.all([ctx.initialCameraReady, timeTransitionReady]).then(() => ctx.navigationHint.show());
 }
 
 async function setupUi(ctx) {
@@ -185,29 +191,65 @@ async function setupUi(ctx) {
   ctx.presets = presets;
   const select = $("#preset-select");
   select.innerHTML = presets.map((p) => `<option value="${p.id}">${p.label}</option>`).join("");
-  const goPreset = (id, instant = false) => {
+  select.value = "brunnen";
+  const goPreset = (id, instant = false, onComplete) => {
     const preset = presets.find((p) => p.id === id);
-    if (preset) rig.flyTo({ target: preset.target.clone(), distance: preset.distance, heading: preset.heading, tilt: preset.tilt, instant });
+    if (preset) rig.flyTo({ target: preset.target.clone(), distance: preset.distance, heading: preset.heading, tilt: preset.tilt, instant, onComplete });
   };
+  const syncCameraModeButtons = () => {
+    const tilt = rig.currentView().tilt;
+    $("#btn-top").setAttribute("aria-pressed", String(tilt <= THREE.MathUtils.degToRad(2)));
+    $("#btn-oblique").setAttribute("aria-pressed", String(Math.abs(tilt - THREE.MathUtils.degToRad(58)) <= THREE.MathUtils.degToRad(2)));
+  };
+  controls.addEventListener("change", syncCameraModeButtons);
   select.addEventListener("change", () => goPreset(select.value));
-  const home = () => { select.value = "gemeinde"; goPreset("gemeinde"); };
+  const home = () => {
+    const wasTimeTransitionRunning = Boolean(ctx.cancelTimeTransition);
+    ctx.cancelTimeTransition?.();
+    if (wasTimeTransitionRunning && ctx.timeWeatherMode === "live") ctx.setNow?.();
+    ctx.resetMapSelection?.();
+    void ctx.ground.set("sim");
+    select.value = "brunnen";
+    goPreset("brunnen", true);
+    syncCameraModeButtons();
+    ctx.initialCameraReadyResolve?.();
+  };
   $("#btn-reset").addEventListener("click", home);
   $("#btn-top").addEventListener("click", () => rig.topDown());
   $("#btn-oblique").addEventListener("click", () => rig.oblique());
   $("#btn-rotate-ccw").addEventListener("click", () => rig.rotate(-90));
   $("#btn-rotate-cw").addEventListener("click", () => rig.rotate(90));
-  const initialView = presets.find((preset) => preset.id === "gemeinde");
-  rig.flyTo({ target: initialView.target.clone(), distance: initialView.distance, heading: initialView.heading, tilt: initialView.tilt, instant: true });
+  const initialView = presets.find((preset) => preset.id === "brunnen");
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let resolveInitialCamera;
+  ctx.initialCameraReady = new Promise((resolve) => {
+    resolveInitialCamera = resolve;
+    ctx.initialCameraReadyResolve = resolve;
+  });
+  if (reducedMotion) {
+    goPreset(initialView.id, true);
+    resolveInitialCamera();
+  } else {
+    rig.flyTo({ target: initialView.target.clone(), distance: initialView.distance * 1.15, heading: initialView.heading, tilt: initialView.tilt, instant: true });
+    goPreset(initialView.id, false, resolveInitialCamera);
+  }
+  syncCameraModeButtons();
 
   const root = document.documentElement;
   root.dataset.theme = localStorage.getItem("brunnen3d-theme") ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const syncThemeButton = () => $("#btn-theme").setAttribute("aria-pressed", String(root.dataset.theme === "dark"));
+  syncThemeButton();
   $("#btn-theme").addEventListener("click", () => {
     root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
     localStorage.setItem("brunnen3d-theme", root.dataset.theme);
+    syncThemeButton();
   });
 
   // Ebenen
-  const layers = createLayerManager($("#layer-list"));
+  const layers = createLayerManager($("#layer-list"), {
+    analysis: $("#analysis-layer-list"),
+    display: $("#display-layer-list"),
+  });
   ctx.layers = layers;
   layers.add({ id: "terrain", label: "Gelände", color: "#8a9a73", apply: (v) => { terrain.group.visible = v; } });
   layers.add({
@@ -226,7 +268,19 @@ async function setupUi(ctx) {
       : `<div class="item"><span class="swatch" style="background:${e.color}"></span>${e.label}</div>`).join("");
   };
   modeSelect.disabled = !buildings;
-  modeSelect.addEventListener("change", () => { buildings.setColorMode(modeSelect.value); renderLegend(); });
+  modeSelect.addEventListener("change", () => {
+    buildings.setColorMode(modeSelect.value);
+    renderLegend();
+    if (modeSelect.value !== "dorf") {
+      if (ctx.timeWeatherPanel) ctx.timeWeatherPanel.setMode("clear");
+      else {
+        ctx.setClearTime?.();
+        ctx.weather?.setPreset("clear");
+        $("#weather-mode").querySelectorAll("button").forEach((button) => button.setAttribute("aria-checked", String(button.dataset.k === "clear")));
+        $("#weather-effect-chips").querySelectorAll("button").forEach((button) => button.setAttribute("aria-checked", String(button.dataset.k === "none")));
+      }
+    }
+  });
 
   // Inspector, Hover, Auswahl
   const addressesByBuilding = new Map();
@@ -234,7 +288,7 @@ async function setupUi(ctx) {
     if (index >= 0) { if (!addressesByBuilding.has(index)) addressesByBuilding.set(index, []); addressesByBuilding.get(index).push(label); }
   });
   ctx.addressesByBuilding = addressesByBuilding;
-  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => { buildings?.select(-1); ctx.parcels?.selectBuilding(-1); } });
+  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => { buildings?.select(-1); ctx.parcels?.selectBuilding(-1); }, onActivateDemographicCell: (record) => ctx.demographics?.activateBuildingCell(record) });
   ctx.inspector = inspector;
   const environmentalCache = new Map();
   const demographicCache = new Map();
@@ -284,8 +338,23 @@ async function setupUi(ctx) {
     };
   ctx.selectBuilding = (index) => {
     buildings.select(index);
-    ctx.parcels?.selectBuilding(index);
     const record = ctx.records[index];
+    if (ctx.history?.state.active) {
+      const date = buildYear(record);
+      const shown = date && date.year <= ctx.history.state.year;
+      inspector.render({
+        title: addressesByBuilding.get(index)?.[0] ?? record.name ?? "Gebäude",
+        sub: `Zeitreise · Jahr ${ctx.history.state.year}`,
+        sections: [[
+          ["Baujahr", date ? (date.exact ? String(date.year) : `${date.label} · ca. ${date.year}`) : "nicht erfasst"],
+          ["Einordnung", shown ? "im dargestellten Bestand" : date ? "noch nicht eingeblendet" : "nicht datierbar"],
+          ["Geometrie", "heutiges swissBUILDINGS3D-Modell"],
+        ]],
+        source: "Baujahr/Bauperiode: BFS GWR. Periodenmitte als Näherung; historische Abbrüche und Umbauten sind nicht rekonstruiert.",
+      });
+      return;
+    }
+    ctx.parcels?.selectBuilding(index);
     const requestId = ++environmentalRequestId;
     const demographicCellKey = `${Math.floor(record.center[0] / 100) * 100}:${Math.floor(record.center[1] / 100) * 100}`;
     const cacheKey = record.egid ?? record.id;
@@ -336,6 +405,13 @@ async function setupUi(ctx) {
     },
     onClick({ hit, ground, ray }, event) {
       for (const handler of ctx.clickHandlers) if (handler({ hit, ground, ray, event })) return;
+      if (hit?.kind === "building" && buildings?.selected === hit.index && !$("#inspector").hidden) {
+        environmentalRequestId++;
+        buildings.select(-1);
+        ctx.parcels?.selectBuilding(-1);
+        inspector.hide();
+        return;
+      }
       buildings?.select(-1);
       ctx.parcels?.selectBuilding(-1);
       if (hit?.kind === "building") ctx.selectBuilding(hit.index);
@@ -346,6 +422,18 @@ async function setupUi(ctx) {
       else if (!hit) inspector.hide();
     },
   });
+  ctx.resetMapSelection = () => {
+    environmentalRequestId++;
+    ctx.analysis?.activate(null);
+    buildings?.hover(-1);
+    buildings?.select(-1);
+    ctx.parcels?.selectBuilding(-1);
+    ctx.demographics?.resetSelection?.();
+    inspector.hide();
+    canvas.style.cursor = "";
+    statusText = "";
+    status.textContent = "";
+  };
   let lastStatus = 0;
   scene3d.onFrame((_, now) => {
     if (now - lastStatus < 500) return;
@@ -375,35 +463,51 @@ async function setupUi(ctx) {
     const times = sky.times(date);
     const altitude = sky.state.altitude * 180 / Math.PI;
     const azimuth = (((sky.state.azimuth * 180 / Math.PI) + 180) % 360 + 360) % 360;
+    ctx.solarDisplay = { date, times, altitude, azimuth };
     sunInfo.textContent = `Sonne ${altitude.toFixed(0)}° / ${azimuth.toFixed(0)}°` + (times.rise ? ` · ↑ ${timeFormat.format(times.rise)} ↓ ${timeFormat.format(times.set)}` : "");
+    $("#sunrise-value").textContent = times.rise ? timeFormat.format(times.rise) : "Keine aktuellen Daten";
+    $("#sunset-value").textContent = times.set ? timeFormat.format(times.set) : "Keine aktuellen Daten";
+    $("#sun-altitude-value").textContent = `${altitude.toFixed(0)}°`;
+    $("#sun-azimuth-value").textContent = `${azimuth.toFixed(0)}°`;
+    ctx.onTimeChange?.();
   };
-  const setNow = () => {
-    const now = zurichParts(new Date());
-    Object.assign(state, { year: now.year, month: now.month, day: now.day, minutes: now.minutes });
+  const play = $("#btn-play");
+  const stopTimePlayback = () => {
+    state.playing = false;
+    play.textContent = "▶";
+    play.classList.remove("on");
+    play.setAttribute("aria-label", "Tagesverlauf abspielen");
+  };
+  const setTime = (date, minutes) => {
+    const parts = zurichParts(date);
+    Object.assign(state, { year: parts.year, month: parts.month, day: parts.day, minutes: minutes ?? parts.minutes });
+    stopTimePlayback();
     applyTime();
   };
+  const setNow = () => setTime(new Date());
+  const setClearTime = () => setTime(new Date(), 12 * 60);
   slider.addEventListener("input", () => { state.minutes = Number(slider.value); applyTime(); });
   dateInput.addEventListener("change", () => {
     const [y, m, d] = dateInput.value.split("-").map(Number);
     if (y) { Object.assign(state, { year: y, month: m, day: d }); applyTime(); }
   });
-  $("#btn-now").addEventListener("click", setNow);
-  const play = $("#btn-play");
   play.addEventListener("click", () => {
     state.playing = !state.playing;
     play.textContent = state.playing ? "❚❚" : "▶";
     play.classList.toggle("on", state.playing);
+    play.setAttribute("aria-label", state.playing ? "Tagesverlauf pausieren" : "Tagesverlauf abspielen");
   });
+  ctx.stopTimePlayback = stopTimePlayback;
   scene3d.onFrame((delta) => {
     if (!state.playing) return;
     state.minutes = (state.minutes + delta * 20) % 1440; // 1 s = 20 min
     applyTime();
   });
-  const clockButton = $("#clock-btn"), skyPanel = $("#sky-panel");
-  clockButton.addEventListener("click", () => { skyPanel.hidden = !skyPanel.hidden; clockButton.setAttribute("aria-expanded", String(!skyPanel.hidden)); });
   setNow();
   ctx.timeState = state;
   ctx.applyTime = applyTime;
+  ctx.setNow = setNow;
+  ctx.setClearTime = setClearTime;
 
   await initPois(ctx);
   await initTransport(ctx);
@@ -418,27 +522,31 @@ async function setupUi(ctx) {
   initHistory(ctx);
 
   // Wetter: Vorgaben als Auswahl, Anzeige im Zeitfeld
-  ctx.onWeatherChange = ({ live, source, preset, condition }) => {
-    const temp = live ? `${live.temperature_2m.toFixed(0)} °C` : "";
-    let text = "kein Wetter";
-    if (source === "preset") text = `Vorschau · ${ctx.weather.PRESETS[preset].label}`;
-    else if (source === "live") text = `${temp} · ${condition.text}`;
-    else if (source === "outside") text = "Wetter nur für jetzt";
-    $("#clock-wx").textContent = text;
-  };
+  ctx.onWeatherChange = () => ctx.refreshWeatherPanel?.();
+  ctx.onAirQualityChange = () => ctx.refreshAirQualityPanel?.();
   initWeather(ctx);
-  const chips = $("#weather-chips");
-  chips.innerHTML = Object.entries(ctx.weather.PRESETS).map(([key, p]) => `<button type="button" role="radio" data-k="${key}" aria-checked="${key === "live"}">${p.label}</button>`).join("");
-  chips.addEventListener("click", (event) => {
+  const modes = $("#weather-mode");
+  modes.addEventListener("click", (event) => {
     const button = event.target.closest("button");
     if (!button) return;
+    if (button.dataset.k === "live") ctx.setNow(); else ctx.setClearTime();
     ctx.weather.setPreset(button.dataset.k);
-    chips.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(b === button)));
+    modes.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(b === button)));
+    effects.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.k === "none")));
   });
+  const effects = $("#weather-effect-chips");
+  effects.addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    ctx.weather.setEffect(button.dataset.k);
+    effects.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(b === button)));
+  });
+  ctx.timeWeatherPanel = initTimeWeatherPanel(ctx);
 
   layers.add({ id: "shadows", label: "Schattenwurf", color: "#555", visible: true, apply: (v) => sky.setShadows(v) });
   layers.add({ id: "ao", label: "Ambient Occlusion", color: "#777", visible: scene3d.hasAmbientOcclusion && !lowPower, available: scene3d.hasAmbientOcclusion, note: "Nicht verfügbar", apply: (v) => { scene3d.settings.ambientOcclusion = v; } });
   await initAlmanac(ctx);
+  initMapNavigation(ctx);
 
   window.addEventListener("keydown", (event) => {
     if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)) return;

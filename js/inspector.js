@@ -41,7 +41,7 @@ function rowsMarkup(rows) {
   return rows.length ? `<dl>${rows.map(([key, value, raw]) => `<dt>${esc(key)}</dt><dd>${raw ? value : esc(value)}</dd>`).join("")}</dl>` : "";
 }
 
-export function createInspector({ panel, body, closeButton, codes, onClose }) {
+export function createInspector({ panel, body, closeButton, codes, onClose, onActivateDemographicCell }) {
   let buildingProfile = null;
   let activeTab = "overview";
   closeButton.addEventListener("click", () => { hide(); onClose?.(); });
@@ -49,6 +49,11 @@ export function createInspector({ panel, body, closeButton, codes, onClose }) {
   function hide() { panel.hidden = true; buildingProfile = null; }
 
   body.addEventListener("click", (event) => {
+    const demographicButton = event.target.closest("[data-activate-demographic-cell]");
+    if (demographicButton && buildingProfile?.record) {
+      onActivateDemographicCell?.(buildingProfile.record);
+      return;
+    }
     const ratingButton = event.target.closest("[data-rating-toggle]");
     if (ratingButton && buildingProfile?.rating) {
       buildingProfile.ratingOpen = !buildingProfile.ratingOpen;
@@ -125,7 +130,8 @@ export function createInspector({ panel, body, closeButton, codes, onClose }) {
               <div><strong>${p.demographics.population ? fmt(p.demographics.population.value) : "–"}</strong><span>Einwohner · STATPOP ${p.demographics.population?.year ?? "kein Wert"}</span></div>
               <div><strong>${p.demographics.employment ? fmt(p.demographics.employment.value) : "–"}</strong><span>VZÄ · STATENT ${p.demographics.employment?.year ?? "kein Wert"}</span></div>
             </div>
-            <p class="profile-note">Die Werte gelten für die Rasterzelle, nicht für dieses Gebäude oder dessen Bewohner. Quelle: Bundesamt für Statistik via GeoAdmin.</p></section>`
+            <p class="profile-note">Die Werte gelten für die Rasterzelle, nicht für dieses Gebäude oder dessen Bewohner. Quelle: Bundesamt für Statistik via GeoAdmin.</p>
+            <button type="button" class="btn" data-activate-demographic-cell>Rasterzelle auf Karte zeigen</button></section>`
           : "";
       const nearby = p.nearby.length ? `<section class="profile-section"><div class="profile-section-title"><h4>In der Nähe</h4><span>Luftlinie</span></div><ul class="profile-nearby">${p.nearby.map((item) => `<li><span><b>${esc(item.label)}</b><small>${esc(item.name)}</small></span><strong>${fmt(item.distance)} m</strong></li>`).join("")}</ul></section>` : "";
       const pvSummary = p.pvPlants.length ? `<p class="profile-highlight">Photovoltaik · ${fmt(p.pvPlants.reduce((sum, entry) => sum + (entry.plant.kw ?? 0), 0), 1)} kW registriert</p>` : "";

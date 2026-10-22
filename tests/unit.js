@@ -18,6 +18,8 @@ import { buildLocationRating } from "../js/location-rating.js";
 import { fetchBuildingEnvironment } from "../js/environment.js";
 import { fetchDemographicCell } from "../js/demographics.js";
 import { createLayerManager } from "../js/layers.js";
+import { automaticTimeSpeed, buildingVisibleAtYear } from "../js/history.js";
+import { moonIllumination, moonPhaseName } from "../js/time-weather-panel.js";
 
 const results = [];
 const tests = [];
@@ -70,6 +72,21 @@ test("Baujahr: exakt oder nur Periode, sonst unbekannt", () => {
   assert(buildYear({ gwr: {} }) === null && buildYear({}) === null);
 });
 
+test("Zeitreise: unbekannte Baujahre bleiben ausgeblendet, Bauperioden starten am Zeitraum", () => {
+  assert(!buildingVisibleAtYear({ gwr: { yearBuilt: 1950 } }, 1949));
+  assert(buildingVisibleAtYear({ gwr: { yearBuilt: 1950 } }, 1950));
+  assert(!buildingVisibleAtYear({ gwr: { periodBuilt: 8014 } }, 1960));
+  assert(buildingVisibleAtYear({ gwr: { periodBuilt: 8014 } }, 1961));
+  assert(buildingVisibleAtYear({ gwr: { periodBuilt: 8014 } }, 1970));
+  assert(!buildingVisibleAtYear({}, 2026));
+});
+
+test("Zeitreise: automatisches Tempo verlangsamt bis 1980 auf 0.5×", () => {
+  assert(automaticTimeSpeed(1850) === 3);
+  near(automaticTimeSpeed(1980), 0.5, 1e-9, "Tempo 1980");
+  assert(automaticTimeSpeed(2026) === 0.5 && automaticTimeSpeed(1900) > automaticTimeSpeed(1970));
+});
+
 test("Gebäudetyp aus GWR-Klasse", () => {
   assert(typeGroup({ gwr: { class: 1110 } }).id === "wohnen");
   assert(typeGroup({ gwr: { class: 1242 } }).id === "verkehr");
@@ -81,6 +98,15 @@ test("Wetter: Codes und Niederschlag", () => {
   assert(weatherCondition({ weather_code: 73, cloud_cover: 90 }).snow);
   assert(weatherCondition({ weather_code: 45, cloud_cover: 90 }).fog);
   assert(!weatherCondition({ weather_code: 0, cloud_cover: 0 }).rain);
+});
+
+test("Mondphase: Beleuchtung und fehlende Werte", () => {
+  near(moonIllumination(0), 0, 1e-9, "Neumond");
+  near(moonIllumination(0.25), 0.5, 1e-9, "erstes Viertel");
+  near(moonIllumination(0.5), 1, 1e-9, "Vollmond");
+  near(moonIllumination(1), 0, 1e-9, "Phasenzyklus");
+  assert(moonPhaseName(0) === "Neumond" && moonPhaseName(0.5) === "Vollmond");
+  assert(moonIllumination(null) === null && moonPhaseName(null) === null);
 });
 
 test("HTML-Maskierung", () => {
@@ -211,19 +237,43 @@ test("Demografie: GeoAdmin liefert neuestes Jahr mit 100-m-Zellgeometrie", async
 
 test("Ebenen: nach Nutzeraufgabe gruppiert und mit Aktivzählern", () => {
   const list = document.createElement("div");
-  const layers = createLayerManager(list);
+  const analysisList = document.createElement("div"), displayList = document.createElement("div");
+  const layers = createLayerManager(list, { analysis: analysisList, display: displayList });
   layers.add({ id: "terrain", label: "Gelände", color: "#888", visible: true });
+  layers.add({ id: "planning-use", label: "Nutzungsplanung: Grundnutzung", color: "#4aa58d", visible: false });
   layers.add({ id: "roads", label: "Strassen", color: "#888", visible: false });
+  layers.add({ id: "ambient", label: "Personen (Simulation)", color: "#888", visible: true });
+  layers.add({ id: "lamps", label: "Strassenlaternen", color: "#888", visible: true });
+  layers.add({ id: "weather", label: "Wettereffekte", color: "#888", visible: false });
   const groups = [...list.querySelectorAll(":scope > .layer-group")];
   const base = groups.find((group) => group.textContent.includes("Karte, Gebäude & Grundstücke"));
   const mobility = groups.find((group) => group.textContent.includes("Mobilität & Verkehr"));
+  const analysis = analysisList.querySelector(":scope > .layer-group");
+  const display = displayList.querySelector(":scope > .layer-group");
   assert(base?.open === true, "Grundkarte-Gruppe soll geöffnet starten");
-  assert(base.querySelectorAll(".layer-row").length === 1, "Gelände-Layer fehlt in der Grundkarte-Gruppe");
+  assert(base.querySelectorAll(".layer-row").length === 2, "Gelände- oder Nutzungsplanungs-Layer fehlt in der Grundkarte-Gruppe");
   assert(mobility?.open === false, "Mobilität-Gruppe soll eingeklappt starten");
   assert(mobility.querySelectorAll(".layer-row").length === 1, "Strassen-Layer fehlt in der Mobilität-Gruppe");
-  assert(base.querySelector(".layer-group-count").textContent === "1/1", "Grundkarte-Aktivzähler ist falsch");
+  assert(analysis?.textContent.includes("Personen (Simulation)"), "Simulation fehlt im Analysebereich");
+  assert(display?.textContent.includes("Strassenlaternen") && display.textContent.includes("Wettereffekte"), "Darstellungsebenen fehlen");
+  assert(analysis.querySelector("summary").textContent.includes("Simulationsebenen"), "Simulations-Untergruppe fehlt");
+  assert(display.querySelector("summary").textContent.includes("Darstellungsebenen"), "Darstellungs-Untergruppe fehlt");
+  const terrainTile = base.querySelector(".layer-row");
+  const roadTile = mobility.querySelector(".layer-row");
+  assert(terrainTile.tagName === "BUTTON" && terrainTile.querySelector("input") === null, "Layer-Kacheln sollen selbst die Schalter sein");
+  assert(base.querySelector('[aria-label*="Nutzungsplanung: Grundnutzung"] .name')?.textContent === "Grundnutzung", "Lange Tile-Labels sollen gekürzt bleiben und der zugängliche Name vollständig sein");
+  terrainTile.click(); roadTile.click();
+  assert(!layers.isVisible("terrain") && layers.isVisible("roads"), "Layer-Kacheln müssen unabhängig mehrfach schaltbar sein");
+  terrainTile.click(); roadTile.click();
+  assert(base.querySelector(".layer-group-count").textContent === "1/2", "Grundkarte-Aktivzähler ist falsch");
+  const saved = layers.snapshot();
   layers.setVisible("roads", true);
   assert(mobility.querySelector(".layer-group-count").textContent === "1/1", "Mobilität-Aktivzähler aktualisiert nicht");
+  layers.setVisible("lamps", false);
+  assert(display.querySelector(".layer-group-count").textContent === "0/2", "Darstellungs-Aktivzähler aktualisiert nicht");
+  layers.setVisible("terrain", false);
+  layers.restore(saved);
+  assert(layers.isVisible("terrain") && !layers.isVisible("roads") && layers.isVisible("lamps"), "Layerzustände wurden nicht wiederhergestellt");
   assert(!list.querySelector(":scope > .layer-row"), "Layer dürfen nicht ungegliedert bleiben");
 });
 
@@ -310,7 +360,7 @@ test("Kamera: Kompass dreht in beide Richtungen um 90 Grad", async () => {
   near(rig.currentView().heading, 0, 1e-3, "Drehung gegen den Uhrzeigersinn");
 });
 
-test("Kamera: Startsequenz beginnt beim Gemeinde-Reset und sinkt kreisend ins Dorf", async () => {
+test("Kamera: Zeitreise kann einen laufenden Kameraflug stoppen", async () => {
   const { PerspectiveCamera, Vector3 } = await import("three");
   const camera = new PerspectiveCamera();
   camera.position.set(0, 7000, 0);
@@ -318,17 +368,12 @@ test("Kamera: Startsequenz beginnt beim Gemeinde-Reset und sinkt kreisend ins Do
   const controls = { target, update() {}, addEventListener() {} };
   const frames = [];
   const rig = createCameraRig({ camera, controls, terrain: { heightAt: () => 38 }, onFrame: (callback) => frames.push(callback) });
-  const origin = new Vector3(0, 0, 0), village = new Vector3(-50, 0, 400);
-  rig.spiralTo({ startTarget: origin, startDistance: 7000, startHeading: 0, startTilt: Math.PI / 3, target: village, distance: 1400, heading: 0, tilt: Math.PI * 40 / 180, duration: 10, turns: 1 });
-  near(rig.currentView().distance, 7000, 1e-3, "Ausgangsdistanz Reset-Preset");
-  assert(controls.target.distanceTo(new Vector3(0, 38, 0)) < 1e-3, "Startpunkt weicht vom Gemeinde-Reset ab");
-  frames[0](5);
-  const middle = rig.currentView();
-  assert(middle.distance < 7000 && middle.distance > 1800, "Sinkflug bewegt sich nicht zwischen Start und Ziel");
-  assert(Math.abs(middle.heading) > 1, "Kamera kreist während des Sinkflugs nicht");
-  frames[0](5);
-  near(rig.currentView().distance, 1400, 1e-3, "Zieldistanz Dorfansicht");
-  assert(controls.target.distanceTo(new Vector3(-50, 38, 400)) < 1e-3, "Endpunkt weicht von der Dorfansicht ab");
+  rig.flyTo({ target: new Vector3(-50, 38, 400), distance: 1400, heading: 0, tilt: Math.PI / 4, duration: 10 });
+  frames[0](2);
+  rig.stop();
+  const stoppedPosition = camera.position.clone(), stoppedTarget = controls.target.clone();
+  frames[0](2);
+  assert(camera.position.distanceTo(stoppedPosition) === 0 && controls.target.distanceTo(stoppedTarget) === 0, "Kamera bewegt sich nach dem Stop weiter");
 });
 
 test("parseDem prüft die Rastergrösse", () => {
@@ -344,6 +389,10 @@ test("Echte Daten: Gebäudedatei ist konsistent und pickbar", async () => {
   const data = parseBuildings(bin, json.buildings);
   assert(data.count > 1000 && data.indices.length === data.indexCount);
   const buildings = new Buildings(data, json.buildings);
+  buildings.setTimeTravel(1950.5, true);
+  assert(buildings.uniforms.uTimelineYear.value === 1950.5 && buildings.uniforms.uTimelineFade.value === 1);
+  buildings.setTimeTravel(2026, false);
+  assert(buildings.uniforms.uTimelineFade.value === 0);
   const { Ray, Vector3 } = await import("three");
   const centre = buildings.center(0);
   const hit = buildings.pick(new Ray(new Vector3(centre.x, centre.y + 500, centre.z), new Vector3(0, -1, 0)));

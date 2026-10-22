@@ -150,10 +150,10 @@ export const COLOR_MODES = [
 const SELECT_COLOR = new THREE.Color("#ff9d1c");
 const HOVER_COLOR = new THREE.Color("#ffd27a");
 
-const VERTEX_DECLARATIONS = "attribute vec3 aFaceUv; attribute float aSurface; attribute vec4 aInfo;\nvarying vec3 vFaceUv; varying float vSurface; varying vec4 vInfo;\n";
+const VERTEX_DECLARATIONS = "attribute vec3 aFaceUv; attribute float aSurface; attribute vec4 aInfo; attribute vec2 aBuildPeriod;\nvarying vec3 vFaceUv; varying float vSurface; varying vec4 vInfo; varying vec2 vBuildPeriod;\n";
 const FRAGMENT_DECLARATIONS = `
-uniform float uDetail; uniform float uNight;
-varying vec3 vFaceUv; varying float vSurface; varying vec4 vInfo;
+uniform float uDetail; uniform float uNight; uniform float uTimelineYear; uniform float uTimelineFade;
+varying vec3 vFaceUv; varying float vSurface; varying vec4 vInfo; varying vec2 vBuildPeriod;
 float hash21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float rectMask(vec2 p, vec2 c, vec2 h, float aa){ vec2 d = abs(p - c) - h; return 1.0 - smoothstep(-aa, aa, max(d.x, d.y)); }
 vec3 srgb(vec3 c){ return pow(c, vec3(2.2)); }
@@ -244,7 +244,7 @@ export class Buildings {
     this.hovered = -1;
     this.hideDemolished = true;
     this.visibleMask = new Uint8Array(data.count).fill(1);
-    this.uniforms = { uDetail: { value: 1 }, uNight: { value: 0 } };
+    this.uniforms = { uDetail: { value: 1 }, uNight: { value: 0 }, uTimelineYear: { value: 2026 }, uTimelineFade: { value: 0 } };
     this.#createGeometry();
     this.#computeBounds();
     this.#computeFaceAttributes();
@@ -265,9 +265,17 @@ export class Buildings {
     this.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms);
-      shader.vertexShader = VERTEX_DECLARATIONS + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvFaceUv = aFaceUv; vSurface = aSurface; vInfo = aInfo;");
+      shader.vertexShader = VERTEX_DECLARATIONS + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvFaceUv = aFaceUv; vSurface = aSurface; vInfo = aInfo; vBuildPeriod = aBuildPeriod;");
       shader.fragmentShader = FRAGMENT_DECLARATIONS + shader.fragmentShader
-        .replace("#include <color_fragment>", `#include <color_fragment>\n${COLOR_CHUNK}`)
+        .replace("#include <color_fragment>", `#include <color_fragment>
+          if (uTimelineFade > 0.5) {
+            float reveal = vBuildPeriod.y > vBuildPeriod.x
+              ? smoothstep(0.0, 1.0, (uTimelineYear - vBuildPeriod.x) / (vBuildPeriod.y - vBuildPeriod.x))
+              : clamp(0.18 + (uTimelineYear - vBuildPeriod.x) * 0.82, 0.0, 1.0);
+            float threshold = fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453);
+            if (threshold > reveal) discard;
+          }
+          ${COLOR_CHUNK}`)
         .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.12, glassMask);")
         .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += windowGlow;");
     };
@@ -302,10 +310,14 @@ export class Buildings {
     const uv = new Float32Array(vertexCount * 3);
     const surface = new Uint8Array(vertexCount);
     const info = new Uint8Array(vertexCount * 4);
+    const buildPeriods = new Float32Array(vertexCount * 2);
     this.styles = new Array(count);
     for (let b = 0; b < count; b++) {
       const record = this.records[b];
       const style = facadeStyle(record);
+      const yearInfo = buildYear(record);
+      const yearStart = yearInfo ? yearInfo.from ?? 1850 : 9999;
+      const yearEnd = yearInfo ? yearInfo.to ?? new Date().getFullYear() : 9999;
       const floors = floorsOf(record).count;
       this.styles[b] = { ...style, floors };
       const seed = Math.round(hash01(record.id, "seed") * 255);
@@ -348,6 +360,8 @@ export class Buildings {
           uv[o * 3 + 2] = length;
           surface[o] = kind;
           info[o * 4] = floors; info[o * 4 + 1] = style.shutter; info[o * 4 + 2] = style.wood ? 1 : 0; info[o * 4 + 3] = seed;
+          buildPeriods[o * 2] = yearStart;
+          buildPeriods[o * 2 + 1] = yearEnd;
         }
         vertex += size;
       }
@@ -355,6 +369,7 @@ export class Buildings {
     this.geometry.setAttribute("aFaceUv", new THREE.BufferAttribute(uv, 3));
     this.geometry.setAttribute("aSurface", new THREE.BufferAttribute(surface, 1));
     this.geometry.setAttribute("aInfo", new THREE.BufferAttribute(info, 4));
+    this.geometry.setAttribute("aBuildPeriod", new THREE.BufferAttribute(buildPeriods, 2));
   }
 
   center(index) {
@@ -412,6 +427,11 @@ export class Buildings {
   }
 
   setNight(value) { this.uniforms.uNight.value = value; }
+
+  setTimeTravel(year, enabled) {
+    this.uniforms.uTimelineYear.value = year;
+    this.uniforms.uTimelineFade.value = enabled ? 1 : 0;
+  }
 
   legend() {
     const swatches = (items) => items.map(([color, label]) => ({ color, label }));

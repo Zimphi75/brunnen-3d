@@ -4,8 +4,8 @@ Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit
 
 ## Funktionen
 
-- Gelände (swissALTI3D) mit **simuliertem Boden** (Vorgabe: Wiese, Waldboden, Fels und befestigte Flächen aus der Luftbildfarbe klassiert, mit prozeduralem Detail); wählbar im Panel «Darstellung»: Luftbild (SWISSIMAGE) oder Landeskarte (swisstopo), beide in Blicknähe scharf nachgeladen, 2316 Gebäude (swissBUILDINGS3D 3.0 beta, mit GWR-Attributen), Strassen, Wege, Bahn, Gewässer, 54'000 **Bäume** (Laub- und Nadelbäume mit unregelmässigen Kronen, Kronenfarbe aus dem Luftbild, leichter Windbewegung, zwei Detailstufen, Schattenwurf in der Nähe), Gemeindegrenze, Points of Interest, Ortsnamen
-- **Gebäudedarstellung** (Auswahl im Panel «Darstellung»): **Dorfbild (realistisch)** mit Putz- oder Holzfassade, Fensterläden, Fenstern und Ziegeldach in der Farbe des Luftbilds; ausserdem Neutral, Nutzung, Baujahr, Höhe, Geschosse, Wohnungen, Heizenergie und Status im Register
+- Gelände (swissALTI3D) mit **simuliertem Boden** (Vorgabe: Wiese, Waldboden, Fels und befestigte Flächen aus der Luftbildfarbe klassiert, mit prozeduralem Detail); Kartentypen Simulation, Luftbild (SWISSIMAGE) und Topo (swisstopo Pixelkarte) sind über Bildkacheln unten links wählbar, beide Kartenquellen werden in Blicknähe schärfer nachgeladen; 2316 Gebäude (swissBUILDINGS3D 3.0 beta, mit GWR-Attributen), Strassen, Wege, Bahn, Gewässer, 54'000 **Bäume** (Laub- und Nadelbäume mit unregelmässigen Kronen, Kronenfarbe aus dem Luftbild, leichter Windbewegung, zwei Detailstufen, Schattenwurf in der Nähe), Gemeindegrenze, Points of Interest, Ortsnamen
+- **Gebäudedarstellung** unter «Gebäude» und «Kartendetails»: **Dorfbild (realistisch)** mit Putz- oder Holzfassade, Fensterläden, Fenstern und Ziegeldach in der Farbe des Luftbilds; ausserdem Neutral, Nutzung, Baujahr, Höhe, Geschosse, Wohnungen, Heizenergie und Status im Register
 - **Nacht**: beleuchtete Fenster, Strassenlaternen mit Lichtkegeln, Sterne, Leuchteffekt; die Szene bleibt im Dunkeln lesbar
 - **Wetter überall sichtbar**: Regen, Schnee, Nebel, Bewölkung und Gewitter wirken am Bildschirm und in der Szene, unabhängig vom Kameraabstand; Live-Wetter (Open-Meteo) für «jetzt», Vorschau-Vorgaben für jede andere Zeit
 - **Photovoltaik auf den Dächern**: Die 248 im BFE-Anlagenregister erfassten Anlagen in Ingenbohl (rund 8 MW) erscheinen als Modulfelder auf den Dachflächen der zugeordneten Gebäude: Glas mit Zellraster, Alurahmen, Spiegelung des Himmels, Schattenwurf; ältere Anlagen bläulich, neuere schwarz, dachintegrierte ohne Rahmen, Flachdächer aufgeständert. Anzahl und Lage der Module sind **simuliert** (aus Leistung, Baujahr, Ausrichtung und Neigung des Registers); Standort, Leistung, Jahr und Bauart sind gemessen. Das Informationspanel eines Gebäudes zeigt die Registerdaten und wie viele Module gezeichnet sind.
@@ -16,18 +16,19 @@ Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit
 - Gebäude anklicken: Informationspanel mit Adresse, Gebäudeklasse, Baujahr/Bauperiode, Höhe, Grundfläche, Heizung usw.
 - Sonnenstand, Uhrzeit und Datum, Tagesverlauf, Schattenwurf (Panel oben in der Mitte)
 - ÖV: Haltestellen, Linien, nächste Abfahrten (Fahrplan oder Echtzeitprognose)
-- Zeitachse: Gebäude nach Baujahr filtern, Wachstum abspielen, historische Landeskarten (swisstopo Zeitreise), Vergleich mit heute per Trennlinie
+- **Zeitreise**: eigenständiger Jahresregler mit Play/Pause und vier Geschwindigkeiten; exakte Baujahre blenden kurz ein, unsichere Bauperioden füllen sich über den gesamten möglichen Zeitraum mit einem GPU-seitigen Fade. Das Abspieltempo sinkt von 3× auf 0.5× bis 1980 und bleibt danach konstant. Der Boden bleibt neutral, historische Karten werden dabei nicht gezeigt; Zeit und Wetter stehen auf heute, 12:00 und klar
+- Karten-Dock mit Schnellzugriffen für Gebäude, Verkehr, Zeitreise und Kartendetails; beim Einstieg springt die Ansicht direkt von oben auf das Gebiet, danach bleibt die Kamera während des Zeitraffers unverändert und kehrt beim Beenden zur vorherigen Ansicht zurück
 - Suche nach Adressen, Strassen, Gebäuden (EGID), POI, Orten und Koordinaten (LV95 oder WGS84)
 - Werkzeuge: Strecke messen (mit Höhenprofil), Punkt abfragen
 - **Register ohne 3D-Modell**: 337 bestehende GWR-Gebäude, die swissBUILDINGS3D nicht enthält (meist Kleinbauten), lassen sich schematisch zuschalten und anklicken
 - **Almanach** (unten rechts): Übersicht, Gebäude, Energie, eidgenössische Abstimmungen der Gemeinde, Datenqualität mit Abdeckungskennzahlen, Quellen
-- Hell- und Dunkelmodus, Ebenen einzeln schaltbar, Ambient Occlusion, Schatten; Qualität sinkt automatisch auf Touch-Geräten und schwachen CPUs (kein AO, kleinere Schattenkarte)
+- Hell- und Dunkelmodus, nach Themen gruppierte Ebenen, Ambient Occlusion, Schatten; Qualität sinkt automatisch auf Touch-Geräten und schwachen CPUs (kein AO, kleinere Schattenkarte)
 
 ## Voraussetzungen
 
 - Python 3.12 (empfohlen) und [uv](https://docs.astral.sh/uv/) für die Datenpipeline
 - Ein aktueller Browser mit WebGL 2 und Hardwarebeschleunigung
-- Internetzugang für die Datenbeschaffung (einmalig) sowie zur Laufzeit für Wetter, Abfahrten und historische Karten
+- Internetzugang für die Datenbeschaffung (einmalig) sowie zur Laufzeit für Wetter und Abfahrten
 - Rund 250 MB freier Speicher für den Download-Zwischenspeicher (`pipeline/cache/`, aktuell 180 MB)
 
 Node.js ist nicht nötig. Die Datenbank ist nicht nötig.
@@ -87,7 +88,7 @@ Alle Datensätze mit Herkunft, Lizenz, Stand und Abdeckung stehen in [docs/data-
 
 | Bereich | Quelle | Lizenz |
 |---|---|---|
-| Gelände, Luftbild, 3D-Gebäude, Grenze, historische Karten | swisstopo | Open Government Data, Quellenangabe |
+| Gelände, Luftbild, 3D-Gebäude, Grenze | swisstopo | Open Government Data, Quellenangabe |
 | Gebäudeattribute, Adressen | BFS, GWR | Open Government Data, Quellenangabe |
 | Strassen, Gewässer, POI, Linien, Ortsnamen | OpenStreetMap-Mitwirkende | ODbL 1.0 |
 | Bäume (Standort, Höhe, Kronenradius) | WSL/BAFU Vegetationshöhenmodell NFI | ODbL mit DbCL |
@@ -125,10 +126,11 @@ Die Zahlen stehen auch im Almanach («Datenqualität») und stammen aus `public/
 - **Baujahr**: Nur 684 von 2316 Gebäuden haben ein exaktes Baujahr im GWR. Das Feld `ERSTELLUNG_JAHR` von swissBUILDINGS3D ist die Erfassung der Daten, nicht das Baujahr.
 - **swissBUILDINGS3D 3.0** ist ein Beta-Produkt; Dachformen sind teils vereinfacht.
 - **Gebäude an Hängen** haben keinen Sockel; der Fuss kann schweben (der Shader dunkelt nur den Fussbereich ab).
-- **Historische Gebäude werden nicht rekonstruiert.** Die Zeitachse blendet vorhandene Gebäude nach GWR-Baujahr aus und zeigt historische Landeskarten.
+- **Historische Gebäude werden nicht rekonstruiert.** Die Zeitreise blendet den heutigen registrierten Bestand nach GWR-Baujahr/Bauperiode ein; abgebrochene Altgebäude und undatierte Gebäude sind nicht Teil der Darstellung.
 - **Luftbild**: 2 m Auflösung global, in Blicknähe wird SWISSIMAGE per WMS scharf nachgeladen (braucht Internet).
 - **Bäume**: Standort, Höhe und Kronenradius sind aus dem Vegetationshöhenmodell abgeleitet. **Die Art ist geschätzt** (die dunkelsten 40 % der Kronen im Luftbild, ab 5 m Höhe, werden als Nadelbaum gezeichnet), Farbe und Kronenform sind gestalterisch. Es gibt weder Arten- noch Einzelbaumkataster. Bäume auf Strassen, Wegen, Gleisen, in Bächen und im Wasser werden ausgeblendet (3000 von 54'327; massgebend sind die gezeichneten Breiten aus OSM); Bäume in Gebäuden werden nicht geprüft.
 - **Simulierter Boden**: Klassierung (Wiese, Wald, Fels, befestigt) und Detail sind Annahmen, keine Messung. Schatten im Luftbild werden abgeschwächt, befestigte Flächen einheitlich grau gezeichnet; Halme und Muster sind Zufall. Wer Daten braucht, wählt «Luftbild» oder «Landeskarte».
+- **Zeitreise**: Gezeigt wird der heute registrierte Gebäudebestand nach Baujahr/Bauperiode, keine Rekonstruktion früherer Gebäude. Abgebrochene und umgebaute Altgebäude sind nicht enthalten; undatierte Gebäude bleiben ausgeblendet. Der Boden ist neutral, die Kamera bleibt unbewegt.
 - **ÖV**: Gemessene Fahrzeugpositionen sind über die offene API nicht verfügbar. Die Fahrplansimulation interpoliert Fahrplanzeiten entlang der OSM-Liniengeometrie.
 - **Abstimmungen**: Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert (derzeit 2025-05-18 und 2023-03-12). Die Quelle sendet keine CORS-Header; darum zieht die Pipeline die Daten (`votes.json`).
 - **Photovoltaik**: Das Register kennt weder Modulzahl noch Modullage. Die gezeichnete Belegung ist eine Annahme (Modulgrösse 1.75 × 1.05 m, Wirkungsgrad nach Baujahr, bevorzugt Süd-, sonst Ost-/Westflächen, Randabstand 0.3 m). Freistehende Anlagen (2) und Fassadenanteile (Neigung ab 60°) werden nicht auf dem Dach gezeichnet. Dachflächen stammen aus swissBUILDINGS3D (Beta). Auf Gebäuden mit grosser Anlage reicht die Dachfläche oft nicht; dann ist die Anlage nur teilweise gezeichnet und das steht im Informationspanel.

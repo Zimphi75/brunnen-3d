@@ -279,6 +279,18 @@ export function initDemographicLayers(ctx) {
 
   ctx.demographics = {
     async forBuilding(record) { return loadCell(record.center); },
+    resetSelection() { clickRequest++; clearSelection(); },
+    async activateBuildingCell(record) {
+      const layerId = SOURCES.population.id;
+      layers.setVisible(layerId, true);
+      const request = ++clickRequest;
+      clearSelection();
+      const data = await loadCell(record.center);
+      if (request !== clickRequest || activeLayer !== layerId) return false;
+      selection = makeCellHighlight(data.geometry, terrain, frame);
+      if (selection) group.add(selection);
+      return Boolean(selection);
+    },
     activeLayer: () => activeLayer,
   };
 }

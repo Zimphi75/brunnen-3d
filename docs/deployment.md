@@ -20,9 +20,19 @@ Nicht nötig: `pipeline/`, `tests/`, `.venv/`, `docs/`.
 2. Verzeichnisse oben auf den Webserver kopieren.
 3. MIME-Typen prüfen: `.js` als `text/javascript`, `.json` als `application/json`, `.bin` als `application/octet-stream`.
 
-## Automatisch auf Hoststar veröffentlichen
+## Automatisch auf GitHub Pages veröffentlichen
 
-Das GitHub-Repository enthält den Workflow `.github/workflows/hoststar-deploy.yml`. Bei jedem Push auf `main` baut GitHub Actions die Datenpipeline und Three.js, führt die pytest-Tests aus und stellt daraus den statischen Website-Ordner zusammen. Der Upload zu Hoststar läuft verschlüsselt über explizites FTPS (Port 21). Manuelle Builds lassen sich unter **Actions → Build and deploy to Hoststar → Run workflow** starten.
+Der Workflow `.github/workflows/hoststar-deploy.yml` (**Build and deploy website**) baut bei jedem Push auf `main` die Datenpipeline und Three.js, führt die pytest-Tests aus und veröffentlicht den statischen Website-Ordner mit den offiziellen GitHub-Pages-Actions.
+
+Unter **Settings → Pages → Build and deployment → Source** muss **GitHub Actions** ausgewählt sein. Die Website ist unter `https://zimphi75.github.io/brunnen-3d/` erreichbar. Das Repository kann bei einem geeigneten GitHub-Tarif privat bleiben; die veröffentlichte Website und ihre ausgelieferten Daten sind öffentlich.
+
+Eine eigene Domain lässt sich später unter **Settings → Pages → Custom domain** verbinden. Für eine Subdomain zeigt der DNS-CNAME auf `zimphi75.github.io` (ohne Projektpfad). Alternativ kann die bisherige Website-Adresse per HTTP-Weiterleitung auf die Pages-URL zeigen; dabei wechselt die sichtbare Adresse zur Pages-URL. Bei einer eigenen Domain zuerst die Domain in Pages konfigurieren und den Domainbesitz verifizieren, dann DNS umstellen und HTTPS aktivieren.
+
+Der Hoststar-Upload wird unabhängig davon über `HOSTSTAR_SFTP_ENABLED` gesteuert. Für den ausschliesslichen Betrieb auf Pages bleibt diese Variable auf `false`.
+
+## Optional zusätzlich auf Hoststar veröffentlichen
+
+Der gleiche Workflow kann den Website-Ordner zusätzlich auf Hoststar veröffentlichen. Der Upload zu Hoststar läuft verschlüsselt über explizites FTPS (Port 21). Manuelle Builds lassen sich unter **Actions → Build and deploy website → Run workflow** starten.
 
 Vor dem ersten Deploy im GitHub-Repository unter **Settings → Secrets and variables → Actions** konfigurieren:
 
@@ -37,7 +47,7 @@ In Hoststar eine eigene Website/Subdomain (z. B. `brunnen3d.multikanal.ch`) anle
 
 Die Zugangsdaten nie in Dateien oder Commits eintragen. Hoststar bietet für dieses Hosting SFTP (Port 5544) sowie explizites FTPS (Port 21) an. Der Workflow verwendet FTPS mit strikter TLS-Zertifikatsprüfung, da der SFTP-Login im GitHub-Runner trotz erfolgreichem WebFTP-Login abgelehnt wurde. Die Secret-Namen behalten aus Kompatibilitätsgründen den bisherigen `SFTP`-Teil.
 
-Die Site wird erst nach dem Setzen von `HOSTSTAR_SFTP_ENABLED` veröffentlicht. Ohne diese Variable werden Build, Datengenerierung und Tests ausgeführt, der Deploy-Job bleibt übersprungen.
+Der zusätzliche Hoststar-Upload wird erst mit `HOSTSTAR_SFTP_ENABLED=true` ausgeführt. Ohne diese Freigabe bleibt nur der Hoststar-Deploy-Job übersprungen; die Veröffentlichung auf GitHub Pages läuft unabhängig davon.
 
 ## Empfehlungen für den Betrieb
 

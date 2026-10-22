@@ -1,133 +1,237 @@
-// Zeitachse: Gebäude nach Baujahr filtern, Wachstum abspielen, historische Karten (swisstopo Zeitreise) und Vergleich.
-import * as THREE from "three";
-import { buildYear } from "./buildings.js";
+// Jahresfilter und neutrale Zeitreise fuer den heutigen registrierten Gebaeudebestand.
+import { buildYear, isDemolished } from "./buildings.js";
 
-const WMS = "https://wms.geo.admin.ch/";
-const MAP_YEARS = [1864, 1880, 1900, 1925, 1950, 1970, 1990, 2010, 2021];
-const YEAR_MIN = 1850;
+export const YEAR_MIN = 1850;
+export const SLOWDOWN_YEAR = 1980;
+
+export function automaticTimeSpeed(year) {
+  const progress = Math.max(0, Math.min(1, (year - YEAR_MIN) / (SLOWDOWN_YEAR - YEAR_MIN)));
+  return 0.5 + 2.5 * (1 - progress) ** 2;
+}
+
+export function buildingVisibleAtYear(record, year) {
+  const date = buildYear(record);
+  return Boolean(date && (date.from ?? YEAR_MIN) <= year);
+}
 
 export function initHistory(ctx) {
-  const { $, buildings, terrain, meta, reportError, layers, scene3d } = ctx;
-  const box = $("#history-box");
-  if (!buildings) { box.innerHTML = '<p class="note">Keine Gebäudedaten verfügbar.</p>'; return; }
-
-  const knownYears = ctx.records.map((r) => buildYear(r)).filter(Boolean);
-  const exact = knownYears.filter((y) => y.exact).length;
+  const { $, buildings, terrain, layers, scene3d } = ctx;
+  const panel = $("#time-travel-panel");
+  const slider = $("#timeline-slider"), yearLabel = $("#timeline-year"), countLabel = $("#timeline-count");
+  const mapLabel = $("#timeline-map"), playButton = $("#timeline-play"), speedSelect = $("#timeline-speed");
+  const infoPanel = $("#timeline-info"), infoButton = $("#timeline-info-toggle");
   const yearMax = new Date().getFullYear();
-  const state = { year: yearMax, showUnknown: true, playing: false, mapYear: null, split: 0.5 };
+  const state = { year: yearMax, progressYear: yearMax, playing: false, speed: 1, autoSpeed: 0.5, active: false };
+  let saved = null;
+  const rateOutput = $("#timeline-rate");
 
-  box.innerHTML = `
-    <label class="layer-row"><input type="checkbox" id="hist-filter"><span class="name">Gebäude bis Jahr</span><output id="hist-year" class="count num">${yearMax}</output></label>
-    <input type="range" id="hist-slider" min="${YEAR_MIN}" max="${yearMax}" step="1" value="${yearMax}" aria-label="Baujahr bis" style="width:100%" disabled>
-    <label class="layer-row"><input type="checkbox" id="hist-unknown" checked><span class="name">Gebäude ohne Baujahr zeigen</span></label>
-    <div class="seg"><button type="button" id="hist-play">Wachstum abspielen</button></div>
-    <p class="note" id="hist-count"></p>
-    <h2 style="margin-top:12px">Historische Karte</h2>
-    <select id="hist-map" aria-label="Historische Karte" style="width:100%"><option value="">Aktuelles Luftbild</option>${MAP_YEARS.map((y) => `<option value="${y}">Landeskarte Stand ${y}</option>`).join("")}</select>
-    <label class="layer-row"><input type="checkbox" id="hist-compare" disabled><span class="name">Vergleich mit heute (Trennlinie)</span></label>
-    <p class="note" id="hist-note">Baujahre stammen aus dem GWR (${exact} exakt, übrige nur als Bauperiode). Gebäude ohne GWR-Angabe lassen sich nicht datieren. Historische Gebäude werden nicht rekonstruiert.</p>`;
-
-  const filterBox = $("#hist-filter"), slider = $("#hist-slider"), yearOutput = $("#hist-year"), unknownBox = $("#hist-unknown");
-  const count = $("#hist-count");
-
-  function apply() {
-    const active = filterBox.checked;
-    slider.disabled = !active;
-    yearOutput.textContent = active ? String(state.year) : "alle";
-    const visible = buildings.applyFilter(active ? (record) => {
-      const info = buildYear(record);
-      return info ? info.year <= state.year : state.showUnknown;
-    } : null);
-    count.textContent = active ? `${visible.toLocaleString("de-CH")} von ${ctx.records.length.toLocaleString("de-CH")} Gebäuden sichtbar (Bauperioden: Periodenmitte).` : "";
+  function updateRate() {
+    state.autoSpeed = automaticTimeSpeed(state.progressYear) * state.speed;
+    const label = `${state.autoSpeed.toFixed(1)}×`;
+    if (rateOutput.textContent !== label) rateOutput.textContent = label;
   }
-  filterBox.addEventListener("change", apply);
-  unknownBox.addEventListener("change", () => { state.showUnknown = unknownBox.checked; apply(); });
-  let pending = null;
-  slider.addEventListener("input", () => {
-    state.year = Number(slider.value);
-    yearOutput.textContent = String(state.year);
-    clearTimeout(pending);
-    pending = setTimeout(apply, 60);
-  });
-  const playButton = $("#hist-play");
-  playButton.addEventListener("click", () => {
-    state.playing = !state.playing;
-    playButton.textContent = state.playing ? "Anhalten" : "Wachstum abspielen";
-    if (state.playing) { filterBox.checked = true; if (state.year >= yearMax) state.year = YEAR_MIN; }
-    apply();
-  });
-  let lastStep = 0;
-  scene3d.onFrame((_, now) => {
-    if (!state.playing || now - lastStep < 140) return;
-    lastStep = now;
-    state.year += 2;
-    if (state.year >= yearMax) { state.year = yearMax; state.playing = false; playButton.textContent = "Wachstum abspielen"; }
-    slider.value = String(state.year);
-    apply();
-  });
 
-  // Historische Karte als zweite Terraintextur; Trennlinie vergleicht links (Geschichte) und rechts (heute).
+  if (!buildings) {
+    const timeTravelButton = $("#details-time-travel");
+    if (timeTravelButton) timeTravelButton.disabled = true;
+    $("[data-quick='timeline']").disabled = true;
+    ctx.history = { state, enter() {}, exit() {} };
+    return;
+  }
+
   const uniforms = terrain.uniforms;
 
-  const compareBox = $("#hist-compare"), mapSelect = $("#hist-map"), note = $("#hist-note");
-  const divider = document.createElement("div");
-  divider.id = "compare-divider";
-  divider.hidden = true;
-  divider.innerHTML = '<span aria-hidden="true">↔</span>';
-  $("#app").append(divider);
-
-  function placeDivider() {
-    const width = scene3d.renderer.domElement.clientWidth;
-    divider.style.left = `${state.split * width}px`;
-    const size = scene3d.renderer.getDrawingBufferSize(new THREE.Vector2());
-    uniforms.uResolution.value.copy(size);
-    uniforms.uSplit.value = state.mapYear ? (compareBox.checked ? state.split : 1.01) : 0;
-    divider.hidden = !(state.mapYear && compareBox.checked);
+  function applyModernLayers() {
+    const showCurrentSimulations = state.year >= yearMax && saved;
+    for (const id of ["ambient", "vehicles"]) {
+      const visible = Boolean(showCurrentSimulations && saved.layers[id]);
+      if (layers.isVisible(id) !== visible) layers.setVisible(id, visible);
+    }
   }
-  scene3d.onFrame(() => { if (state.mapYear) placeDivider(); });
-  let dragging = false;
-  divider.addEventListener("pointerdown", (event) => { dragging = true; divider.setPointerCapture(event.pointerId); });
-  divider.addEventListener("pointermove", (event) => { if (dragging) { state.split = Math.min(0.97, Math.max(0.03, event.clientX / scene3d.renderer.domElement.clientWidth)); placeDivider(); } });
-  divider.addEventListener("pointerup", () => { dragging = false; });
-  compareBox.addEventListener("change", placeDivider);
 
-  const [minE, minN, maxE, maxN] = meta.ortho.extent;
-  const loader = new THREE.TextureLoader();
-  loader.setCrossOrigin("anonymous");
-  const textures = new Map();
-  async function loadMap(year) {
-    if (textures.has(year)) return textures.get(year);
-    const params = new URLSearchParams({
-      SERVICE: "WMS", VERSION: "1.1.1", REQUEST: "GetMap", LAYERS: "ch.swisstopo.zeitreihen", STYLES: "", SRS: "EPSG:2056",
-      BBOX: `${minE},${minN},${maxE},${maxN}`, WIDTH: String(meta.ortho.width), HEIGHT: String(meta.ortho.height), FORMAT: "image/jpeg", TIME: `${year}1231`,
-    });
-    const texture = await loader.loadAsync(`${WMS}?${params}`);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = scene3d.renderer.capabilities.getMaxAnisotropy();
-    textures.set(year, texture);
-    return texture;
+  function applyYear() {
+    const visible = buildings.applyFilter((record) => buildingVisibleAtYear(record, state.year));
+    buildings.setTimeTravel(state.progressYear, state.active && state.progressYear < yearMax);
+    const arrived = ctx.records.filter((record) => {
+      const date = buildYear(record);
+      const earliest = date?.from ?? YEAR_MIN;
+      return !isDemolished(record) && date && earliest > 1900 && earliest <= state.year;
+    }).length;
+    yearLabel.textContent = String(state.year);
+    slider.value = String(state.progressYear);
+    countLabel.textContent = `${visible.toLocaleString("de-CH")} Gebäude sichtbar · ${arrived.toLocaleString("de-CH")} hinzugekommen seit 1900`;
+    applyModernLayers();
+    if (state.active) mapLabel.textContent = "Neutraler Geländeboden · keine historischen Karten";
   }
-  mapSelect.addEventListener("change", async () => {
-    const year = Number(mapSelect.value) || null;
-    state.mapYear = null;
-    placeDivider();
-    compareBox.disabled = true;
-    if (!year) { note.textContent = note.dataset.base; return; }
-    layers.setVisible("aerial", true);
-    note.textContent = `Karte ${year} wird geladen …`;
-    try {
-      uniforms.uHistory.value = await loadMap(year);
-      state.mapYear = year;
-      compareBox.disabled = false;
-      placeDivider();
-      note.textContent = `Landeskarte, Stand bis ${year} (swisstopo Zeitreise). Je Blatt gilt die neueste Ausgabe bis zu diesem Jahr; Abdeckung und Genauigkeit variieren.`;
-    } catch (error) {
-      mapSelect.value = "";
-      reportError(`Historische Karte ${year} konnte nicht geladen werden (swisstopo-WMS nicht erreichbar oder Bildgrösse nicht unterstützt).`, error);
-      note.textContent = note.dataset.base;
+
+  function setYear(year) {
+    state.progressYear = Math.max(YEAR_MIN, Math.min(yearMax, Number(year)));
+    const nextYear = Math.floor(state.progressYear);
+    if (nextYear !== state.year) {
+      state.year = nextYear;
+      applyYear();
+    } else {
+      yearLabel.textContent = String(state.year);
+      slider.value = String(state.progressYear);
+      buildings.setTimeTravel(state.progressYear, state.active && state.progressYear < yearMax);
+    }
+    updateRate();
+  }
+
+  function enter() {
+    if (state.active) return;
+    saved = {
+      layers: layers.snapshot(),
+      ground: ctx.ground?.state.mode ?? "sim",
+      colorMode: $("#color-mode").value,
+      buildingFilter: buildings.lastPredicate,
+      cameraPosition: scene3d.camera.position.clone(),
+      cameraTarget: scene3d.controls.target.clone(),
+      damping: scene3d.controls.enableDamping,
+      time: { ...ctx.timeState },
+      weatherPreset: ctx.weather?.state.preset ?? "live",
+      weatherEffect: ctx.weather?.state.effect ?? null,
+      neutralGround: uniforms.uNeutralGround.value,
+      inspector: {
+        visible: !$("#inspector").hidden,
+        selectedBuilding: buildings.selected,
+        content: $("#inspector-body").innerHTML,
+        className: $("#inspector-body").className,
+      },
+    };
+    state.active = true;
+    state.playing = false;
+    ctx.rig?.stop();
+    ctx.cancelTimeTransition?.();
+    const view = ctx.rig?.currentView();
+    if (view) {
+      scene3d.controls.enableDamping = false;
+      const fade = $("#scene-transition");
+      const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!reduceMotion) fade.classList.add("is-covering");
+      ctx.rig.flyTo({ target: scene3d.controls.target.clone(), distance: Math.min(view.distance, 3200), heading: view.heading, tilt: Math.PI / 180, instant: true });
+      if (!reduceMotion) requestAnimationFrame(() => requestAnimationFrame(() => fade.classList.remove("is-covering")));
+    }
+    state.year = yearMax;
+    state.progressYear = yearMax;
+    $("#layers-panel").hidden = true;
+    $("#quick-panel").hidden = true;
+    $("#sky-panel").hidden = true;
+    $("#inspector").hidden = true;
+    buildings.select(-1);
+    ctx.parcels?.selectBuilding(-1);
+    $("#clock-btn").setAttribute("aria-expanded", "false");
+    panel.hidden = false;
+    $("#timeline-year-display").hidden = false;
+    infoPanel.hidden = true;
+    infoButton.setAttribute("aria-expanded", "false");
+    document.body.classList.add("time-travel-active");
+    uniforms.uNeutralGround.value = 1;
+    uniforms.uSplit.value = 0;
+    mapLabel.textContent = "Neutraler Geländeboden · keine historischen Karten";
+    ctx.setClearTime?.();
+    ctx.weather?.setPreset("clear");
+    $("#weather-mode").querySelectorAll("button").forEach((button) => button.setAttribute("aria-checked", String(button.dataset.k === "clear")));
+    $("#weather-effect-chips").querySelectorAll("button").forEach((button) => button.setAttribute("aria-checked", String(button.dataset.k === "none")));
+    for (const layer of layers.entries()) {
+      if (layer.id !== "terrain" && layer.id !== "buildings" && layer.visible) layers.setVisible(layer.id, false);
+    }
+    ctx.setNeutralLake?.(true);
+    layers.setVisible("terrain", true);
+    layers.setVisible("buildings", true);
+    const colorMode = $("#color-mode");
+    colorMode.value = "dorf";
+    colorMode.dispatchEvent(new Event("change", { bubbles: true }));
+    applyYear();
+  }
+
+  function stopPlayback() {
+    state.playing = false;
+    playButton.textContent = "▶";
+    playButton.setAttribute("aria-label", "Zeitreise abspielen");
+    playButton.title = "Abspielen";
+  }
+
+  function exit() {
+    if (!state.active || !saved) return;
+    const restore = saved;
+    stopPlayback();
+    state.active = false;
+    ctx.rig?.stop();
+    $("#scene-transition").classList.remove("is-covering");
+    scene3d.camera.position.copy(restore.cameraPosition);
+    scene3d.controls.target.copy(restore.cameraTarget);
+    scene3d.controls.enableDamping = restore.damping;
+    scene3d.controls.update();
+    panel.hidden = true;
+    $("#timeline-year-display").hidden = true;
+    infoPanel.hidden = true;
+    infoButton.setAttribute("aria-expanded", "false");
+    document.body.classList.remove("time-travel-active");
+    uniforms.uSplit.value = 0;
+    uniforms.uNeutralGround.value = restore.neutralGround;
+    buildings.setTimeTravel(yearMax, false);
+    $("#color-mode").value = restore.colorMode;
+    $("#color-mode").dispatchEvent(new Event("change", { bubbles: true }));
+    Object.assign(ctx.timeState, restore.time);
+    ctx.applyTime?.();
+    const timePlay = $("#btn-play");
+    timePlay.textContent = ctx.timeState.playing ? "❚❚" : "▶";
+    timePlay.classList.toggle("on", ctx.timeState.playing);
+    ctx.weather?.setPreset(restore.weatherPreset);
+    if (restore.weatherEffect) ctx.weather?.setEffect(restore.weatherEffect);
+    $("#weather-mode").querySelectorAll("button").forEach((button) => button.setAttribute("aria-checked", String(button.dataset.k === restore.weatherPreset)));
+    $("#weather-effect-chips").querySelectorAll("button").forEach((button) => button.setAttribute("aria-checked", String(button.dataset.k === (restore.weatherEffect ?? "none"))));
+    buildings.applyFilter(restore.buildingFilter ?? null);
+    if (ctx.ground?.state.mode !== restore.ground) void ctx.ground?.set(restore.ground);
+    ctx.setNeutralLake?.(false);
+    layers.restore(restore.layers);
+    if (restore.inspector.visible) {
+      if (restore.inspector.selectedBuilding >= 0) ctx.selectBuilding(restore.inspector.selectedBuilding);
+      else {
+        $("#inspector-body").innerHTML = restore.inspector.content;
+        $("#inspector-body").className = restore.inspector.className;
+        $("#inspector").hidden = false;
+      }
+    }
+    saved = null;
+  }
+
+  slider.min = String(YEAR_MIN);
+  slider.max = String(yearMax);
+  slider.addEventListener("input", () => { stopPlayback(); setYear(Number(slider.value)); });
+  speedSelect.addEventListener("change", () => { state.speed = Number(speedSelect.value) || 1; });
+  playButton.addEventListener("click", () => {
+    if (!state.active) return;
+    if (state.playing) { stopPlayback(); return; }
+    if (state.year >= yearMax) setYear(YEAR_MIN);
+    state.speed = Number(speedSelect.value) || 1;
+    updateRate();
+    state.playing = true;
+    playButton.textContent = "Ⅱ";
+    playButton.setAttribute("aria-label", "Zeitreise pausieren");
+    playButton.title = "Pause";
+  });
+  $("#timeline-restart").addEventListener("click", () => { stopPlayback(); setYear(YEAR_MIN); });
+  $("#timeline-exit").addEventListener("click", exit);
+  infoButton.addEventListener("click", () => {
+    infoPanel.hidden = !infoPanel.hidden;
+    infoButton.setAttribute("aria-expanded", String(!infoPanel.hidden));
+  });
+
+  scene3d.onFrame((delta) => {
+    if (!state.active || !state.playing) return;
+    state.autoSpeed = automaticTimeSpeed(state.progressYear) * state.speed;
+    const label = `${state.autoSpeed.toFixed(1)}×`;
+    if (rateOutput.textContent !== label) rateOutput.textContent = label;
+    setYear(state.progressYear + delta * state.autoSpeed * 5);
+    if (state.progressYear >= yearMax) {
+      stopPlayback();
     }
   });
-  note.dataset.base = note.textContent;
-  ctx.history = { state, apply };
-  apply();
+
+  ctx.history = { state, enter, exit, setYear };
+  const timeTravelButton = $("#details-time-travel");
+  if (timeTravelButton) timeTravelButton.disabled = false;
+  $("[data-quick='timeline']").disabled = false;
 }

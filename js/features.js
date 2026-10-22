@@ -113,12 +113,20 @@ function buildRoadGroups(roads, terrain, roadIndex, bridges, crossings) {
 function buildWater(water, terrain) {
   const group = new THREE.Group();
   group.name = "water";
+  const lakeGroup = new THREE.Group();
+  lakeGroup.name = "neutral-lake";
+  const otherGroup = new THREE.Group();
+  otherGroup.name = "other-waters";
+  group.add(lakeGroup, otherGroup);
   const lake = water.areas.filter((a) => a.k === "lake");
   const other = water.areas.filter((a) => a.k !== "lake");
   const material = new THREE.MeshStandardMaterial({
     color: 0x2f7396, transparent: true, opacity: 0.5, roughness: 0.15, metalness: 0.1, depthWrite: false, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3,
   });
+  const lakeMaterial = material.clone();
+  lakeMaterial.opacity = 0.5;
+  lakeMaterial.depthWrite = false;
   for (const area of lake) {
     // Seespiegel: Median der Geländehöhe entlang des Ufers
     const heights = [];
@@ -126,14 +134,14 @@ function buildWater(water, terrain) {
     for (let i = 0; i < ring.length; i += 2) { const h = terrain.heightAt(ring[i], ring[i + 1]); if (h !== null) heights.push(h); }
     heights.sort((a, b) => a - b);
     const level = (heights[Math.floor(heights.length / 2)] ?? 3) + 0.05;
-    const mesh = new THREE.Mesh(buildPolygonMesh([area.rings], { terrain, level }), material);
+    const mesh = new THREE.Mesh(buildPolygonMesh([area.rings], { terrain, level }), lakeMaterial);
     mesh.renderOrder = 4;
-    group.add(mesh);
+    lakeGroup.add(mesh);
   }
   if (other.length) {
     const mesh = new THREE.Mesh(buildPolygonMesh(other.map((a) => a.rings), { terrain, lift: 0.15 }), material);
     mesh.renderOrder = 4;
-    group.add(mesh);
+    otherGroup.add(mesh);
   }
   const widths = { river: 6, canal: 4, stream: 1.8 };
   const streams = water.streams;
@@ -143,8 +151,11 @@ function buildWater(water, terrain) {
       new THREE.MeshStandardMaterial({ color: 0x3f86ad, roughness: 0.3, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }),
     );
     mesh.renderOrder = 4;
-    group.add(mesh);
+    otherGroup.add(mesh);
   }
+  group.userData.neutralLake = lakeGroup;
+  group.userData.otherWaters = otherGroup;
+  group.userData.lakeMaterial = lakeMaterial;
   return group;
 }
 
@@ -183,6 +194,16 @@ export async function initDataLayers(ctx) {
 
   const waterGroup = waterFile ? safe("Gewässer", () => buildWater(waterFile, terrain)) : null;
   if (waterGroup) scene3d.aoExcluded.add(waterGroup);
+  ctx.setNeutralLake = (active) => {
+    if (!waterGroup) return;
+    const lake = waterGroup.userData.neutralLake;
+    const other = waterGroup.userData.otherWaters;
+    waterGroup.visible = active || layers.isVisible("water");
+    lake.visible = active || layers.isVisible("water");
+    other.visible = !active && layers.isVisible("water");
+    waterGroup.userData.lakeMaterial.opacity = active ? 0.98 : 0.5;
+    waterGroup.userData.lakeMaterial.depthWrite = active;
+  };
   layers.add({
     id: "water", label: "Gewässer", color: "#2f7396", available: Boolean(waterGroup), note: "water.json fehlt",
     apply: (v) => { if (!waterGroup) return; waterGroup.visible = v; if (v && !waterGroup.parent) scene.add(waterGroup); },

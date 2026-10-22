@@ -16,15 +16,20 @@ export function initGround(ctx) {
   loader.setCrossOrigin("anonymous");
   let mapTexture = null;
   const state = { mode: null };
+  let request = 0;
 
-  async function loadMap() {
-    if (mapTexture) return mapTexture;
+  function mapUrl(width = meta.ortho.width, height = meta.ortho.height) {
     const [minE, minN, maxE, maxN] = meta.ortho.extent;
     const params = new URLSearchParams({
       SERVICE: "WMS", VERSION: "1.1.1", REQUEST: "GetMap", LAYERS: MODES.map.layer, STYLES: "", SRS: "EPSG:2056",
-      BBOX: `${minE},${minN},${maxE},${maxN}`, WIDTH: String(meta.ortho.width), HEIGHT: String(meta.ortho.height), FORMAT: MODES.map.format,
+      BBOX: `${minE},${minN},${maxE},${maxN}`, WIDTH: String(width), HEIGHT: String(height), FORMAT: MODES.map.format,
     });
-    mapTexture = await loader.loadAsync(`${WMS}?${params}`);
+    return `${WMS}?${params}`;
+  }
+
+  async function loadMap() {
+    if (mapTexture) return mapTexture;
+    mapTexture = await loader.loadAsync(mapUrl());
     mapTexture.colorSpace = THREE.SRGBColorSpace;
     mapTexture.anisotropy = scene3d.renderer.capabilities.getMaxAnisotropy();
     return mapTexture;
@@ -33,16 +38,19 @@ export function initGround(ctx) {
   async function set(mode) {
     const definition = MODES[mode];
     if (!definition) return;
+    const currentRequest = ++request;
     note.textContent = definition.note;
     let texture = ctx.orthoTexture;
     if (mode === "map") {
       note.textContent = "Landeskarte wird geladen …";
       try { texture = await loadMap(); } catch (error) {
+        if (currentRequest !== request) return;
         reportError("Landeskarte (swisstopo-WMS) nicht erreichbar; es bleibt bei der vorherigen Bodenansicht.", error);
         select.value = state.mode ?? "sim";
         note.textContent = MODES[select.value].note;
         return;
       }
+      if (currentRequest !== request) return;
       note.textContent = definition.note;
     }
     if (!texture) { reportError("Luftbild fehlt; Boden ohne Textur."); return; }
@@ -52,10 +60,10 @@ export function initGround(ctx) {
     state.mode = mode;
     select.value = mode;
     localStorage.setItem("brunnen3d-ground", mode);
+    ctx.onGroundModeChange?.(mode);
   }
 
   select.addEventListener("change", () => set(select.value));
-  const stored = localStorage.getItem("brunnen3d-ground");
-  set(MODES[stored] ? stored : "sim");
-  ctx.ground = { set, state, MODES };
+  set("sim");
+  ctx.ground = { set, state, MODES, previewUrl: () => mapUrl(320, 220) };
 }

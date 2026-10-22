@@ -3,7 +3,11 @@
 import * as THREE from "three";
 
 const API = "https://api.open-meteo.com/v1/forecast?latitude=47.0045&longitude=8.6136&timezone=Europe%2FZurich"
-  + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,cloud_cover,precipitation,rain,snowfall,wind_speed_10m,wind_direction_10m,is_day";
+  + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,cloud_cover,precipitation,rain,snowfall,wind_speed_10m,wind_direction_10m,is_day"
+  + "&daily=sunrise,sunset,moonrise,moonset,moon_phase&forecast_days=1";
+const AIR_API = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=47.0045&longitude=8.6136&timezone=Europe%2FZurich"
+  + "&current=european_aqi,pm2_5,pm10,ozone,uv_index,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen";
+const AIR_REFRESH_MS = 60 * 60 * 1000;
 
 const CODE_TEXT = {
   0: "klar", 1: "überwiegend klar", 2: "teils bewölkt", 3: "bedeckt", 45: "Nebel", 48: "Reifnebel",
@@ -38,6 +42,22 @@ export const PRESETS = {
   fog: { label: "Nebel", current: { weather_code: 45, cloud_cover: 100 } },
   storm: { label: "Gewitter", current: { weather_code: 95, cloud_cover: 100 } },
 };
+
+function addEffect(base, effect) {
+  if (!effect) return base;
+  const simulated = weatherCondition(PRESETS[effect].current);
+  const condition = base ?? weatherCondition(PRESETS.clear.current);
+  return {
+    ...condition,
+    text: simulated.text,
+    rain: condition.rain || simulated.rain,
+    snow: condition.snow || simulated.snow,
+    fog: condition.fog || simulated.fog,
+    storm: condition.storm || simulated.storm,
+    cloud: Math.max(condition.cloud, simulated.cloud),
+    heavy: condition.heavy || simulated.heavy,
+  };
+}
 
 /** Live-Wetter gilt nur nahe an der aktuellen Zeit; für andere Zeitpunkte gibt es keine Messung. */
 export const LIVE_WINDOW_MS = 2 * 3600 * 1000;
@@ -81,7 +101,11 @@ function particleSystem(count, asLines) {
 export function initWeather(ctx) {
   const { $, scene3d, sky, layers } = ctx;
   const info = $("#weather-info");
-  const state = { live: null, preset: "live", effects: true, flash: 0, condition: null, source: "none" };
+  const state = {
+    live: null, liveTime: null, daily: null,
+    air: { status: "loading", current: null, time: null, latitude: null, longitude: null, elevation: null, updatedAt: null },
+    preset: "live", effect: null, effects: true, flash: 0, condition: null, source: "none",
+  };
 
   const rain = particleSystem(9000, true), snow = particleSystem(5000, false);
   for (const p of [rain, snow]) { scene3d.scene.add(p.object); scene3d.aoExcluded.add(p.object); }
@@ -101,9 +125,12 @@ export function initWeather(ctx) {
   const simDate = () => ctx.simDate?.() ?? new Date();
 
   function effective() {
-    if (state.preset !== "live") return { condition: weatherCondition(PRESETS[state.preset].current), source: "preset" };
-    if (state.live && Math.abs(simDate() - Date.now()) <= LIVE_WINDOW_MS) return { condition: state.live, source: "live" };
-    return { condition: null, source: state.live ? "outside" : "none" };
+    let result;
+    if (state.preset === "clear") result = { condition: weatherCondition(PRESETS.clear.current), source: "clear" };
+    else if (state.live && Math.abs(simDate() - Date.now()) <= LIVE_WINDOW_MS) result = { condition: state.live, source: "live" };
+    else result = { condition: null, source: state.live ? "outside" : "none" };
+    if (state.effect) result = { condition: addEffect(result.condition, state.effect), source: "simulation" };
+    return result;
   }
 
   let lastUpdate = 0, intensity = 0, mode = "none";
@@ -160,12 +187,16 @@ export function initWeather(ctx) {
   }
 
   function describe() {
+    const current = effective();
+    state.condition = current.condition;
+    state.source = current.source;
     const live = state.live;
     const base = live ? `${live.temperature_2m.toFixed(1)} °C, ${weatherCondition(live).text}, Wind ${Math.round(live.wind_speed_10m)} km/h` : "Wetterdaten nicht verfügbar";
-    if (state.source === "preset") info.textContent = `Vorschau: ${PRESETS[state.preset].label}. Live: ${base}`;
+    if (state.source === "clear") info.textContent = "Klar: helle Tageszeit, kein Wetter.";
+    else if (state.source === "simulation") info.textContent = `Simulation: ${PRESETS[state.effect].label}. Live: ${base}`;
     else if (state.source === "outside") info.textContent = "Zeit weicht von jetzt ab: kein Live-Wetter (Vorgabe wählbar)";
-    else info.textContent = live ? `Jetzt: ${base} (Open-Meteo)` : base;
-    ctx.onWeatherChange?.({ ...state, base });
+    else info.textContent = live ? `Live: ${base} (Open-Meteo)` : base;
+    ctx.onWeatherChange?.({ ...state, base, effect: state.effect });
   }
 
   async function refresh() {
@@ -175,18 +206,63 @@ export function initWeather(ctx) {
       const response = await fetch(API, { signal: controller.signal });
       clearTimeout(timer);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const { current } = await response.json();
+      const { current, daily } = await response.json();
       state.live = { ...weatherCondition(current), ...current };
+      state.liveTime = current.time ?? null;
+      state.daily = daily?.time?.[0] ? {
+        date: daily.time[0], sunrise: daily.sunrise?.[0] ?? null, sunset: daily.sunset?.[0] ?? null,
+        moonrise: daily.moonrise?.[0] ?? null, moonset: daily.moonset?.[0] ?? null, moonPhase: daily.moon_phase?.[0] ?? null,
+      } : null;
       lastUpdate = 0;
     } catch (error) {
       state.live = null;
+      state.liveTime = null;
+      state.daily = null;
       console.warn("Open-Meteo:", error);
     }
     describe();
   }
 
+  async function refreshAirQuality() {
+    const previous = state.air;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      let response;
+      try { response = await fetch(AIR_API, { signal: controller.signal }); }
+      finally { clearTimeout(timer); }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      state.air = {
+        status: data.current ? "ready" : "unavailable", current: data.current ?? null,
+        time: data.current?.time ?? null, latitude: data.latitude ?? null, longitude: data.longitude ?? null,
+        elevation: data.elevation ?? null, updatedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      state.air = { ...previous, status: "unavailable", current: null, time: null, updatedAt: new Date().toISOString() };
+      console.warn("Open-Meteo Air Quality:", error);
+    }
+    ctx.onAirQualityChange?.(state.air);
+  }
+
   layers.add({ id: "weather", label: "Wettereffekte", color: "#7fa6c9", visible: true, apply: (v) => { state.effects = v; lastUpdate = 0; } });
   refresh();
   setInterval(refresh, 10 * 60 * 1000);
-  ctx.weather = { state, refresh, setPreset(key) { state.preset = key; lastUpdate = 0; }, PRESETS };
+  refreshAirQuality();
+  setInterval(refreshAirQuality, AIR_REFRESH_MS);
+  ctx.weather = {
+    state, refresh, refreshAirQuality, PRESETS,
+    setPreset(key) {
+      if (key !== "live" && key !== "clear") return;
+      state.preset = key;
+      state.effect = null;
+      lastUpdate = 0;
+      describe();
+    },
+    setEffect(key) {
+      state.effect = ["rain", "snow", "fog"].includes(key) ? key : null;
+      lastUpdate = 0;
+      describe();
+    },
+  };
 }

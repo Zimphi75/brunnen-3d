@@ -51,6 +51,15 @@ vec3 simGround( vec3 aerial, vec2 xz, float dist, float nY ) {
   vec3 rockColor = mix( vec3( 0.10, 0.095, 0.085 ), vec3( 0.19, 0.175, 0.155 ), fbm( xz * 0.45 ) ) * ( 0.8 + 0.4 * n4 * fine );
   return mix( col, rockColor, rock * 0.85 );
 }
+vec3 neutralGround( vec2 xz, float height, vec3 normal ) {
+  float detail = fbm( xz * 0.012 );
+  float elevation = smoothstep( 100.0, 760.0, height );
+  float slope = smoothstep( 0.12, 0.48, 1.0 - normalize( normal ).y );
+  float relief = clamp( elevation * 0.5 + slope * 0.35, 0.0, 0.62 );
+  vec3 meadow = mix( vec3( 0.20, 0.31, 0.18 ), vec3( 0.29, 0.39, 0.25 ), detail );
+  vec3 upland = mix( vec3( 0.23, 0.27, 0.22 ), vec3( 0.17, 0.21, 0.18 ), fbm( xz * 0.035 ) );
+  return mix( meadow, upland, relief );
+}
 `;
 
 export class Terrain {
@@ -75,12 +84,12 @@ export class Terrain {
     blank.needsUpdate = true;
     this.uniforms = {
       uHistory: { value: blank }, uSplit: { value: 0 }, uResolution: { value: new THREE.Vector2(1, 1) },
-      uHires: { value: blank }, uHiresRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uHiresMix: { value: 0 }, uGroundMode: { value: 0 },
+      uHires: { value: blank }, uHiresRect: { value: new THREE.Vector4(0, 0, 1, 1) }, uHiresMix: { value: 0 }, uGroundMode: { value: 0 }, uNeutralGround: { value: 0 },
     };
     this.material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, this.uniforms);
-      shader.vertexShader = "varying vec2 vTerrXZ; varying vec3 vTerrN;\n" + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvTerrXZ = position.xz; vTerrN = normal;");
-      shader.fragmentShader = "uniform sampler2D uHistory; uniform float uSplit; uniform vec2 uResolution; uniform sampler2D uHires; uniform vec4 uHiresRect; uniform float uHiresMix; uniform float uGroundMode; varying vec2 vTerrXZ; varying vec3 vTerrN;\n" + SIM_GROUND
+      shader.vertexShader = "varying vec2 vTerrXZ; varying vec3 vTerrN; varying float vTerrHeight;\n" + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvTerrXZ = position.xz; vTerrN = normal; vTerrHeight = position.y;");
+      shader.fragmentShader = "uniform sampler2D uHistory; uniform float uSplit; uniform vec2 uResolution; uniform sampler2D uHires; uniform vec4 uHiresRect; uniform float uHiresMix; uniform float uGroundMode; uniform float uNeutralGround; varying vec2 vTerrXZ; varying vec3 vTerrN; varying float vTerrHeight;\n" + SIM_GROUND
         + shader.fragmentShader.replace("#include <map_fragment>", `#ifdef USE_MAP
         float lodBias = uGroundMode < 0.5 ? 1.6 : 0.0;
         vec4 sampledDiffuseColor = texture2D( map, vMapUv, lodBias );
@@ -89,7 +98,8 @@ export class Terrain {
           float edge = min( min( hu.x, 1.0 - hu.x ), min( hu.y, 1.0 - hu.y ) );
           sampledDiffuseColor = mix( sampledDiffuseColor, texture2D( uHires, hu, lodBias * 2.4 ), uHiresMix * smoothstep( 0.0, 0.06, edge ) );
         }
-        if ( uGroundMode < 0.5 ) sampledDiffuseColor.rgb = simGround( sampledDiffuseColor.rgb, vTerrXZ, length( vViewPosition ), normalize( vTerrN ).y );
+        if ( uNeutralGround > 0.5 ) sampledDiffuseColor = vec4( neutralGround( vTerrXZ, vTerrHeight, vTerrN ), 1.0 );
+        else if ( uGroundMode < 0.5 ) sampledDiffuseColor.rgb = simGround( sampledDiffuseColor.rgb, vTerrXZ, length( vViewPosition ), normalize( vTerrN ).y );
         if ( uSplit > 0.0 && gl_FragCoord.x < uSplit * uResolution.x ) sampledDiffuseColor = texture2D( uHistory, vMapUv );
         diffuseColor *= sampledDiffuseColor;
       #endif`);

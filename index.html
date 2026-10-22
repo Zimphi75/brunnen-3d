@@ -19,6 +19,38 @@
   <canvas id="scene" tabindex="0" aria-label="3D-Modell von Ingenbohl"></canvas>
   <div id="labels"></div>
   <div id="flash"></div>
+  <div id="scene-transition" aria-hidden="true"></div>
+  <section id="navigation-hint" class="navigation-hint" aria-hidden="true" hidden>
+    <div class="navigation-hint-card" role="status">
+      <svg class="hint-gesture" viewBox="0 0 240 112" aria-hidden="true">
+        <defs>
+          <marker id="hint-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 8 4 0 8Z" fill="currentColor"></path>
+          </marker>
+        </defs>
+        <g class="hint-grid" fill="none" stroke="currentColor" stroke-width="1">
+          <path d="M28 92h184M42 82h156M57 72h126M73 62h94M88 52h64M104 42h32M50 92l34-50m14 50 16-50m17 50 2-50m18 50-13-50m30 50-28-50"></path>
+        </g>
+        <path class="hint-cue hint-pan-cue" d="M43 56h52" marker-start="url(#hint-arrow)" marker-end="url(#hint-arrow)"></path>
+        <path class="hint-cue hint-orbit-cue" d="M59 82c4-35 32-52 57-45 13 4 21 12 24 23" marker-end="url(#hint-arrow)"></path>
+        <path class="hint-cue hint-zoom-cue" d="M190 45v39" marker-start="url(#hint-arrow)" marker-end="url(#hint-arrow)"></path>
+        <g class="hint-touch" fill="none" stroke="currentColor" stroke-width="3">
+          <circle cx="104" cy="56" r="9"></circle>
+          <circle cx="136" cy="56" r="9"></circle>
+          <path d="M113 56h14" stroke-dasharray="2 4"></path>
+        </g>
+        <g class="hint-mouse">
+          <rect class="hint-mouse-body" x="96" y="28" width="48" height="62" rx="22"></rect>
+          <rect class="hint-mouse-button hint-mouse-left" x="98" y="30" width="21" height="23" rx="12"></rect>
+          <rect class="hint-mouse-button hint-mouse-right" x="121" y="30" width="21" height="23" rx="12"></rect>
+          <path class="hint-mouse-seam" d="M120 31v26"></path>
+          <rect class="hint-mouse-wheel" x="117" y="37" width="6" height="13" rx="3"></rect>
+        </g>
+      </svg>
+      <h2>3D-Karte erkunden</h2>
+      <p id="navigation-hint-instruction" aria-live="polite">Ziehen zum Verschieben</p>
+    </div>
+  </section>
 
   <section class="panel" id="brand" aria-label="Identität und Suche">
     <div class="brand-row"><h1>Brunnen 3D</h1><span class="brand-sub">Ingenbohl SZ · BFS 1364</span></div>
@@ -29,61 +61,219 @@
   </section>
 
   <button class="panel" id="clock-btn" aria-expanded="false" aria-controls="sky-panel" aria-label="Tageszeit und Wetter einstellen">
-    <span id="clock-time" class="num">--:--</span><span id="clock-wx">Wetter …</span>
+    <span id="clock-time" class="num">--:--</span><span id="clock-wx">Wetter …</span><svg class="clock-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
   </button>
 
   <section class="panel" id="sky-panel" hidden aria-label="Tageszeit und Wetter">
-    <div class="label">Tageszeit</div>
-    <div class="sky-row">
-      <button class="icon-btn" id="btn-play" title="Tagesverlauf abspielen" aria-label="Tagesverlauf abspielen">▶</button>
-      <input type="range" id="time-slider" min="0" max="1439" step="5" aria-label="Uhrzeit">
-      <output id="time-label" class="num">--:--</output>
+    <header class="sky-head">
+      <div><span class="profile-eyebrow">ZEIT &amp; WETTER</span><h2>Ansicht einstellen</h2></div>
+      <button type="button" class="icon-btn" id="clock-close" aria-label="Zeit- und Wetterpanel schliessen">×</button>
+    </header>
+    <div id="sky-panel-content">
+      <section class="sky-section">
+        <h3>Darstellung</h3>
+        <div class="seg mode-segmented" id="display-mode" role="group" aria-label="Darstellungsmodus">
+          <button type="button" data-mode="live" aria-pressed="true">Live</button>
+          <button type="button" data-mode="clear" aria-pressed="false">Hell &amp; klar</button>
+          <button type="button" data-mode="simulation" aria-pressed="false">Simulation</button>
+        </div>
+      </section>
+
+      <section class="sky-section" id="time-section">
+        <h3>Tageszeit</h3>
+        <p id="live-time-summary" class="sky-summary">Aktuelle Ortszeit</p>
+        <p id="clear-mode-summary" class="sky-summary" hidden>Helles Tageslicht, unabhängig von Uhrzeit und Wetter.</p>
+        <fieldset id="simulation-time-controls" class="sky-controls" disabled hidden>
+          <legend class="label">Simulation</legend>
+          <div class="sky-row">
+            <button class="icon-btn" id="btn-play" title="Tagesverlauf abspielen" aria-label="Tagesverlauf abspielen">▶</button>
+            <input type="range" id="time-slider" min="0" max="1439" step="5" aria-label="Uhrzeit">
+            <output id="time-label" class="num">--:--</output>
+          </div>
+          <div class="sky-row">
+            <input type="date" id="date-input" aria-label="Datum">
+            <span id="sun-info" class="num note"></span>
+          </div>
+        </fieldset>
+      </section>
+
+      <section class="sky-section">
+        <h3>Wetter</h3>
+        <p id="clear-weather-summary" class="sky-summary" hidden></p>
+        <div class="sky-metrics weather-metrics" id="weather-model-metrics">
+          <div><span>Temperatur</span><strong id="weather-temperature">Keine aktuellen Daten</strong></div>
+          <div><span>Gefühlt</span><strong id="weather-apparent">Keine aktuellen Daten</strong></div>
+          <div><span>Luftfeuchtigkeit</span><strong id="weather-humidity">Keine aktuellen Daten</strong></div>
+          <div><span>Wind</span><strong id="weather-wind">Keine aktuellen Daten</strong></div>
+          <div><span>Bewölkung</span><strong id="weather-clouds">Keine aktuellen Daten</strong></div>
+          <div><span>Beschreibung</span><strong id="weather-description">Keine aktuellen Daten</strong></div>
+        </div>
+        <p id="weather-source-note" class="note sky-attribution">Wettermodell · Open-Meteo</p>
+        <p id="weather-unavailable-note" class="note" hidden>Für das simulierte Datum sind keine Wettermodellwerte verfügbar.</p>
+        <p id="weather-info" class="note"></p>
+        <fieldset id="simulation-weather-controls" class="sky-controls" disabled hidden>
+          <legend class="label">Wettereffekte auf der Karte</legend>
+          <p class="note">Live-Wetter wirkt nur im Zeitfenster nahe der aktuellen Uhrzeit. Wettereffekte darunter werden auf der Karte simuliert.</p>
+          <div id="weather-mode" role="radiogroup" aria-label="Interne Wetterbasis" hidden aria-hidden="true">
+            <button type="button" role="radio" data-k="live" aria-checked="true">Aktuell</button>
+            <button type="button" role="radio" data-k="clear" aria-checked="false">Klar</button>
+          </div>
+          <details id="weather-effects">
+            <summary>Wettereffekte simulieren</summary>
+            <div class="chips" id="weather-effect-chips" role="radiogroup" aria-label="Wettereffekt">
+              <button type="button" role="radio" data-k="none" aria-checked="true">Aus</button>
+              <button type="button" role="radio" data-k="rain" aria-checked="false">Regen</button>
+              <button type="button" role="radio" data-k="snow" aria-checked="false">Schnee</button>
+              <button type="button" role="radio" data-k="fog" aria-checked="false">Nebel</button>
+            </div>
+          </details>
+        </fieldset>
+      </section>
+
+      <section class="sky-section" id="solar-section">
+        <h3>Sonne und Mond</h3>
+        <div class="sky-metrics">
+          <div><span>Sonnenaufgang</span><strong id="sunrise-value">–</strong></div>
+          <div><span>Sonnenuntergang</span><strong id="sunset-value">–</strong></div>
+          <div><span>Sonnenhöhe</span><strong id="sun-altitude-value">–</strong></div>
+          <div><span>Sonnenazimut</span><strong id="sun-azimuth-value">–</strong></div>
+          <div><span>Mondphase heute</span><strong id="moon-phase-value">Keine aktuellen Daten</strong></div>
+          <div><span>Mondbeleuchtung</span><strong id="moon-light-value">Keine aktuellen Daten</strong></div>
+        </div>
+        <p id="moon-times-value" class="note"></p>
+        <p id="astronomy-source-note" class="note sky-attribution">Sonne: astronomisch berechnet · Mond: Open-Meteo</p>
+      </section>
+
+      <section class="sky-section" id="air-quality-section">
+        <h3>Luftqualität und Pollen</h3>
+        <div class="sky-metrics">
+          <div><span>Europäischer AQI</span><strong id="air-aqi">Keine aktuellen Daten</strong></div>
+          <div><span>PM2.5</span><strong id="air-pm25">Keine aktuellen Daten</strong></div>
+          <div><span>PM10</span><strong id="air-pm10">Keine aktuellen Daten</strong></div>
+          <div><span>Ozon</span><strong id="air-ozone">Keine aktuellen Daten</strong></div>
+          <div><span>UV-Index</span><strong id="air-uv">Keine aktuellen Daten</strong></div>
+          <div><span>Pollen, höchste Art</span><strong id="air-pollen">Keine aktuellen Daten</strong></div>
+        </div>
+        <p id="air-source-note" class="note sky-attribution">Luftqualität und Pollen: CAMS-Modell · Open-Meteo</p>
+        <details id="pollen-details">
+          <summary>Pollen nach Art</summary>
+          <div id="pollen-species" class="sky-metrics pollen-metrics"></div>
+        </details>
+      </section>
     </div>
-    <div class="sky-row">
-      <input type="date" id="date-input" aria-label="Datum">
-      <button class="btn" id="btn-now">Jetzt</button>
-      <span id="sun-info" class="num note"></span>
-    </div>
-    <div class="label">Wetter</div>
-    <div class="chips" id="weather-chips" role="radiogroup" aria-label="Wetter"></div>
-    <p id="weather-info" class="note"></p>
   </section>
 
   <section class="panel" id="view-panel" aria-label="Ansicht">
-    <button class="icon-btn" id="btn-reset" title="Kamera zurücksetzen (H)" aria-label="Kamera zurücksetzen">⟲</button>
-    <button class="icon-btn" id="btn-top" title="Vogelperspektive (T)" aria-label="Vogelperspektive">⬒</button>
-    <button class="icon-btn" id="btn-oblique" title="Schrägansicht" aria-label="Schrägansicht">◪</button>
-    <button class="icon-btn" id="btn-rotate-ccw" type="button" title="90 Grad gegen den Uhrzeigersinn" aria-label="Karte 90 Grad gegen den Uhrzeigersinn drehen">↶</button>
-    <button class="icon-btn" id="btn-rotate-cw" type="button" title="90 Grad im Uhrzeigersinn" aria-label="Karte 90 Grad im Uhrzeigersinn drehen">↷</button>
-    <select id="preset-select" aria-label="Kameraposition"></select>
-    <button class="icon-btn" id="btn-theme" title="Hell/Dunkel" aria-label="Hell- oder Dunkelmodus">◐</button>
+    <button class="icon-btn toolbar-button" id="btn-reset" type="button" data-tooltip="Startansicht wiederherstellen" aria-label="Startansicht wiederherstellen">
+      <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7M5 9v11h14V9M9 20v-6h6v6"/></svg>
+    </button>
+    <span class="toolbar-divider" role="separator" aria-hidden="true"></span>
+    <button class="icon-btn toolbar-button" id="btn-top" type="button" data-tooltip="Vogelperspektive" aria-label="Vogelperspektive" aria-pressed="false">
+      <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15m6-12v15"/></svg>
+    </button>
+    <button class="icon-btn toolbar-button" id="btn-oblique" type="button" data-tooltip="3D-Perspektive" aria-label="3D-Perspektive" aria-pressed="false">
+      <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5zM3 8v8l9 5 9-5V8M12 13v8"/></svg>
+    </button>
+    <span class="toolbar-divider" role="separator" aria-hidden="true"></span>
+    <button class="icon-btn toolbar-button" id="btn-rotate-ccw" type="button" data-tooltip="90° nach links drehen" aria-label="90° nach links drehen">
+      <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+    </button>
+    <button class="icon-btn toolbar-button" id="btn-rotate-cw" type="button" data-tooltip="90° nach rechts drehen" aria-label="90° nach rechts drehen">
+      <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+    </button>
+    <span class="toolbar-divider" role="separator" aria-hidden="true"></span>
+    <label class="toolbar-position" data-tooltip="Kameraposition wählen">
+      <svg class="toolbar-icon toolbar-pin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      <select id="preset-select" aria-label="Kameraposition wählen"></select>
+    </label>
+    <button class="icon-btn toolbar-button" id="btn-theme" type="button" data-tooltip="Hell-/Dunkelmodus wechseln" aria-label="Hell-/Dunkelmodus wechseln" aria-pressed="false">
+      <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v2"/><path d="M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715"/><path d="M16 12a4 4 0 0 0-4-4"/><path d="m19 5-1.256 1.256"/><path d="M20 12h2"/></svg>
+    </button>
   </section>
 
-  <aside class="panel" id="layers-panel" aria-label="Ebenen und Funktionen">
-    <details open>
-      <summary>Darstellung</summary>
-      <label class="label" for="ground-mode">Boden</label>
-      <select id="ground-mode" class="wide"></select>
-      <p id="ground-note" class="note"></p>
-      <label class="label" for="color-mode">Gebäude einfärben nach</label>
-      <select id="color-mode" class="wide"></select>
-      <div id="color-legend" class="legend"></div>
-    </details>
-    <details open>
-      <summary>Ebenen</summary>
-      <div id="layer-list"></div>
-    </details>
-    <details>
-      <summary>Zeitachse</summary>
-      <div id="history-box"></div>
-    </details>
-    <details open>
-      <summary>Werkzeuge</summary>
-      <div class="seg" id="tool-list"></div>
-      <p id="tool-hint" class="note"></p>
-      <p class="note">Maus: ziehen verschiebt · rechte Taste oder Umschalt+ziehen dreht · Rad zoomt · Pfeiltasten verschieben · Q/E drehen.</p>
-    </details>
+  <nav class="panel" id="map-dock" aria-label="Kartentypen und Schnellzugriffe" data-expanded="false" data-map-open="false">
+    <div id="base-map-cards" role="group" aria-label="Kartentypen" data-open="false">
+      <button type="button" class="map-card" data-base="sim" aria-pressed="true">
+        <span class="map-card-preview preview-sim"><img src="public/data/ortho.jpg" alt=""></span><span>Simulation</span>
+      </button>
+      <button type="button" class="map-card" data-base="aerial" aria-pressed="false">
+        <span class="map-card-preview preview-aerial"><img src="public/data/ortho.jpg" alt=""></span><span>Luftbild</span>
+      </button>
+      <button type="button" class="map-card" data-base="map" aria-pressed="false">
+        <span class="map-card-preview preview-topo"><img id="topo-preview" alt=""></span><span>Topo</span>
+      </button>
+    </div>
+    <div id="quick-access" role="group" aria-label="Schnellzugriffe">
+      <button type="button" class="quick-card" data-quick="buildings" aria-expanded="false" aria-controls="quick-panel"><span aria-hidden="true">▦</span>Gebäude</button>
+      <button type="button" class="quick-card" data-quick="layers" aria-expanded="false" aria-controls="layers-panel" aria-label="Kartenebenen, Analysen und Darstellung">
+        <span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5zm-9 9 9 5 9-5M3 16l9 5 9-5"/></svg></span>Ebenen
+      </button>
+      <button type="button" class="quick-card" data-quick="traffic" aria-expanded="false" aria-controls="quick-panel"><span aria-hidden="true">⇄</span>Verkehr</button>
+      <button type="button" class="quick-card" data-quick="timeline"><span aria-hidden="true">◷</span>Zeitreise</button>
+    </div>
+    <section id="quick-panel" aria-label="Schnellzugriff" hidden>
+      <header><h2 id="quick-title"></h2><button type="button" class="icon-btn" id="quick-close" aria-label="Schnellzugriff schliessen">×</button></header>
+      <div id="quick-content"></div>
+    </section>
+  </nav>
+
+  <aside class="panel" id="layers-panel" aria-label="Kartenebenen, Analysen und Darstellung" hidden>
+    <header class="map-details-head"><div><span class="profile-eyebrow">KARTE</span><h2>Kartensteuerung</h2></div><button type="button" class="icon-btn" id="details-close" aria-label="Kartensteuerung schliessen">×</button></header>
+    <div class="map-details-scroll">
+      <section class="map-details-section map-details-layers">
+        <h3>Kartenebenen</h3>
+        <div id="layer-list"></div>
+      </section>
+      <section class="map-details-section map-details-tools">
+        <h3>Analysen &amp; Simulationen</h3>
+        <div id="analysis-layer-list"></div>
+      </section>
+      <section class="map-details-section map-details-display" id="display-details">
+        <h3>Darstellung</h3>
+        <div id="display-layer-list"></div>
+      </section>
+      <section class="map-details-section map-details-tools">
+        <h3>Werkzeuge</h3>
+        <div class="label">Analysewerkzeuge</div>
+        <div class="seg" id="tool-list"></div>
+        <p id="tool-hint" class="note"></p>
+        <p class="note">Maus: ziehen verschiebt · rechte Taste oder Umschalt+ziehen dreht · Rad zoomt · Pfeiltasten verschieben · Q/E drehen.</p>
+      </section>
+    </div>
   </aside>
+
+  <div id="building-mode-data" hidden aria-hidden="true">
+    <select id="color-mode" class="control-state" aria-label="Gebäudedarstellung"></select>
+    <div id="color-legend" class="legend"></div>
+  </div>
+
+  <select id="ground-mode" class="control-state" aria-label="Bodendarstellung"></select>
+  <p id="ground-note" class="control-state" aria-live="polite"></p>
+
+  <div id="timeline-year-display" hidden aria-live="off">
+    <span>ZEITREISE</span>
+    <strong id="timeline-year" class="num">2026</strong>
+  </div>
+
+  <section class="panel" id="time-travel-panel" aria-label="Zeitreise" hidden>
+    <div id="timeline-info" class="timeline-info" hidden>
+      <p id="timeline-count" class="timeline-count"></p>
+      <p>Gezeigt wird der heutige registrierte Gebäudebestand, keine Rekonstruktion historischer Gebäude.</p>
+      <p>Exakte GWR-Baujahre erscheinen im Baujahr. Gebäude mit Bauperiode faden über den gesamten möglichen Zeitraum ein; undatierte Gebäude bleiben ausgeblendet.</p>
+      <p id="timeline-map">Neutraler Geländeboden mit See · keine historischen Karten</p>
+    </div>
+    <div class="timeline-row">
+      <button type="button" class="icon-btn" id="timeline-restart" aria-label="Zum Anfang springen" title="Zum Anfang springen">↶</button>
+      <button type="button" class="icon-btn" id="timeline-play" aria-label="Zeitreise abspielen" title="Abspielen">▶</button>
+      <input type="range" id="timeline-slider" min="1850" max="2026" value="2026" step="any" aria-label="Jahr in der Zeitreise">
+      <select id="timeline-speed" aria-label="Wiedergabegeschwindigkeit">
+        <option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+      </select>
+      <output id="timeline-rate" class="num" aria-label="Aktuelle Geschwindigkeit">0.5×</output>
+      <button type="button" class="icon-btn" id="timeline-info-toggle" aria-expanded="false" aria-controls="timeline-info" aria-label="Informationen zur Zeitreise" title="Informationen">i</button>
+      <button type="button" class="icon-btn" id="timeline-exit" aria-label="Zeitreise schliessen" title="Zeitreise schliessen">×</button>
+    </div>
+  </section>
 
   <aside class="panel" id="inspector" hidden aria-live="polite">
     <button class="icon-btn close" id="inspector-close" aria-label="Schliessen">✕</button>

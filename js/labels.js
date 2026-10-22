@@ -5,6 +5,7 @@ import { esc } from "./inspector.js";
 export function createLabelLayer({ container, camera, canvas, terrain }) {
   const pool = [];
   const projected = new THREE.Vector3();
+  const layersPanel = document.querySelector("#layers-panel");
 
   function acquire(index) {
     if (!pool[index]) {
@@ -34,16 +35,25 @@ export function createLabelLayer({ container, camera, canvas, terrain }) {
     candidates.sort((a, b) => a.distance - b.distance);
     const placed = [];
     let used = 0;
+    const panelRect = layersPanel && !layersPanel.hidden ? layersPanel.getBoundingClientRect() : null;
     for (const c of candidates) {
       if (used >= limit) break;
       // grobe Kollisionsvermeidung zwischen Beschriftungen
       if (placed.some((p) => Math.abs(p.sx - c.sx) < 70 && Math.abs(p.sy - c.sy) < 14)) continue;
-      placed.push(c);
-      const element = acquire(used++);
+      const element = acquire(used);
       element.hidden = false;
       element.className = `plabel ${c.item.className ?? ""}`;
       if (element.dataset.text !== c.item.text) { element.innerHTML = esc(c.item.text); element.dataset.text = c.item.text; }
       element.style.transform = `translate(${c.sx.toFixed(0)}px, ${c.sy.toFixed(0)}px) translate(-50%, -100%)`;
+      if (panelRect) {
+        const labelRect = element.getBoundingClientRect();
+        if (labelRect.left < panelRect.right && labelRect.right > panelRect.left && labelRect.top < panelRect.bottom && labelRect.bottom > panelRect.top) {
+          element.hidden = true;
+          continue;
+        }
+      }
+      placed.push(c);
+      used++;
     }
     for (let i = used; i < pool.length; i++) pool[i].hidden = true;
   }
