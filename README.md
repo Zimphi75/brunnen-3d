@@ -2,6 +2,8 @@
 
 Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit Brunnen, Ingenbohl, Vierwaldstättersee und angrenzender Landschaft. Die Anwendung läuft komplett im Browser (Three.js) und basiert auf offenen Schweizer Geodaten. Es gibt keine erfundenen Gebäude, Attribute oder Messwerte: Was in den Quellen fehlt, wird als «nicht erfasst» angezeigt.
 
+**Website:** [Brunnen 3D auf GitHub Pages](https://zimphi75.github.io/brunnen-3d/). Private, nichtkommerzielle Visualisierung ohne offizielle Verbindung zur Gemeinde oder zu den Datenanbietern.
+
 ## Funktionen
 
 - Gelände (swissALTI3D) mit **simuliertem Boden** (Vorgabe: Wiese, Waldboden, Fels und befestigte Flächen aus der Luftbildfarbe klassiert, mit prozeduralem Detail); Kartentypen Simulation, Luftbild (SWISSIMAGE) und Topo (swisstopo Pixelkarte) sind über Bildkacheln unten links wählbar, beide Kartenquellen werden in Blicknähe schärfer nachgeladen; 2316 Gebäude (swissBUILDINGS3D 3.0 beta, mit GWR-Attributen), Strassen, Wege, Bahn, Gewässer, 54'000 **Bäume** (Laub- und Nadelbäume mit unregelmässigen Kronen, Kronenfarbe aus dem Luftbild, leichter Windbewegung, zwei Detailstufen, Schattenwurf in der Nähe), Gemeindegrenze, Points of Interest, Ortsnamen
@@ -14,6 +16,8 @@ Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit
 - **Haltestellen und Fahrzeuge**: Bushaltestellen mit Mast, Wartehäuschen und Bank, Bahnsteige, Schiffsteg; Postauto, SBB-Zug und Kursschiff als schlanke Modelle in der Fahrplansimulation (als Simulation gekennzeichnet)
 - Navigation: **linke Maustaste verschiebt die Karte**, rechte Taste oder Umschalt+Ziehen dreht, Mausrad zoomt; Pfeiltasten verschieben, `Q`/`E` drehen, `T` Vogelperspektive, `H` Ausgangsansicht, `/` Suche
 - Gebäude anklicken: Informationspanel mit Adresse, Gebäudeklasse, Baujahr/Bauperiode, Höhe, Grundfläche, Heizung usw.
+- **Standortnähe-Rating** im Gebäudeprofil: Die gesamte Bewertungsfläche ist anklickbar. Die deutlich markierte Aktion «Details und Quellen anzeigen» mit Aufklapppfeil öffnet Einzelkriterien, Gewichte, Berechnung, Datenquellen und zusätzliche Umweltindikatoren. Diese Umweltindikatoren fliessen nicht in den Nähe-Score ein; fehlende Datengrundlagen werden ausgewiesen. Erneutes Anklicken schliesst die Details.
+- **Responsive Kopfzeile**: kompakte Adresssuche ohne Titelzeile, gleich hohe Elemente für Suche, Zeit/Wetter und Kameraaktionen; auf schmalen Ansichten untereinander. Navigationssymbole sind gruppiert, die Ortsauswahl nutzt den übrigen Platz. Die Koordinatenanzeige ist auf grossen Ansichten unten zentriert und bis 760 Pixel Breite ausgeblendet.
 - Sonnenstand, Uhrzeit und Datum, Tagesverlauf, Schattenwurf (Panel oben in der Mitte)
 - ÖV: Haltestellen, Linien, nächste Abfahrten (Fahrplan oder Echtzeitprognose)
 - **Zeitreise**: eigenständiger Jahresregler mit Play/Pause und vier Geschwindigkeiten; exakte Baujahre blenden kurz ein, unsichere Bauperioden füllen sich über den gesamten möglichen Zeitraum mit einem GPU-seitigen Fade. Das Abspieltempo sinkt von 3× auf 0.5× bis 1980 und bleibt danach konstant. Der Boden bleibt neutral, historische Karten werden dabei nicht gezeigt; Zeit und Wetter stehen auf heute, 12:00 und klar
@@ -21,7 +25,7 @@ Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit
 - Suche nach Adressen, Strassen, Gebäuden (EGID), POI, Orten und Koordinaten (LV95 oder WGS84)
 - Werkzeuge: Strecke messen (mit Höhenprofil), Punkt abfragen
 - **Register ohne 3D-Modell**: 337 bestehende GWR-Gebäude, die swissBUILDINGS3D nicht enthält (meist Kleinbauten), lassen sich schematisch zuschalten und anklicken
-- **Almanach** (unten rechts): Übersicht, Gebäude, Energie, eidgenössische Abstimmungen der Gemeinde, Datenqualität mit Abdeckungskennzahlen, Quellen
+- **Almanach «Ingenbohl in Zahlen»** (unten rechts): direkte Tab-Navigation für Übersicht, Gebäude, Grundstücke, Energie, eidgenössische Abstimmungen der Gemeinde, Datenqualität mit Abdeckungskennzahlen und Quellen. Unten auf der Übersicht steht das Impressum. Das animierte Standort-Symbol neben der Adresse schliesst den Dialog und zoomt zur Liegenschaft. Die E-Mail-Adresse wird erst nach Klick im Browser zusammengesetzt; dies erschwert einfaches automatisches Auslesen, bietet aber keinen vollständigen Schutz vor Bots. Die Standortanimation berücksichtigt die Systemeinstellung für reduzierte Bewegung.
 - Hell- und Dunkelmodus, nach Themen gruppierte Ebenen, Ambient Occlusion, Schatten; Qualität sinkt automatisch auf Touch-Geräten und schwachen CPUs (kein AO, kleinere Schattenkarte)
 
 ## Voraussetzungen
@@ -62,11 +66,15 @@ python serve.py 9000     # anderer Port
 
 Jeder statische Webserver genügt (siehe [docs/deployment.md](docs/deployment.md)).
 
+## Veröffentlichung
+
+Pushes auf `main` starten den Workflow **Build and deploy website**: Daten und Three.js erzeugen, Pipeline-Tests ausführen und anschliessend auf [GitHub Pages](https://zimphi75.github.io/brunnen-3d/) veröffentlichen. Das Repository bleibt privat; die Website und ihre ausgelieferten Daten sind öffentlich. Der optionale Hoststar-Upload ist derzeit deaktiviert. Einrichtung und eigene Domain: [docs/deployment.md](docs/deployment.md).
+
 ## Tests
 
 ```bash
 .venv/bin/python -m pytest -q          # Pipeline-Funktionen und Datendateien
-# Browser-Tests (34): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
+# Browser-Tests (47): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
 ```
 
 ## Projektstruktur

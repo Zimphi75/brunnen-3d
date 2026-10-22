@@ -94,8 +94,9 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onAc
     const tabs = p.tabs.map(([id, label]) => `<button type="button" role="tab" data-profile-tab="${id}" aria-controls="inspector-profile-panel" aria-selected="${activeTab === id}" tabindex="${activeTab === id ? 0 : -1}">${label}</button>`).join("");
     const ratingMarkup = p.rating ? `<button type="button" class="profile-rating" data-rating-toggle aria-expanded="${p.ratingOpen}" aria-controls="profile-rating-details">
       <span class="profile-rating-score">${p.rating.score == null ? "–" : fmt(p.rating.score, 1)}<small>von 5</small></span>
-      <span class="profile-rating-copy"><b>${esc(p.rating.label)}</b><small>Standortnähe · ${p.rating.factors.length} von ${p.rating.totalFactors} Modellkriterien · ${fmt(p.rating.coverage)} % Gewicht</small><small>Antippen für Berechnung und Quellen</small></span>
+      <span class="profile-rating-copy"><b>${esc(p.rating.label)}</b><small>Standortnähe · ${p.rating.factors.length} von ${p.rating.totalFactors} Modellkriterien · ${fmt(p.rating.coverage)} % Gewicht</small></span>
       <span class="profile-rating-meter" aria-hidden="true">${Array.from({ length: 5 }, (_, index) => `<i class="${p.rating.score != null && index < Math.round(p.rating.score) ? "on" : ""}"></i>`).join("")}</span>
+      <span class="profile-rating-action"><span>${p.ratingOpen ? "Details schliessen" : "Details und Quellen anzeigen"}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
     </button>${p.ratingOpen ? `<section id="profile-rating-details" class="profile-rating-details" aria-label="Berechnung und Quellen der Standortbewertung">
       <p>${esc(p.rating.model ?? "Standortnähe-Modell")} · ${esc(p.rating.reason ?? "Score auf eine Dezimalstelle gerundet.")}</p>
       <p class="profile-note">Distanzstufen: bis 250 m = 5, bis 500 m = 4, bis 1'000 m = 3, bis 2'000 m = 2, darüber = 1.</p>

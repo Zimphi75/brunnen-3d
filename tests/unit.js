@@ -179,9 +179,13 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
   assert(body.textContent.includes("126") && body.textContent.includes("STATPOP 2024") && body.textContent.includes("nicht für dieses Gebäude"), "Rasterwerte müssen als Umfeld und nicht als Gebäudewerte markiert sein");
   assert(body.textContent.includes("22.3 kW registriert"), "PV-Leistung fehlt in der Übersicht");
   assert(body.querySelector("[data-rating-toggle]") && body.textContent.includes("4.3"), "Rating-Badge fehlt");
+  assert(body.querySelector(".profile-rating-action")?.textContent.includes("Details und Quellen anzeigen") && body.querySelector("[data-rating-toggle]").getAttribute("aria-expanded") === "false", "Rating braucht eine sichtbare Aufklappaktion");
   body.querySelector("[data-rating-toggle]").click();
+  assert(body.querySelector(".profile-rating-action")?.textContent.includes("Details schliessen") && body.querySelector("[data-rating-toggle]").getAttribute("aria-expanded") === "true", "Aufgeklapptes Rating braucht eine erkennbare Schliessaktion");
   assert(body.textContent.includes("OpenStreetMap-Mitwirkende") && body.textContent.includes("ÖV-Güteklasse") && body.textContent.includes("Luftlinie"), "Ratingquellen oder nicht verfügbare Kriterien fehlen");
   assert(body.textContent.includes("Umweltindikatoren · nicht im Nähe-Score") && body.textContent.includes("BAG-Radonkarte · GeoAdmin") && body.textContent.includes("1'000 m"), "Radon muss mit Rasterauflösung separat vom Nähe-Score erscheinen");
+  body.querySelector("[data-rating-toggle]").click();
+  assert(!body.querySelector("#profile-rating-details") && body.querySelector(".profile-rating-action").textContent.includes("Details und Quellen anzeigen"), "Rating muss sich wieder schliessen lassen");
   body.querySelector('[data-profile-tab="compare"]').click();
   assert(body.textContent.includes("56. Perzentil") && body.textContent.includes("n = 443"), "Vergleichsperzentil oder Stichprobe fehlt");
   assert(body.querySelectorAll(".profile-histogram-bin").length === 2 && body.querySelector(".profile-histogram-bin.is-current"), "Histogrammsäulen oder Gebäudemarkierung fehlen");
