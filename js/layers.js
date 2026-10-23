@@ -14,8 +14,8 @@ const LAYER_GROUPS = [
 const LAYER_TILE_LABELS = {
   "planning-use": "Grundnutzung",
   "planning-overlays": "Überlagerungen",
-  "demography-population": "Einwohner · 100 m",
-  "demography-employment": "Beschäftigte VZÄ · 100 m",
+  "demography-population": "Einwohner",
+  "demography-employment": "Arbeitsplätze",
 };
 const LAYER_SOURCES = {
   terrain: "swisstopo swissALTI3D, 5-m-Höhenraster",

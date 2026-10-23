@@ -35,7 +35,7 @@ export function initAnalysis(ctx) {
   }
 
   ctx.clickHandlers.unshift(({ hit, ground }) => {
-    if (!active) return false;
+    if (!active || ctx.demographics?.activeLayer()) return false;
     const point = hit?.point ?? ground;
     if (!point) return true;
     tools.get(active).onClick({ point, hit });

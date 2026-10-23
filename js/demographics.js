@@ -9,7 +9,7 @@ const SOURCES = {
   population: {
     id: "demography-population",
     layer: "ch.bfs.volkszaehlung-bevoelkerungsstatistik_einwohner",
-    label: "Einwohner (100-m-Raster)",
+    label: "Einwohner",
     year: "2024",
     resultKey: "population",
     name: "STATPOP",
@@ -19,7 +19,7 @@ const SOURCES = {
   employment: {
     id: "demography-employment",
     layer: "ch.bfs.betriebszaehlungen-beschaeftigte_vollzeitaequivalente",
-    label: "Beschäftigte VZÄ (100-m-Raster)",
+    label: "Arbeitsplätze",
     year: "2023",
     resultKey: "employment",
     name: "STATENT",
@@ -54,7 +54,7 @@ function identifyUrl(source, east, north) {
 
 function latestCell(result) {
   const candidates = result?.results ?? [];
-  const feature = candidates.filter((item) => Number.isFinite(Number(item.attributes?.number)))
+  const feature = candidates.filter((item) => item.attributes?.number != null && Number.isFinite(Number(item.attributes.number)))
     .sort((a, b) => Number(b.attributes.i_year) - Number(a.attributes.i_year))[0];
   if (!feature) return null;
   return {
@@ -149,17 +149,25 @@ function makeCellHighlight(cellGeometry, terrain, frame) {
   return outline;
 }
 
-function cellRows(data) {
-  const box = data.bounds;
-  const cellLabel = box ? `${fmt(box[0])}–${fmt(box[2])} E / ${fmt(box[1])}–${fmt(box[3])} N` : "100 × 100 m, Lage nicht zurückgegeben";
-  return [
-    ["Einwohner · STATPOP", data.population ? `${fmt(data.population.value)} Personen` : "Kein Wert zurückgegeben"],
-    ["Datenjahr Einwohner", data.population?.year ?? "nicht verfügbar"],
-    ["Beschäftigte · STATENT", data.employment ? `${fmt(data.employment.value)} VZÄ` : "Kein Wert zurückgegeben"],
-    ["Datenjahr Beschäftigte", data.employment?.year ?? "nicht verfügbar"],
-    ["Rasterzelle · LV95", cellLabel],
-    ["Räumliche Ebene", "100-m-Rasterzelle, keine Gebäude- oder Haushaltszahl"],
-  ];
+function renderCellInfo(container, data, loading = false) {
+  container.replaceChildren();
+  container.hidden = false;
+  const title = document.createElement("strong");
+  title.textContent = loading ? "Lade Angaben …" : "Leben in dieser Nachbarschaft";
+  container.append(title);
+  if (loading) return;
+  for (const [label, value] of [
+    ["Einwohner", data.population?.value != null ? fmt(data.population.value) : "Keine Angabe"],
+    ["Vollzeit-Arbeitsplätze", data.employment?.value != null ? fmt(data.employment.value) : "Keine Angabe"],
+  ]) {
+    const row = document.createElement("div");
+    const name = document.createElement("span");
+    name.textContent = label;
+    const number = document.createElement("b");
+    number.textContent = value;
+    row.append(name, number);
+    container.append(row);
+  }
 }
 
 export function initDemographicLayers(ctx) {
@@ -170,9 +178,13 @@ export function initDemographicLayers(ctx) {
   scene3d.scene.add(group);
   scene3d.aoExcluded.add(group);
   const overlays = new Map();
-  const legends = new Map();
   const mapPromises = new Map();
   const cellCache = new Map();
+  const analysisPanel = document.querySelector("#demographic-analysis");
+  const legendTitle = document.querySelector("#demographic-analysis-title");
+  const legendDescription = document.querySelector("#demographic-analysis-description");
+  const legendImage = document.querySelector("#demographic-analysis-legend");
+  const cellInfo = document.querySelector("#demographic-cell-info");
   let activeLayer = null, selection = null, clickRequest = 0;
 
   function clearSelection() {
@@ -185,22 +197,27 @@ export function initDemographicLayers(ctx) {
 
   function activate(source, visible) {
     const mesh = overlays.get(source.id);
-    const legend = legends.get(source.id);
     if (!visible) {
       mesh.visible = false;
-      legend.hidden = true;
-      if (activeLayer === source.id) { activeLayer = null; clearSelection(); }
+      if (activeLayer === source.id) {
+        activeLayer = null;
+        clearSelection();
+        cellInfo.hidden = true;
+        analysisPanel.hidden = true;
+      }
       return;
     }
     const other = Object.values(SOURCES).find((candidate) => candidate.id !== source.id);
     if (layers.isVisible(other.id)) layers.setVisible(other.id, false);
     activeLayer = source.id;
     mesh.visible = false;
-    legend.hidden = false;
-    legend.scrollIntoView({ block: "nearest" });
-    if (!legend.dataset.loaded) {
-      legend.dataset.loaded = "true";
-      legend.querySelector("img").src = legendUrl(source);
+    analysisPanel.hidden = false;
+    legendTitle.textContent = source.name === "STATPOP" ? "Einwohner" : "Arbeitsplätze";
+    legendDescription.textContent = source.name === "STATPOP" ? "Menschen, die hier wohnen" : "Beschäftigung in der Umgebung";
+    if (legendImage.dataset.layer !== source.id) {
+      legendImage.dataset.layer = source.id;
+      legendImage.alt = `Farblegende: ${source.name === "STATPOP" ? "Einwohner" : "Arbeitsplätze"}`;
+      legendImage.src = legendUrl(source);
     }
     const promise = mapPromises.get(source.id) ?? new THREE.TextureLoader().loadAsync(mapUrl(source, grid.extent, grid.columns, grid.rows));
     mapPromises.set(source.id, promise);
@@ -232,17 +249,11 @@ export function initDemographicLayers(ctx) {
     mesh.visible = false;
     group.add(mesh);
     overlays.set(source.id, mesh);
-    const legend = document.createElement("div");
-    legend.className = "demographic-legend";
-    legend.hidden = true;
-    legend.innerHTML = `<span>${source.name} · ${source.year}</span><img alt="GeoAdmin-Legende ${source.label}" loading="lazy">`;
-    legends.set(source.id, legend);
     const layer = layers.add({
       id: source.id, label: source.label, color: `#${source.color.toString(16).padStart(6, "0")}`,
       count: source.year, visible: false, apply: (visible) => activate(source, visible),
       note: "GeoAdmin-WMS nicht verfügbar",
     });
-    layer.row.after(legend);
   }
 
   async function loadCell(center) {
@@ -255,46 +266,43 @@ export function initDemographicLayers(ctx) {
 
   clickHandlers.unshift(({ ground }) => {
     if (!activeLayer || !ground) return false;
-    ctx.buildings?.select(-1);
-    ctx.parcels?.selectBuilding(-1);
     const { e, n } = frame.toLV95(ground.x, ground.z);
     const { min_e: minE, min_n: minN, nx, ny, cell } = meta.dem.extent;
     const maxE = minE + (nx - 1) * cell, maxN = minN + (ny - 1) * cell;
     if (e < minE || e > maxE || n < minN || n > maxN) return false;
     const request = ++clickRequest;
     clearSelection();
-    ctx.inspector.render({ title: "Rasterzelle 100 × 100 m", sub: "STATPOP / STATENT · aggregierte Zellenwerte", sections: [[ ["Status", "Lade BFS-Rasterwerte …"] ]] });
+    renderCellInfo(cellInfo, null, true);
     void loadCell([e, n]).then((data) => {
       if (request !== clickRequest || !activeLayer) return;
       selection = makeCellHighlight(data.geometry, terrain, frame);
       if (selection) group.add(selection);
-      ctx.inspector.render({
-        title: "Rasterzelle 100 × 100 m", sub: "STATPOP / STATENT · aggregierte Zellenwerte",
-        sections: [cellRows(data)],
-        source: `Bundesamt für Statistik via GeoAdmin. Einwohnerwert: 100-m-STATPOP-Zelle (${data.population?.year ?? "kein Jahr"}); Beschäftigte: 100-m-STATENT-Zelle (${data.employment?.year ?? "kein Jahr"}). Keine Zuordnung auf einzelne Gebäude oder Personen.`,
-      });
+      renderCellInfo(cellInfo, data);
     });
     return true;
   });
 
   ctx.demographics = {
     async forBuilding(record) { return loadCell(record.center); },
-    resetSelection() { clickRequest++; clearSelection(); },
+    resetSelection() { clickRequest++; clearSelection(); cellInfo.hidden = true; },
     deactivateBuildingCell() {
       clickRequest++;
-      if (activeLayer) layers.setVisible(activeLayer, false);
       clearSelection();
+      cellInfo.hidden = true;
     },
-    async activateBuildingCell(record) {
-      const layerId = SOURCES.population.id;
-      layers.setVisible(layerId, true);
+    async highlightBuildingCell(record) {
+      if (!activeLayer) return false;
       const request = ++clickRequest;
       clearSelection();
       const data = await loadCell(record.center);
-      if (request !== clickRequest || activeLayer !== layerId) return false;
+      if (request !== clickRequest || !activeLayer) return false;
       selection = makeCellHighlight(data.geometry, terrain, frame);
       if (selection) group.add(selection);
-      return Boolean(selection);
+      return true;
+    },
+    async activateBuildingCell(record) {
+      layers.setVisible(SOURCES.population.id, true);
+      return this.highlightBuildingCell(record);
     },
     activeLayer: () => activeLayer,
   };

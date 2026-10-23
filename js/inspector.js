@@ -61,6 +61,7 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onAc
       }
       if (buildingProfile === profile) {
         renderBuildingProfile();
+        if (profile.demographicCellActive) panel.hidden = true;
         body.querySelector("[data-activate-demographic-cell]")?.focus({ preventScroll: true });
       }
       return;
@@ -135,15 +136,15 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onAc
         ["Geschosse", p.gwr.floors], ["Wohnungen", p.gwr.dwellings], ["Gebäudehöhe", p.record.height == null ? null : `${fmt(p.record.height, 1)} m`], ["Grundfläche GWR", gwrArea == null ? null : `${fmt(gwrArea)} m²`],
       ].map(([label, value]) => `<div class="profile-kpi"><span>${esc(label)}</span><strong>${value == null ? MISSING : esc(String(value))}</strong></div>`).join("");
       const demographicMarkup = p.demographics?.status === "loading"
-        ? `<section class="profile-demographics"><h4>Umfeld · 100-m-Rasterzelle</h4><p class="profile-empty">BFS-Rasterwerte werden geladen …</p></section>`
+        ? `<section class="profile-demographics"><h4>Leben in der Nachbarschaft</h4><p class="profile-empty">Angaben zur Umgebung werden geladen …</p></section>`
         : p.demographics?.status === "ready"
-          ? `<section class="profile-demographics"><div class="profile-section-title"><h4>Umfeld · 100-m-Rasterzelle</h4><span>Zellwerte, keine Gebäudewerte</span></div>
+          ? `<section class="profile-demographics"><h4>Leben in der Nachbarschaft</h4>
             <div class="profile-demographic-grid">
-              <div><strong>${p.demographics.population ? fmt(p.demographics.population.value) : "–"}</strong><span>Einwohner · STATPOP ${p.demographics.population?.year ?? "kein Wert"}</span></div>
-              <div><strong>${p.demographics.employment ? fmt(p.demographics.employment.value) : "–"}</strong><span>VZÄ · STATENT ${p.demographics.employment?.year ?? "kein Wert"}</span></div>
+              <div><strong>${p.demographics.population?.value != null ? fmt(p.demographics.population.value) : "–"}</strong><span>Menschen, die hier wohnen</span></div>
+              <div><strong>${p.demographics.employment?.value != null ? fmt(p.demographics.employment.value) : "–"}</strong><span>Vollzeit-Arbeitsplätze in der Umgebung</span></div>
             </div>
-            <p class="profile-note">Die Werte gelten für die Rasterzelle, nicht für dieses Gebäude oder dessen Bewohner. Quelle: Bundesamt für Statistik via GeoAdmin.</p>
-            <button type="button" class="btn" data-activate-demographic-cell aria-pressed="${p.demographicCellActive}">${p.demographicCellActive ? "Zurück zum Gebäude" : "Rasterzelle auf Karte zeigen"}</button></section>`
+            <p class="profile-note">Die Angaben beziehen sich auf die unmittelbare Umgebung von 100 × 100 Metern, nicht nur auf dieses Gebäude.</p>
+            <button type="button" class="btn primary" data-activate-demographic-cell aria-pressed="${p.demographicCellActive}">${p.demographicCellActive ? "Zurück zum Gebäude" : "Belebtheit auf Karte erkunden"}</button></section>`
           : "";
       const nearby = p.nearby.length ? `<section class="profile-section"><div class="profile-section-title"><h4>In der Nähe</h4><span>Luftlinie</span></div><ul class="profile-nearby">${p.nearby.map((item) => `<li><span><b>${esc(item.label)}</b><small>${esc(item.name)}</small></span><strong>${fmt(item.distance)} m</strong></li>`).join("")}</ul></section>` : "";
       const pvSummary = p.pvPlants.length ? `<p class="profile-highlight">Photovoltaik · ${fmt(p.pvPlants.reduce((sum, entry) => sum + (entry.plant.kw ?? 0), 0), 1)} kW registriert</p>` : "";
@@ -170,6 +171,14 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onAc
         <p class="profile-note">Vergleichsgruppe: ${esc(p.comparison?.group ?? "GWR-Gebäudeklasse")} · ${fmt(p.comparison?.count ?? 0)} Gebäude. Fehlende Werte werden nicht als null gewertet.</p></div>`;
     } else {
       content = `<div class="profile-content"><section class="profile-section"><h4>Register und Standort</h4>${rowsMarkup(p.dataRows)}</section>
+        <section class="profile-section"><h4>Daten zur Umgebung</h4>${rowsMarkup([
+          ["Einwohner · STATPOP", p.demographics?.population?.value != null ? fmt(p.demographics.population.value) : "Kein Wert verfügbar"],
+          ["Datenjahr Einwohner", p.demographics?.population?.year ?? "Nicht verfügbar"],
+          ["Beschäftigte · STATENT", p.demographics?.employment?.value != null ? fmt(p.demographics.employment.value) : "Kein Wert verfügbar"],
+          ["Datenjahr Beschäftigte", p.demographics?.employment?.year ?? "Nicht verfügbar"],
+          ["Räumliche Auflösung", "100 × 100 m"],
+          ["Quelle", "Bundesamt für Statistik via GeoAdmin"],
+        ])}</section>
         ${p.parcels.length ? `<section class="profile-section"><h4>Grundstück</h4>${p.parcels.map(rowsMarkup).join("")}</section>` : ""}
         ${p.landUse.length ? `<section class="profile-section"><h4>Nutzungsplanung</h4>${p.landUse.map(rowsMarkup).join("")}<p class="profile-note">Die abgerufenen Features enthalten keine Angaben zu Rechtsverbindlichkeit oder Gültigkeit.</p></section>` : ""}
         ${p.links.length ? `<p>${p.links.map((link) => `<a href="${esc(link.href)}" target="_blank" rel="noopener">${esc(link.label)}</a>`).join(" · ")}</p>` : ""}
@@ -277,5 +286,11 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onAc
     if (activeTab === "overview") renderBuildingProfile();
   }
 
-  return { render, showBuilding, updateBuildingEnvironment, updateBuildingDemographics, hide, showGeneric: render };
+  function setDemographicCellActive(active) {
+    if (!buildingProfile) return;
+    buildingProfile.demographicCellActive = active;
+    if (activeTab === "overview") renderBuildingProfile();
+  }
+
+  return { render, showBuilding, updateBuildingEnvironment, updateBuildingDemographics, setDemographicCellActive, hide, showGeneric: render };
 }

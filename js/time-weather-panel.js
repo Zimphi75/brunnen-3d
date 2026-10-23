@@ -251,6 +251,42 @@ export function initTimeWeatherPanel(ctx) {
     render();
   }
 
+  function snapshot() {
+    return {
+      mode: state.mode,
+      time: { ...ctx.timeState },
+      weather: {
+        preset: ctx.weather.state.preset,
+        effect: ctx.weather.state.effect,
+        effectsEnabled: ctx.weather.state.effects,
+      },
+    };
+  }
+
+  function setAnalysisClear() {
+    setMode("clear");
+    ctx.weather.setEffect(null);
+    ctx.layers.setVisible("weather", false);
+    syncWeatherRadios();
+    render();
+  }
+
+  function restore(snapshotState, { restoreWeatherEffects = true } = {}) {
+    if (!snapshotState) return;
+    setMode(snapshotState.mode);
+    if (snapshotState.mode === "simulation" && snapshotState.time) {
+      const wasPlaying = snapshotState.time.playing;
+      Object.assign(ctx.timeState, snapshotState.time, { playing: false });
+      ctx.applyTime();
+      if (wasPlaying) $("#btn-play").click();
+    }
+    ctx.weather.setPreset(snapshotState.weather.preset);
+    ctx.weather.setEffect(snapshotState.weather.effect);
+    if (restoreWeatherEffects) ctx.layers.setVisible("weather", snapshotState.weather.effectsEnabled);
+    syncWeatherRadios();
+    render();
+  }
+
   modeButtons.forEach((modeButton) => modeButton.addEventListener("click", () => setMode(modeButton.dataset.mode)));
   button.addEventListener("click", () => openPanel(panel.hidden));
   $("#clock-close").addEventListener("click", () => { openPanel(false); button.focus({ preventScroll: true }); });
@@ -292,5 +328,5 @@ export function initTimeWeatherPanel(ctx) {
   };
   render();
   syncWeatherRadios();
-  return { state, setMode, render };
+  return { state, setMode, render, snapshot, setAnalysisClear, restore };
 }

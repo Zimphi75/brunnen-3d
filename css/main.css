@@ -301,9 +301,24 @@ details[open] > summary::before { transform: rotate(90deg); }
 .source-info-popup { position: fixed; z-index: 40; display: grid; grid-template-columns: minmax(0, 1fr) 28px; align-items: start; gap: 8px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 10px; background: var(--panel-solid); box-shadow: var(--shadow); color: var(--ink); font-size: 12px; line-height: 1.4; }
 .source-info-text { margin: 0; overflow-wrap: anywhere; }
 .source-info-close { width: 28px; height: 28px; }
-.demographic-legend { padding: 2px 4px 8px 28px; }
-.demographic-legend span { display: block; margin-bottom: 3px; color: var(--ink-3); font-size: 10px; }
-.demographic-legend img { display: block; width: min(240px, 100%); max-height: 56px; object-fit: contain; object-position: left center; }
+#demographic-analysis { right: 14px; bottom: 132px; z-index: 9; display: grid; gap: 8px; width: min(320px, calc(100vw - 28px)); padding: 12px 14px; }
+.demographic-analysis-head { min-width: 0; }
+.demographic-analysis-head .profile-eyebrow { margin-bottom: 1px; }
+.demographic-analysis-head h2 { font: 700 16px/1.2 var(--f-display); overflow-wrap: anywhere; }
+.demographic-analysis-head p { margin: 2px 0 0; color: var(--ink-2); font-size: 11.5px; }
+.demographic-analysis-legend { min-width: 0; padding-top: 6px; border-top: 1px solid var(--rule); }
+.demographic-analysis-legend > span { display: block; margin-bottom: 3px; color: var(--ink-3); font-size: 10px; }
+.demographic-analysis-legend img { display: block; max-width: 100%; max-height: 82px; object-fit: contain; object-position: left center; }
+#demographic-cell-info { display: grid; gap: 4px; padding: 7px 9px; border-left: 3px solid var(--accent); background: var(--accent-soft); font-size: 11.5px; }
+#demographic-cell-info > strong { font-size: 12px; }
+#demographic-cell-info > div { display: flex; justify-content: space-between; gap: 10px; }
+#demographic-cell-info b { font-variant-numeric: tabular-nums; }
+.demographic-analysis-views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.demographic-analysis-views button { min-width: 0; padding: 5px 7px; border: 1px solid var(--rule); border-radius: 7px; background: var(--field); color: var(--ink-2); font-size: 11px; }
+.demographic-analysis-views button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.demographic-analysis-views button:disabled { opacity: .48; cursor: not-allowed; }
+.demographic-analysis-exit { width: 100%; border-radius: 7px; }
+body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
 .layer-row:disabled { opacity: .5; cursor: not-allowed; }
 .legend { margin-top: 8px; font-size: 12px; color: var(--ink-2); display: grid; gap: 3px; }
 .legend .item { display: flex; align-items: center; gap: 6px; }
@@ -513,6 +528,8 @@ details[open] > summary::before { transform: rotate(90deg); }
   #quick-panel { left: 8px; bottom: 104px; width: min(350px, calc(100vw - 16px)); }
   #quick-panel[data-mode="buildings"], #quick-panel[data-mode="traffic"] { top: 146px; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: none; }
   #layers-panel { top: auto; bottom: 108px; left: 8px; right: 8px; width: auto; max-height: calc(100% - 170px); }
+  #demographic-analysis { left: 8px; right: 8px; bottom: 104px; width: auto; max-height: min(36vh, 270px); overflow: auto; padding: 9px 11px; }
+  body.map-details-open #demographic-analysis { bottom: min(48vh, 380px); }
   .map-details-head { padding: 10px 12px 8px; }
   .map-details-scroll { padding: 8px 12px 12px; }
   #layer-list { grid-template-columns: 1fr; }

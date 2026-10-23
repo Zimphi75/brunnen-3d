@@ -178,7 +178,8 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
   assert(!body.querySelector(".profile-age-track") && body.textContent.includes("1971 bis 1980"), "Bauzeit soll als Text statt Heatmap erscheinen");
   assert(!body.querySelector(".profile-kpis").textContent.includes("Bauzeit") && body.querySelector(".profile-kpis").textContent.includes("Gebäudehöhe"), "Bauzeit ist doppelt oder die Gebäudehöhe fehlt");
   assert(body.textContent.includes("Abweichung der beiden Angaben: 0.2 m²") && body.textContent.includes("Median 265 m²"), "Grundfläche braucht Differenz und Vergleichskontext");
-  assert(body.textContent.includes("126") && body.textContent.includes("STATPOP 2024") && body.textContent.includes("nicht für dieses Gebäude"), "Rasterwerte müssen als Umfeld und nicht als Gebäudewerte markiert sein");
+  assert(body.textContent.includes("126") && body.textContent.includes("Menschen, die hier wohnen") && body.textContent.includes("Vollzeit-Arbeitsplätze in der Umgebung"), "Nachbarschaftswerte brauchen verständliche Bezeichnungen");
+  assert(body.textContent.includes("Belebtheit auf Karte erkunden") && !body.textContent.includes("STATPOP"), "Übersicht soll keine Fachbegriffe zeigen und die Kartenanalyse anbieten");
   assert(body.textContent.includes("22.3 kW registriert"), "PV-Leistung fehlt in der Übersicht");
   assert(body.querySelector("[data-rating-toggle]") && body.textContent.includes("4.3"), "Rating-Badge fehlt");
   assert(body.querySelector(".profile-rating-action")?.textContent.includes("Details und Quellen anzeigen") && body.querySelector("[data-rating-toggle]").getAttribute("aria-expanded") === "false", "Rating braucht eine sichtbare Aufklappaktion");
@@ -197,6 +198,20 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
   assert(body.textContent.includes("Jahresertrag ist nicht verfügbar"), "Fehlender PV-Jahresertrag wird nicht transparent erklärt");
   body.querySelector('[data-profile-tab="data"]').click();
   assert(body.textContent.includes("GWR-Export 2026-10-21") && body.textContent.includes("EGID"), "Quellenstand oder EGID fehlt");
+  assert(body.textContent.includes("STATPOP") && body.textContent.includes("STATENT") && body.textContent.includes("100 × 100 m"), "Technische Demografieangaben gehören in Daten & Quellen");
+});
+
+test("Nachbarschaft: echte Nullwerte bleiben von fehlenden Daten unterscheidbar", () => {
+  const panel = document.createElement("section"), body = document.createElement("div"), closeButton = document.createElement("button");
+  const inspector = createInspector({ panel, body, closeButton, codes: {} });
+  inspector.showBuilding({ type: "Gebaeude Einzelhaus", center: [2688000, 1206300], gwr: {} }, {
+    demographics: { status: "ready", population: { value: 0, year: 2024 }, employment: null },
+  });
+  assert(body.querySelector(".profile-demographic-grid")?.children[0].querySelector("strong")?.textContent === "0", "Ein echter Nullwert muss sichtbar bleiben");
+  assert(body.querySelector(".profile-demographic-grid")?.children[1].querySelector("strong")?.textContent === "–", "Fehlende Beschäftigungsdaten dürfen nicht als Null erscheinen");
+  assert(!body.textContent.includes("STATPOP") && !body.textContent.includes("STATENT"), "Fachbegriffe gehören nicht in die Profilübersicht");
+  body.querySelector('[data-profile-tab="data"]').click();
+  assert(body.textContent.includes("STATPOP") && body.textContent.includes("STATENT") && body.textContent.includes("Kein Wert verfügbar"), "Daten & Quellen muss Herkunft und fehlende Werte erklären");
 });
 
 test("Umweltkarten: GeoAdmin-Werte behalten Auflösung und Modellhinweise", async () => {
@@ -239,6 +254,11 @@ test("Demografie: GeoAdmin liefert neuestes Jahr mit 100-m-Zellgeometrie", async
   assert(cell.population.value === 126 && cell.population.year === 2024);
   assert(cell.employment.value === 4 && cell.employment.year === 2023);
   assert(cell.geometry.rings[0].length === 5);
+  const zeroAndMissing = await fetchDemographicCell([2688532.9, 1205692], async (input) => {
+    const isPopulation = new URL(input).searchParams.get("layers").includes("bevoelkerungsstatistik");
+    return { ok: true, json: async () => ({ results: [{ attributes: { number: isPopulation ? null : 0, i_year: 2024 } }] }) };
+  });
+  assert(zeroAndMissing.population === null && zeroAndMissing.employment.value === 0, "Fehlende GeoAdmin-Werte und echte Nullwerte müssen unterscheidbar bleiben");
 });
 
 test("Ebenen: nach Nutzeraufgabe gruppiert und mit Aktivzählern", () => {

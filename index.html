@@ -277,6 +277,19 @@
     </div>
   </section>
 
+  <section class="panel" id="demographic-analysis" hidden aria-label="Bevölkerung und Arbeit auf der Karte">
+    <header class="demographic-analysis-head">
+      <div><span class="profile-eyebrow">KARTENANALYSE</span><h2 id="demographic-analysis-title"></h2><p id="demographic-analysis-description"></p></div>
+    </header>
+    <div class="demographic-analysis-legend"><span>Wertebereiche</span><img id="demographic-analysis-legend" alt="" loading="eager"></div>
+    <div id="demographic-cell-info" hidden aria-live="polite"></div>
+    <div class="seg demographic-analysis-views" role="group" aria-label="Kartenausschnitt">
+      <button type="button" data-analysis-view="quarter" aria-pressed="false" disabled>Mein Quartier</button>
+      <button type="button" data-analysis-view="municipality" aria-pressed="false">Ganze Gemeinde</button>
+    </div>
+    <button type="button" class="btn primary demographic-analysis-exit" data-analysis-exit hidden>Zurück zum Gebäude</button>
+  </section>
+
   <aside class="panel" id="inspector" hidden aria-live="polite">
     <button class="icon-btn close" id="inspector-close" aria-label="Schliessen">✕</button>
     <div id="inspector-body"></div>

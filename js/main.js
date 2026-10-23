@@ -205,6 +205,7 @@ async function setupUi(ctx) {
   controls.addEventListener("change", syncCameraModeButtons);
   select.addEventListener("change", () => goPreset(select.value));
   const home = () => {
+    ctx.neighborhoodAnalysis?.end({ restoreCamera: false, restoreProfile: false });
     const wasTimeTransitionRunning = Boolean(ctx.cancelTimeTransition);
     ctx.cancelTimeTransition?.();
     if (wasTimeTransitionRunning && ctx.timeWeatherMode === "live") ctx.setNow?.();
@@ -290,7 +291,7 @@ async function setupUi(ctx) {
     if (index >= 0) { if (!addressesByBuilding.has(index)) addressesByBuilding.set(index, []); addressesByBuilding.get(index).push(label); }
   });
   ctx.addressesByBuilding = addressesByBuilding;
-  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => { buildings?.select(-1); ctx.parcels?.selectBuilding(-1); ctx.demographics?.deactivateBuildingCell(); }, onActivateDemographicCell: (record) => ctx.demographics?.activateBuildingCell(record), onDeactivateDemographicCell: () => ctx.demographics?.deactivateBuildingCell() });
+  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => { if (ctx.neighborhoodAnalysis?.active) { ctx.neighborhoodAnalysis.profileClosed(); return; } buildings?.select(-1); ctx.parcels?.selectBuilding(-1); ctx.demographics?.deactivateBuildingCell(); }, onActivateDemographicCell: (record) => ctx.neighborhoodAnalysis?.startForBuilding(record), onDeactivateDemographicCell: () => ctx.neighborhoodAnalysis?.end() });
   ctx.inspector = inspector;
   const environmentalCache = new Map();
   const demographicCache = new Map();
@@ -391,6 +392,184 @@ async function setupUi(ctx) {
   ctx.providers = providers;
   ctx.clickHandlers = [];
   initDemographicLayers(ctx);
+  const analysisPanel = $("#demographic-analysis");
+  const quarterButton = analysisPanel.querySelector('[data-analysis-view="quarter"]');
+  const municipalityButton = analysisPanel.querySelector('[data-analysis-view="municipality"]');
+  const exitButton = analysisPanel.querySelector("[data-analysis-exit]");
+  const inspectorPanel = $("#inspector");
+  let analysisSession = null;
+  let analysisRequest = 0;
+  let internalLayerChange = false;
+  let directAnalysisProfile = false;
+  const observedLayers = new Map(Object.entries(layers.snapshot()));
+
+  function selectedRecord() {
+    const index = buildings?.selected;
+    return Number.isInteger(index) && index >= 0 ? ctx.records[index] ?? null : null;
+  }
+
+  function syncAnalysisControls() {
+    const record = analysisSession?.record ?? selectedRecord();
+    quarterButton.disabled = !record;
+    quarterButton.setAttribute("aria-pressed", String(analysisSession?.view === "quarter"));
+    municipalityButton.setAttribute("aria-pressed", String(analysisSession?.view === "municipality"));
+    exitButton.hidden = analysisPanel.hidden;
+    exitButton.textContent = analysisSession?.record && !analysisSession.restoreInspectorHidden ? "Zurück zum Gebäude" : "Kartenanalyse beenden";
+  }
+
+  layers.subscribe((entries) => {
+    for (const layer of entries) {
+      const previous = observedLayers.get(layer.id);
+      if (analysisSession && !internalLayerChange && previous != null && previous !== layer.visible) analysisSession.userChangedLayers.add(layer.id);
+      observedLayers.set(layer.id, layer.visible);
+    }
+    const demographicActive = Boolean(ctx.demographics.activeLayer());
+    if (!analysisSession && demographicActive && !inspectorPanel.hidden && !directAnalysisProfile) {
+      directAnalysisProfile = true;
+      inspectorPanel.hidden = true;
+    } else if (!analysisSession && !demographicActive && directAnalysisProfile) {
+      inspectorPanel.hidden = false;
+      directAnalysisProfile = false;
+    }
+    syncAnalysisControls();
+  });
+
+  function beginAnalysis(record = null) {
+    if (analysisSession) {
+      analysisSession.record ??= record;
+      return analysisSession;
+    }
+    directAnalysisProfile = false;
+    const openRecord = record ?? (!inspectorPanel.hidden ? selectedRecord() : null);
+    analysisSession = {
+      cameraTarget: controls.target.clone(),
+      cameraView: rig.currentView(),
+      layerSnapshot: layers.snapshot(),
+      displaySnapshot: ctx.timeWeatherPanel?.snapshot(),
+      userChangedLayers: new Set(),
+      restoreInspectorHidden: inspectorPanel.hidden,
+      record: openRecord,
+      view: null,
+    };
+    internalLayerChange = true;
+    try { ctx.timeWeatherPanel?.setAnalysisClear(); } finally { internalLayerChange = false; }
+    ctx.closeMapPanels?.();
+    if (openRecord) inspectorPanel.hidden = true;
+    syncAnalysisControls();
+    return analysisSession;
+  }
+
+  function flyToNeighborhood(record) {
+    const local = frame.toLocal(record.center[0], record.center[1]);
+    const target = new THREE.Vector3(local.x, terrain.heightAt(local.x, local.z) ?? 0, local.z);
+    const view = rig.currentView();
+    rig.flyTo({ target, distance: 650, heading: view.heading, tilt: THREE.MathUtils.degToRad(1), duration: 1 });
+  }
+
+  function municipalityBounds() {
+    const points = [];
+    for (const polygon of ctx.municipality?.polygons ?? []) {
+      const ring = polygon[0] ?? [];
+      if (Array.isArray(ring[0])) points.push(...ring.filter((point) => point.length >= 2 && point.slice(0, 2).every(Number.isFinite)));
+      else for (let index = 0; index + 1 < ring.length; index += 2) {
+        if (Number.isFinite(ring[index]) && Number.isFinite(ring[index + 1])) points.push([ring[index], ring[index + 1]]);
+      }
+    }
+    if (!points.length) return null;
+    return points.reduce((bounds, [x, z]) => ({ minX: Math.min(bounds.minX, x), maxX: Math.max(bounds.maxX, x), minZ: Math.min(bounds.minZ, z), maxZ: Math.max(bounds.maxZ, z) }), { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
+  }
+
+  function flyToMunicipality() {
+    const bounds = municipalityBounds();
+    const view = rig.currentView();
+    if (!bounds) {
+      const preset = presets.find((item) => item.id === "gemeinde");
+      if (preset) rig.flyTo({ target: preset.target.clone(), distance: preset.distance, heading: view.heading, tilt: THREE.MathUtils.degToRad(1), duration: 1 });
+      return;
+    }
+    const width = bounds.maxX - bounds.minX;
+    const height = bounds.maxZ - bounds.minZ;
+    const aspect = Math.max(0.5, scene3d.renderer.domElement.clientWidth / Math.max(1, scene3d.renderer.domElement.clientHeight));
+    const span = Math.max(height, width / aspect);
+    const distance = span * 1.12 / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+    const x = (bounds.minX + bounds.maxX) / 2, z = (bounds.minZ + bounds.maxZ) / 2;
+    const target = new THREE.Vector3(x, terrain.heightAt(x, z) ?? 0, z);
+    rig.flyTo({ target, distance, heading: view.heading, tilt: THREE.MathUtils.degToRad(1), duration: 1 });
+  }
+
+  async function showQuarter(record) {
+    if (!record) return false;
+    const session = beginAnalysis(record);
+    if (inspectorPanel.hidden) session.restoreInspectorHidden = false;
+    session.view = "quarter";
+    inspectorPanel.hidden = true;
+    ctx.closeMapPanels?.();
+    syncAnalysisControls();
+    const request = ++analysisRequest;
+    if (!ctx.demographics.activeLayer()) {
+      let pending;
+      internalLayerChange = true;
+      try { pending = ctx.demographics.activateBuildingCell(record); } finally { internalLayerChange = false; }
+      flyToNeighborhood(record);
+      await pending;
+    } else {
+      flyToNeighborhood(record);
+      await ctx.demographics.highlightBuildingCell(record);
+    }
+    return analysisRequest === request && analysisSession === session;
+  }
+
+  function showMunicipality() {
+    const session = beginAnalysis();
+    session.view = "municipality";
+    if (session.record) inspectorPanel.hidden = true;
+    ctx.closeMapPanels?.();
+    syncAnalysisControls();
+    flyToMunicipality();
+    return true;
+  }
+
+  function endAnalysis({ restoreCamera = true, restoreProfile = true } = {}) {
+    if (!analysisSession) return;
+    const session = analysisSession;
+    analysisSession = null;
+    analysisRequest++;
+    rig.stop();
+    ctx.demographics.deactivateBuildingCell();
+    inspector.setDemographicCellActive(false);
+    internalLayerChange = true;
+    try {
+      for (const [id, visible] of Object.entries(session.layerSnapshot)) {
+        if (!session.userChangedLayers.has(id) && layers.isVisible(id) !== visible) layers.setVisible(id, visible);
+      }
+      ctx.timeWeatherPanel?.restore(session.displaySnapshot, { restoreWeatherEffects: !session.userChangedLayers.has("weather") });
+    } finally { internalLayerChange = false; }
+    if (restoreCamera) rig.flyTo({ target: session.cameraTarget, ...session.cameraView, duration: 1 });
+    if (restoreProfile) inspectorPanel.hidden = session.restoreInspectorHidden;
+    syncAnalysisControls();
+  }
+
+  ctx.neighborhoodAnalysis = {
+    get active() { return Boolean(analysisSession); },
+    startForBuilding: showQuarter,
+    showMunicipality,
+    profileClosed() {
+      if (!analysisSession) return;
+      analysisSession.restoreInspectorHidden = true;
+      syncAnalysisControls();
+    },
+    end: endAnalysis,
+  };
+  quarterButton.addEventListener("click", () => { void showQuarter(analysisSession?.record ?? selectedRecord()); });
+  municipalityButton.addEventListener("click", showMunicipality);
+  exitButton.addEventListener("click", () => {
+    if (analysisSession) endAnalysis();
+    else {
+      const activeLayer = ctx.demographics.activeLayer();
+      if (activeLayer) layers.setVisible(activeLayer, false);
+    }
+  });
+  syncAnalysisControls();
   const status = $("#statusbar");
   let statusText = "";
   const canvas = $("#scene");

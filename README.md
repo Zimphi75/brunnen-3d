@@ -16,6 +16,8 @@ Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit
 - **Haltestellen und Fahrzeuge**: Bushaltestellen mit Mast, Wartehäuschen und Bank, Bahnsteige, Schiffsteg; Postauto, SBB-Zug und Kursschiff als schlanke Modelle in der Fahrplansimulation (als Simulation gekennzeichnet)
 - Navigation: **linke Maustaste verschiebt die Karte**, rechte Taste oder Umschalt+Ziehen dreht, Mausrad zoomt; Pfeiltasten verschieben, `Q`/`E` drehen, `T` Vogelperspektive, `H` Ausgangsansicht, `/` Suche
 - Gebäude anklicken: Informationspanel mit Adresse, Gebäudeklasse, Baujahr/Bauperiode, Höhe, Grundfläche, Heizung usw.
+- **Nachbarschaftsanalyse** im Gebäudeprofil: Einwohner und Vollzeit-Arbeitsplätze beziehen sich auf die unmittelbare Umgebung von 100 × 100 m. «Belebtheit auf Karte erkunden» öffnet die bestehende STATPOP-Heatmap in der Vogelperspektive; «Mein Quartier» und «Ganze Gemeinde» wechseln zwischen lokalem Ausschnitt und Gemeindegrenze. Die GeoAdmin-Legende zeigt die tatsächlichen Wertebereiche. Gebiete lassen sich anklicken und einzeln erkunden. Direkte Aktivierung über Kartenebenen lässt die Kameraposition unverändert.
+- Während der geführten Nachbarschaftsanalyse wechseln Tageslicht und Wettereffekte auf «Hell & klar». «Zurück zum Gebäude» stellt den vorherigen Modus (Live, Hell & klar oder Simulation), die Simulationszeit und Wettereffekte wieder her. Bewusst geänderte Kartenebenen bleiben erhalten.
 - **Standortnähe-Rating** im Gebäudeprofil: Die gesamte Bewertungsfläche ist anklickbar. Die deutlich markierte Aktion «Details und Quellen anzeigen» mit Aufklapppfeil öffnet Einzelkriterien, Gewichte, Berechnung, Datenquellen und zusätzliche Umweltindikatoren. Diese Umweltindikatoren fliessen nicht in den Nähe-Score ein; fehlende Datengrundlagen werden ausgewiesen. Erneutes Anklicken schliesst die Details.
 - **Responsive Kopfzeile**: kompakte Adresssuche ohne Titelzeile, gleich hohe Elemente für Suche, Zeit/Wetter und Kameraaktionen; auf schmalen Ansichten untereinander. Navigationssymbole sind gruppiert, die Ortsauswahl nutzt den übrigen Platz. Die Koordinatenanzeige ist auf grossen Ansichten unten zentriert und bis 760 Pixel Breite ausgeblendet.
 - Sonnenstand, Uhrzeit und Datum, Tagesverlauf, Schattenwurf (Panel oben in der Mitte)
@@ -74,7 +76,7 @@ Pushes auf `main` starten den Workflow **Build and deploy website**: Daten und T
 
 ```bash
 .venv/bin/python -m pytest -q          # Pipeline-Funktionen und Datendateien
-# Browser-Tests (47): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
+# Browser-Tests (49): python serve.py, dann http://127.0.0.1:8080/tests/unit.html
 ```
 
 ## Projektstruktur
@@ -143,7 +145,7 @@ Die Zahlen stehen auch im Almanach («Datenqualität») und stammen aus `public/
 - **Abstimmungen**: Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert (derzeit 2025-05-18 und 2023-03-12). Die Quelle sendet keine CORS-Header; darum zieht die Pipeline die Daten (`votes.json`).
 - **Photovoltaik**: Das Register kennt weder Modulzahl noch Modullage. Die gezeichnete Belegung ist eine Annahme (Modulgrösse 1.75 × 1.05 m, Wirkungsgrad nach Baujahr, bevorzugt Süd-, sonst Ost-/Westflächen, Randabstand 0.3 m). Freistehende Anlagen (2) und Fassadenanteile (Neigung ab 60°) werden nicht auf dem Dach gezeichnet. Dachflächen stammen aus swissBUILDINGS3D (Beta). Auf Gebäuden mit grosser Anlage reicht die Dachfläche oft nicht; dann ist die Anlage nur teilweise gezeichnet und das steht im Informationspanel.
 - **Strassenmarkierung und Verkehr sind symbolisch.** OSM enthält hier keine Spurzahl und keine Einbahnrichtung: zweispurig wird aus der Strassenklasse angenommen, Einbahn nur bei Kreiseln. Es gibt weder Verkehrszählungen noch Personenzahlen; Dichte und Wege sind Annahmen (Strassenklasse, Bebauung in der Nähe). Trottoirs sind aus der Strassenbreite abgeleitet, nicht aus OSM-Daten. Auf Autobahnen sind Richtung und Spurzahl aus OSM übernommen; Spurwechsel und Überholen gibt es nicht. Tunnelstrecken (Axenstrasse) sind ausgenommen.
-- **Nicht umgesetzt**: Solarpotenzial der Dächer (BFE sonnendach.ch), Isochronen und Fuss-/Velorouting, Fahrmodus, swissNAMES3D. STATPOP/STATENT sind als 100-m-Raster integriert; die Zellwerte sind keine Gebäudewerte.
+- **Nicht umgesetzt**: Solarpotenzial der Dächer (BFE sonnendach.ch), Isochronen und Fuss-/Velorouting, Fahrmodus, swissNAMES3D. STATPOP/STATENT sind als 100-m-Raster integriert; die Zellwerte sind keine Gebäudewerte. Ein relativer Belebtheitsrang im Gemeindevergleich ist nicht verfügbar, da die Anwendung nur einzelne Zellen abfragt und keinen vollständigen vergleichbaren Gemeindedatensatz lädt.
 - **Nicht getestet**: iPhone/Safari und schwache GPUs. Die Leistungswerte stammen von einem Apple-Silicon-Rechner (Chrome), siehe [docs/architecture.md](docs/architecture.md).
 - Die Pipeline ist auf Ingenbohl konfiguriert (`pipeline/config.py`); der GWR-Auszug ist auf den Kanton SZ festgelegt.
 

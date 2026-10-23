@@ -275,6 +275,12 @@ export function initMapNavigation(ctx) {
     renderQuickLayers();
   }
 
+  ctx.closeMapPanels = () => {
+    closeQuick();
+    setDetailsOpen(false);
+    setBaseCardsOpen(false);
+  };
+
   quickButtons.forEach((button) => button.addEventListener("click", () => {
     openQuick(button.dataset.quick);
   }));
