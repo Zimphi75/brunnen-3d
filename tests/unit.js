@@ -96,6 +96,7 @@ test("Gebäudetyp aus GWR-Klasse", () => {
 
 test("Wetter: Codes und Niederschlag", () => {
   assert(weatherCondition({ weather_code: 61, cloud_cover: 100 }).rain);
+  assert(weatherCondition({ weather_code: 80, rain: 0, cloud_cover: 99 }).rain, "Schauer-Wettercode aktiviert Regen auch ohne Niederschlag im Modellintervall");
   assert(weatherCondition({ weather_code: 73, cloud_cover: 90 }).snow);
   assert(weatherCondition({ weather_code: 45, cloud_cover: 90 }).fog);
   assert(!weatherCondition({ weather_code: 0, cloud_cover: 0 }).rain);
@@ -406,7 +407,11 @@ test("parseDem prüft die Rastergrösse", () => {
 });
 
 test("Echte Daten: Gebäudedatei ist konsistent und pickbar", async () => {
-  const [bin, json] = await Promise.all([fetch("../public/data/buildings3d.bin").then((r) => r.arrayBuffer()), fetch("../public/data/buildings.json").then((r) => r.json())]);
+  const [bin, json, addresses] = await Promise.all([
+    fetch("../public/data/buildings3d.bin").then((r) => r.arrayBuffer()),
+    fetch("../public/data/buildings.json").then((r) => r.json()),
+    fetch("../public/data/addresses.json").then((r) => r.json()),
+  ]);
   const data = parseBuildings(bin, json.buildings);
   assert(data.count > 1000 && data.indices.length === data.indexCount);
   const buildings = new Buildings(data, json.buildings);
@@ -414,6 +419,26 @@ test("Echte Daten: Gebäudedatei ist konsistent und pickbar", async () => {
   assert(buildings.uniforms.uTimelineYear.value === 1950.5 && buildings.uniforms.uTimelineFade.value === 1);
   buildings.setTimeTravel(2026, false);
   assert(buildings.uniforms.uTimelineFade.value === 0);
+  const gersauerAddress = addresses.find(([label]) => label === "Gersauerstrasse 32, 6440 Brunnen");
+  assert(gersauerAddress, "Gersauerstrasse 32 fehlt im Adressindex");
+  const buildingIndex = gersauerAddress[3], { table, faces, surfaces, positions } = data;
+  const faceNormals = buildings.geometry.attributes.normal.array, faceUvs = buildings.geometry.attributes.aFaceUv.array;
+  const wallGroups = new Map();
+  let vertex = table[buildingIndex * 6];
+  for (let face = table[buildingIndex * 6 + 4]; face < table[buildingIndex * 6 + 4] + table[buildingIndex * 6 + 5]; face++) {
+    const size = faces[face];
+    if (surfaces[vertex] === 0) {
+      const nx0 = faceNormals[vertex * 3], nz0 = faceNormals[vertex * 3 + 2], horizontalLength = Math.hypot(nx0, nz0) || 1;
+      const nx = nx0 / horizontalLength, nz = nz0 / horizontalLength;
+      const plane = nx * positions[vertex * 3] + nz * positions[vertex * 3 + 2];
+      const key = `${Math.round(nx * 100)}:${Math.round(nz * 100)}:${Math.round(plane * 4)}`;
+      if (!wallGroups.has(key)) wallGroups.set(key, []);
+      wallGroups.get(key).push(faceUvs[vertex * 3 + 2]);
+    }
+    vertex += size;
+  }
+  const joinedWall = [...wallGroups.values()].find((lengths) => lengths.length >= 4);
+  assert(joinedWall && Math.max(...joinedWall) - Math.min(...joinedWall) < 1e-4, "Wanddreiecke starten das Fenster-UV-Raster nicht mehr einzeln");
   const { Ray, Vector3 } = await import("three");
   const centre = buildings.center(0);
   const hit = buildings.pick(new Ray(new Vector3(centre.x, centre.y + 500, centre.z), new Vector3(0, -1, 0)));

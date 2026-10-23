@@ -323,15 +323,39 @@ export class Buildings {
       const seed = Math.round(hash01(record.id, "seed") * 255);
       const baseY = this.bounds[b * 6 + 1];
       let vertex = table[b * STRIDE];
-      const faceEnd = table[b * STRIDE + 4] + table[b * STRIDE + 5];
+      const faceStart = table[b * STRIDE + 4], faceEnd = faceStart + table[b * STRIDE + 5];
+      const wallFrames = new Map();
+      let scanVertex = vertex;
+      for (let f = faceStart; f < faceEnd; f++) {
+        const size = faces[f];
+        if (surfaces[scanVertex] === 0) {
+          const nx0 = normals[scanVertex * 3], nz0 = normals[scanVertex * 3 + 2];
+          const horizontalLength = Math.hypot(nx0, nz0) || 1;
+          const nx = nx0 / horizontalLength, nz = nz0 / horizontalLength;
+          const x = positions[scanVertex * 3], z = positions[scanVertex * 3 + 2];
+          const plane = nx * x + nz * z;
+          const key = `${Math.round(nx * 100)}:${Math.round(nz * 100)}:${Math.round(plane * 4)}`;
+          const frame = wallFrames.get(key) ?? { tx: nz, tz: -nx, minU: Infinity, maxU: -Infinity, minV: Infinity };
+          for (let i = 0; i < size; i++) {
+            const offset = (scanVertex + i) * 3, px = positions[offset], py = positions[offset + 1], pz = positions[offset + 2];
+            const u = px * frame.tx + pz * frame.tz;
+            frame.minU = Math.min(frame.minU, u);
+            frame.maxU = Math.max(frame.maxU, u);
+            frame.minV = Math.min(frame.minV, py - baseY);
+          }
+          wallFrames.set(key, frame);
+          wallFrames.set(f, frame);
+        }
+        scanVertex += size;
+      }
       for (let f = table[b * STRIDE + 4]; f < faceEnd; f++) {
         const size = faces[f];
         const nx = normals[vertex * 3], ny = normals[vertex * 3 + 1], nz = normals[vertex * 3 + 2];
         let kind = surfaces[vertex];
         let tx = 0, ty = 0, tz = 0, dx = 0, dy = 0, dz = 0;
         if (kind === 0) {
-          const length = Math.hypot(nx, nz) || 1;
-          tx = nz / length; tz = -nx / length; // horizontale Tangente entlang der Wand
+          const frame = wallFrames.get(f);
+          tx = frame.tx; tz = frame.tz; // gemeinsames Fensterraster über koplanare Wanddreiecke
         } else if (kind === 1 && ny < 0.96) {
           dx = -nx * ny; dy = 1 - ny * ny; dz = -nz * ny; // Fallrichtung des Dachs
           const dl = Math.hypot(dx, dy, dz) || 1;
@@ -352,11 +376,15 @@ export class Buildings {
           us[i] = u; vs[i] = v;
           if (u < uMin) uMin = u; if (u > uMax) uMax = u; if (v < vMin) vMin = v;
         }
+        if (kind === 0) {
+          const frame = wallFrames.get(f);
+          uMin = frame.minU; uMax = frame.maxU; vMin = frame.minV;
+        }
         const length = uMax - uMin;
         for (let i = 0; i < size; i++) {
           const o = vertex + i;
           uv[o * 3] = us[i] - uMin;
-          uv[o * 3 + 1] = kind === 0 ? vs[i] : vs[i] - vMin;
+          uv[o * 3 + 1] = vs[i] - vMin;
           uv[o * 3 + 2] = length;
           surface[o] = kind;
           info[o * 4] = floors; info[o * 4 + 1] = style.shutter; info[o * 4 + 2] = style.wood ? 1 : 0; info[o * 4 + 3] = seed;

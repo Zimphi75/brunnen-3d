@@ -127,7 +127,7 @@ export function initWeather(ctx) {
   function effective() {
     let result;
     if (state.preset === "clear") result = { condition: weatherCondition(PRESETS.clear.current), source: "clear" };
-    else if (state.live && Math.abs(simDate() - Date.now()) <= LIVE_WINDOW_MS) result = { condition: state.live, source: "live" };
+    else if (state.live && Math.abs(simDate() - Date.now()) <= LIVE_WINDOW_MS) result = { condition: weatherCondition(state.live), source: "live" };
     else result = { condition: null, source: state.live ? "outside" : "none" };
     if (state.effect) result = { condition: addEffect(result.condition, state.effect), source: "simulation" };
     return result;
