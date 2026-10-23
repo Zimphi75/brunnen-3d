@@ -280,6 +280,11 @@ export function initDemographicLayers(ctx) {
   ctx.demographics = {
     async forBuilding(record) { return loadCell(record.center); },
     resetSelection() { clickRequest++; clearSelection(); },
+    deactivateBuildingCell() {
+      clickRequest++;
+      if (activeLayer) layers.setVisible(activeLayer, false);
+      clearSelection();
+    },
     async activateBuildingCell(record) {
       const layerId = SOURCES.population.id;
       layers.setVisible(layerId, true);

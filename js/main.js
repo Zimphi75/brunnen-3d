@@ -290,7 +290,7 @@ async function setupUi(ctx) {
     if (index >= 0) { if (!addressesByBuilding.has(index)) addressesByBuilding.set(index, []); addressesByBuilding.get(index).push(label); }
   });
   ctx.addressesByBuilding = addressesByBuilding;
-  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => { buildings?.select(-1); ctx.parcels?.selectBuilding(-1); }, onActivateDemographicCell: (record) => ctx.demographics?.activateBuildingCell(record) });
+  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => { buildings?.select(-1); ctx.parcels?.selectBuilding(-1); }, onActivateDemographicCell: (record) => ctx.demographics?.activateBuildingCell(record), onDeactivateDemographicCell: () => ctx.demographics?.deactivateBuildingCell() });
   ctx.inspector = inspector;
   const environmentalCache = new Map();
   const demographicCache = new Map();

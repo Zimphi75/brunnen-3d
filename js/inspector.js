@@ -41,17 +41,28 @@ function rowsMarkup(rows) {
   return rows.length ? `<dl>${rows.map(([key, value, raw]) => `<dt>${esc(key)}</dt><dd>${raw ? value : esc(value)}</dd>`).join("")}</dl>` : "";
 }
 
-export function createInspector({ panel, body, closeButton, codes, onClose, onActivateDemographicCell }) {
+export function createInspector({ panel, body, closeButton, codes, onClose, onActivateDemographicCell, onDeactivateDemographicCell }) {
   let buildingProfile = null;
   let activeTab = "overview";
   closeButton.addEventListener("click", () => { hide(); onClose?.(); });
 
   function hide() { panel.hidden = true; buildingProfile = null; }
 
-  body.addEventListener("click", (event) => {
+  body.addEventListener("click", async (event) => {
     const demographicButton = event.target.closest("[data-activate-demographic-cell]");
     if (demographicButton && buildingProfile?.record) {
-      onActivateDemographicCell?.(buildingProfile.record);
+      const profile = buildingProfile;
+      if (profile.demographicCellActive) {
+        onDeactivateDemographicCell?.(profile.record);
+        profile.demographicCellActive = false;
+      } else {
+        demographicButton.disabled = true;
+        profile.demographicCellActive = Boolean(await onActivateDemographicCell?.(profile.record));
+      }
+      if (buildingProfile === profile) {
+        renderBuildingProfile();
+        body.querySelector("[data-activate-demographic-cell]")?.focus({ preventScroll: true });
+      }
       return;
     }
     const ratingButton = event.target.closest("[data-rating-toggle]");
@@ -132,7 +143,7 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onAc
               <div><strong>${p.demographics.employment ? fmt(p.demographics.employment.value) : "–"}</strong><span>VZÄ · STATENT ${p.demographics.employment?.year ?? "kein Wert"}</span></div>
             </div>
             <p class="profile-note">Die Werte gelten für die Rasterzelle, nicht für dieses Gebäude oder dessen Bewohner. Quelle: Bundesamt für Statistik via GeoAdmin.</p>
-            <button type="button" class="btn" data-activate-demographic-cell>Rasterzelle auf Karte zeigen</button></section>`
+            <button type="button" class="btn" data-activate-demographic-cell aria-pressed="${p.demographicCellActive}">${p.demographicCellActive ? "Zurück zum Gebäude" : "Rasterzelle auf Karte zeigen"}</button></section>`
           : "";
       const nearby = p.nearby.length ? `<section class="profile-section"><div class="profile-section-title"><h4>In der Nähe</h4><span>Luftlinie</span></div><ul class="profile-nearby">${p.nearby.map((item) => `<li><span><b>${esc(item.label)}</b><small>${esc(item.name)}</small></span><strong>${fmt(item.distance)} m</strong></li>`).join("")}</ul></section>` : "";
       const pvSummary = p.pvPlants.length ? `<p class="profile-highlight">Photovoltaik · ${fmt(p.pvPlants.reduce((sum, entry) => sum + (entry.plant.kw ?? 0), 0), 1)} kW registriert</p>` : "";
@@ -236,7 +247,7 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onAc
         ...(!record.gwr ? [{ text: "Kein GWR-Eintrag", warn: true }] : []),
         ...(pv.length ? [{ text: "Photovoltaik" }] : []),
       ],
-      record, gwr, ageLabel, ageMarkup, floorStack, buildingRows, energyRows, pvPlants: pv, pv: pvSections(pv), nearby, comparison, rating, ratingOpen: false, environmental, demographics,
+      record, gwr, ageLabel, ageMarkup, floorStack, buildingRows, energyRows, pvPlants: pv, pv: pvSections(pv), nearby, comparison, rating, ratingOpen: false, environmental, demographics, demographicCellActive: false,
       dataRows: [
         ["EGID", record.egid ?? MISSING, record.egid == null],
         ["LV95", formatLv95(record.center[0], record.center[1])],
