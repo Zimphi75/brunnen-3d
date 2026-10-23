@@ -38,6 +38,10 @@ Prüfstand vom 23.10.2026: GitHub Pages meldet **DNS check successful** und das 
 
 Die App lädt CSS, JavaScript, Daten und Medien über relative Pfade; externe Laufzeitdienste sind per HTTPS eingebunden. HTTP-URLs im Quellcode beziehen sich nur auf den lokalen Entwicklungsserver oder Testdaten. Eine `.htaccess`-Datei wirkt bei GitHub Pages nicht und wird für diese Konfiguration nicht benötigt.
 
+## Besucherstatistik
+
+Cloudflare Web Analytics ist für `brunnen.multikanal.ch` als externe Site-Property eingerichtet. Das JS-Snippet liegt in `index.html` und lädt `https://static.cloudflareinsights.com/beacon.min.js`. Änderungen daran werden über GitHub Pages mitveröffentlicht; DNS und Proxy-Einstellungen bleiben unverändert. Die Datenschutzerklärung sollte den Einsatz von Cloudflare Web Analytics aufführen.
+
 Der Hoststar-Upload wird unabhängig davon über `HOSTSTAR_SFTP_ENABLED` gesteuert. Für den ausschliesslichen Betrieb auf Pages bleibt diese Variable auf `false`.
 
 ## Optional zusätzlich auf Hoststar veröffentlichen
