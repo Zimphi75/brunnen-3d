@@ -534,3 +534,16 @@ details[open] > summary::before { transform: rotate(90deg); }
   .profile-content { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.easter-photo-overlay[hidden] { display: none; }
+.easter-photo-overlay {
+  position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center;
+  padding: 24px; background: rgba(10, 14, 16, 0.92); cursor: zoom-out;
+}
+.easter-photo-overlay img { max-width: min(94vw, 1400px); max-height: 90vh; object-fit: contain; }
+.easter-photo-close {
+  position: absolute; top: 18px; right: 18px; border: 1px solid rgba(255,255,255,.4);
+  border-radius: 4px; padding: 8px 12px; color: #fff; background: rgba(22,28,30,.9);
+  font: inherit; cursor: pointer;
+}
+.easter-photo-missing { max-width: 520px; color: #fff; text-align: center; }

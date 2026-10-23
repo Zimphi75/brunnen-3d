@@ -2,7 +2,7 @@
 
 Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit Brunnen, Ingenbohl, Vierwaldstättersee und angrenzender Landschaft. Die Anwendung läuft komplett im Browser (Three.js) und basiert auf offenen Schweizer Geodaten. Es gibt keine erfundenen Gebäude, Attribute oder Messwerte: Was in den Quellen fehlt, wird als «nicht erfasst» angezeigt.
 
-**Website:** [Brunnen 3D auf GitHub Pages](https://zimphi75.github.io/brunnen-3d/). Private, nichtkommerzielle Visualisierung ohne offizielle Verbindung zur Gemeinde oder zu den Datenanbietern.
+**Website:** [brunnen.multikanal.ch](https://brunnen.multikanal.ch/) (GitHub Pages: [zimphi75.github.io/brunnen-3d](https://zimphi75.github.io/brunnen-3d/)). Private, nichtkommerzielle Visualisierung ohne offizielle Verbindung zur Gemeinde oder zu den Datenanbietern.
 
 ## Funktionen
 

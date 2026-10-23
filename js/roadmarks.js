@@ -35,6 +35,21 @@ export function roadLayout(road) {
 
 export const roadWidth = (road) => roadLayout(road).width;
 
+export function roadsidePosition(x, z, roads, index, maxDistance, clearance = 1.25) {
+  if (!roads || !index) return { x, z };
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const nearest = index.nearest(x, z, maxDistance);
+    const road = nearest && roads[nearest.owner];
+    if (!road || nearest.distance >= roadWidth(road) / 2 + clearance) break;
+    const distance = roadWidth(road) / 2 + clearance;
+    const nx = -nearest.tz, nz = nearest.tx;
+    const side = Math.sign((x - nearest.x) * nx + (z - nearest.z) * nz) || 1;
+    x = nearest.x + nx * distance * side;
+    z = nearest.z + nz * distance * side;
+  }
+  return { x, z };
+}
+
 /** Punkte im Abstand `step` entlang einer Polylinie mit Laufmeter und Richtung. */
 export function walk(p, step) {
   const samples = [];

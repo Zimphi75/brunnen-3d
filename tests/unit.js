@@ -7,10 +7,11 @@ import { model } from "../js/models.js";
 import { moduleWatt, extractRoofFaces, layoutModules } from "../js/pv.js";
 import { parseTrees, buildTrees } from "../js/trees.js";
 import { buildNetwork, advance, sample } from "../js/ambient.js";
-import { markingLines, walk, roadLayout } from "../js/roadmarks.js";
+import { markingLines, walk, roadLayout, roadWidth, roadsidePosition } from "../js/roadmarks.js";
 import { parseDem, parseBuildings } from "../js/api.js";
 import { weatherCondition, PRESETS, LIVE_WINDOW_MS } from "../js/weather.js";
 import { createInspector, esc } from "../js/inspector.js";
+import { stopPlacement } from "../js/transport.js";
 import { initAlmanac } from "../js/almanac.js";
 import { Terrain } from "../js/terrain.js";
 import { createCameraRig } from "../js/controls.js";
@@ -460,6 +461,35 @@ test("Strassenindex: nächstes Segment samt Richtung", () => {
   const hit = index.nearest(50, 8, 20);
   assert(hit && Math.abs(hit.distance - 8) < 1e-6 && Math.abs(hit.x - 50) < 1e-6 && hit.tx === 1);
   assert(index.nearest(50, 80, 20) === null);
+});
+
+test("Laternen und Haltestellen stehen ausserhalb der Fahrbahn", () => {
+  const road = { c: "primary", p: [0, 0, 100, 0] };
+  const roads = [road];
+  const index = createSegmentIndex(roads, () => true);
+  const center = roadsidePosition(50, 0, roads, index, 20);
+  const left = roadsidePosition(50, -2, roads, index, 20);
+  const curb = roadsidePosition(50, 5.5, roads, index, 20);
+  const stop = stopPlacement({ m: "bus", x: 50, z: 0 }, { heightAt: () => 12 }, {
+    roads, roadIndex: index,
+  });
+  near(center.z, 5.25, 1e-6);
+  near(left.z, -5.25, 1e-6);
+  near(curb.z, 5.5, 1e-6);
+  near(stop.z, 5.25, 1e-6);
+  near(stop.y, 12, 1e-6);
+
+  const crossingRoads = [
+    { c: "primary", p: [-50, 0, 50, 0] },
+    { c: "secondary", p: [0, -50, 0, 50] },
+  ];
+  const crossingIndex = createSegmentIndex(crossingRoads, () => true);
+  const crossing = roadsidePosition(0, 0, crossingRoads, crossingIndex, 20);
+  for (const road of crossingRoads) {
+    const roadIndex = createSegmentIndex([road], () => true);
+    const hit = roadIndex.nearest(crossing.x, crossing.z, 20);
+    assert(hit && hit.distance >= roadWidth(road) / 2 + 1.25);
+  }
 });
 
 test("Modelle: Haltestelle, Zug und Schiff liefern Geometrie mit Vertexfarben", () => {

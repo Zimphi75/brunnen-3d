@@ -374,5 +374,5 @@ export function initAmbient(ctx) {
     id: "ambient", label: "Verkehr und Personen (Simulation)", color: "#c0392b", visible: true,
     count: `${carNet.lines.length + walkNet.lines.length} Wege`, apply: (v) => { state.enabled = v; group.visible = v && enabledByMode; },
   });
-  ctx.ambient = { state, carNet, walkNet, cars, peds };
+  ctx.ambient = { state, carNet, walkNet, cars, peds, group };
 }

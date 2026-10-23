@@ -30,6 +30,7 @@ import { fetchBuildingEnvironment } from "./environment.js";
 import { initDemographicLayers } from "./demographics.js";
 import { initTimeWeatherPanel } from "./time-weather-panel.js";
 import { initNavigationHint } from "./navigation-hint.js";
+import { addGersauerPeople, addMettlenwegSign } from "./easter-egg.js";
 
 const $ = (selector) => document.querySelector(selector);
 const errors = [];
@@ -257,6 +258,7 @@ async function setupUi(ctx) {
     count: buildings ? (buildings.data.count - buildings.stats().hiddenDemolished).toLocaleString("de-CH") : "", apply: (v) => { if (buildings) buildings.mesh.visible = v; },
   });
   await initDataLayers(ctx);
+  addMettlenwegSign(ctx);
   await initParcels(ctx);
 
   // Darstellung (Gebäudefarben)
@@ -519,6 +521,7 @@ async function setupUi(ctx) {
   initHires(ctx);
   initGround(ctx);
   initAmbient(ctx);
+  addGersauerPeople(ctx);
   initHistory(ctx);
 
   // Wetter: Vorgaben als Auswahl, Anzeige im Zeitfeld

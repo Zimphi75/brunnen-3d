@@ -3,6 +3,7 @@
 import * as THREE from "three";
 import { loadOptionalJson } from "./api.js";
 import { model, MODEL_MATERIAL } from "./models.js";
+import { roadsidePosition } from "./roadmarks.js";
 
 const POOL_SIZE = 8;
 const WARM = new THREE.Color(1.0, 0.78, 0.45);
@@ -42,17 +43,18 @@ export async function initLighting(ctx) {
     const glow = new THREE.InstancedMesh(glowGeometry, glowMaterial, lamps.length);
     const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
     lamps.forEach(([x, z], i) => {
-      const road = ctx.roadIndex?.nearest(x, z, 40);
-      const heading = road ? Math.atan2(road.x - x, road.z - z) : 0;
-      const ground = terrain.heightAt(x, z) ?? 0;
+      const roadside = roadsidePosition(x, z, ctx.roads, ctx.roadIndex, 40);
+      const road = ctx.roadIndex?.nearest(roadside.x, roadside.z, 40);
+      const heading = road ? Math.atan2(road.x - roadside.x, road.z - roadside.z) : 0;
+      const ground = terrain.heightAt(roadside.x, roadside.z) ?? 0;
       quaternion.setFromAxisAngle(up, heading);
-      matrix.compose(new THREE.Vector3(x, ground, z), quaternion, one);
+      matrix.compose(new THREE.Vector3(roadside.x, ground, roadside.z), quaternion, one);
       poles.setMatrixAt(i, matrix);
       headMesh.setMatrixAt(i, matrix);
-      const reach = Math.min(road?.distance ?? 3, 4);
-      matrix.compose(new THREE.Vector3(x + Math.sin(heading) * reach, ground + 0.3, z + Math.cos(heading) * reach), new THREE.Quaternion(), one);
+      const reach = Math.min(road ? Math.hypot(road.x - roadside.x, road.z - roadside.z) : 3, 4);
+      matrix.compose(new THREE.Vector3(roadside.x + Math.sin(heading) * reach, ground + 0.3, roadside.z + Math.cos(heading) * reach), new THREE.Quaternion(), one);
       glow.setMatrixAt(i, matrix);
-      heads.push(new THREE.Vector3(x + Math.sin(heading) * 1.25, ground + 6.05, z + Math.cos(heading) * 1.25));
+      heads.push(new THREE.Vector3(roadside.x + Math.sin(heading) * 1.25, ground + 6.05, roadside.z + Math.cos(heading) * 1.25));
     });
     for (const mesh of [poles, headMesh, glow]) { mesh.computeBoundingSphere(); mesh.frustumCulled = false; }
     poles.castShadow = true;

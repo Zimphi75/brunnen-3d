@@ -166,6 +166,7 @@ export async function initDataLayers(ctx) {
     loadOptionalJson("roads.json"), loadOptionalJson("water.json"), loadOptionalBinary("trees.bin"), loadOptionalJson("municipality.json"), loadOptionalJson("crossings.json"),
   ]);
   ctx.municipality = municipality;
+  ctx.waterData = waterFile;
   ctx.roads = roadsFile?.roads ?? [];
   ctx.roadIndex = createSegmentIndex(ctx.roads, (r) => ROAD_GROUPS.roads.includes(r.c) && !r.t);
   ctx.railIndex = createSegmentIndex(ctx.roads, (r) => r.c === "rail" && !r.t);

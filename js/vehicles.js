@@ -221,14 +221,16 @@ export function dogGeometry(count) {
   return withPhase(g, count);
 }
 
-export function figureMaterial() {
+export function figureMaterial({ pantsColor = null } = {}) {
   const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0 });
   material.onBeforeCompile = (shader) => {
-    shader.vertexShader = `attribute float aTint; attribute float aLimb; attribute float aPivot; attribute float aPhase;\n` + shader.vertexShader
+    shader.uniforms.uForcePantsColor = { value: pantsColor ? 1 : 0 };
+    shader.uniforms.uPantsColor = { value: new THREE.Color(pantsColor ?? "#08090b") };
+    shader.vertexShader = `attribute float aTint; attribute float aLimb; attribute float aPivot; attribute float aPhase; uniform float uForcePantsColor; uniform vec3 uPantsColor;\n` + shader.vertexShader
       .replace("#include <color_vertex>", `vColor = vec3( 1.0 ); vColor *= color;
         vec3 ic = instanceColor.xyz;
         float h1 = fract( sin( dot( ic, vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
-        vec3 trouser = h1 < 0.4 ? vec3( 0.07, 0.09, 0.17 ) : h1 < 0.7 ? vec3( 0.05, 0.05, 0.06 ) : vec3( 0.26, 0.22, 0.14 );
+        vec3 trouser = uForcePantsColor > 0.5 ? uPantsColor : ( h1 < 0.4 ? vec3( 0.07, 0.09, 0.17 ) : h1 < 0.7 ? vec3( 0.05, 0.05, 0.06 ) : vec3( 0.26, 0.22, 0.14 ) );
         vec3 skin = h1 < 0.25 ? vec3( 0.52, 0.34, 0.26 ) : h1 < 0.5 ? vec3( 0.38, 0.24, 0.18 ) : h1 < 0.75 ? vec3( 0.6, 0.42, 0.32 ) : vec3( 0.2, 0.12, 0.09 );
         vec3 hair = h1 < 0.3 ? vec3( 0.02, 0.015, 0.015 ) : h1 < 0.55 ? vec3( 0.08, 0.045, 0.02 ) : h1 < 0.75 ? vec3( 0.34, 0.22, 0.07 ) : vec3( 0.3, 0.3, 0.3 );
         if ( aTint > 3.5 ) vColor *= hair; else if ( aTint > 2.5 ) vColor *= skin; else if ( aTint > 1.5 ) vColor *= trouser; else if ( aTint > 0.5 ) vColor *= ic;`)
@@ -241,7 +243,7 @@ export function figureMaterial() {
           transformed.y = ny;
         }`);
   };
-  material.customProgramCacheKey = () => "figures-v1";
+  material.customProgramCacheKey = () => `figures-v2-${pantsColor ?? "random"}`;
   return material;
 }
 

@@ -26,7 +26,17 @@ Der Workflow `.github/workflows/hoststar-deploy.yml` (**Build and deploy website
 
 Unter **Settings → Pages → Build and deployment → Source** muss **GitHub Actions** ausgewählt sein. Die Website ist unter `https://zimphi75.github.io/brunnen-3d/` erreichbar. Das Repository kann bei einem geeigneten GitHub-Tarif privat bleiben; die veröffentlichte Website und ihre ausgelieferten Daten sind öffentlich.
 
-Eine eigene Domain lässt sich später unter **Settings → Pages → Custom domain** verbinden. Für eine Subdomain zeigt der DNS-CNAME auf `zimphi75.github.io` (ohne Projektpfad). Alternativ kann die bisherige Website-Adresse per HTTP-Weiterleitung auf die Pages-URL zeigen; dabei wechselt die sichtbare Adresse zur Pages-URL. Bei einer eigenen Domain zuerst die Domain in Pages konfigurieren und den Domainbesitz verifizieren, dann DNS umstellen und HTTPS aktivieren.
+## Eigene Domain und HTTPS
+
+Die Produktionsdomain ist `brunnen.multikanal.ch`. Der Hoststar-DNS-CNAME zeigt direkt auf `zimphi75.github.io` (ohne Projektpfad). Das ist ein DNS-Alias, keine HTTP-Weiterleitung und keine Frame-Weiterleitung: Der Browser bleibt auf `brunnen.multikanal.ch`, und GitHub Pages liefert die Dateien aus.
+
+Die Domain muss im Repository unter **Settings → Pages → Custom domain** eingetragen sein. Bei diesem Workflow mit **GitHub Actions** ist keine `CNAME`-Datei im Repository erforderlich. GitHub prüft den DNS-Eintrag und stellt für eine Custom Domain automatisch ein TLS-Zertifikat von Let's Encrypt aus. Danach unter **Settings → Pages** **Enforce HTTPS** aktivieren. Die Option bleibt während der Zertifikatsausstellung deaktiviert; die Bereitstellung kann bis zu 24 Stunden dauern.
+
+Für die aktuelle direkte CNAME-Konfiguration wird kein separates Hoststar-SSL-Zertifikat benötigt: TLS endet bei GitHub Pages. Ein Hoststar-Zertifikat wäre nur nötig, wenn Hoststar selbst HTTPS entgegennimmt, etwa bei einer Hoststar-Webseite mit serverseitiger Weiterleitung. Eine Frame-Weiterleitung sollte nicht verwendet werden.
+
+Prüfstand vom 23.10.2026: GitHub Pages meldet **DNS check successful** und das TLS-Zertifikat ist aktiv. **Enforce HTTPS** ist eingeschaltet. Verifiziert: HTTP liefert `301` auf `https://brunnen.multikanal.ch/`, HTTPS antwortet mit `200 OK`; die App lädt keine HTTP-Ressourcen.
+
+Die App lädt CSS, JavaScript, Daten und Medien über relative Pfade; externe Laufzeitdienste sind per HTTPS eingebunden. HTTP-URLs im Quellcode beziehen sich nur auf den lokalen Entwicklungsserver oder Testdaten. Eine `.htaccess`-Datei wirkt bei GitHub Pages nicht und wird für diese Konfiguration nicht benötigt.
 
 Der Hoststar-Upload wird unabhängig davon über `HOSTSTAR_SFTP_ENABLED` gesteuert. Für den ausschliesslichen Betrieb auf Pages bleibt diese Variable auf `false`.
 

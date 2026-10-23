@@ -6,6 +6,7 @@ import { wgs84ToLv95 } from "./geo.js";
 import { buildRibbons } from "./draped.js";
 import { model, MODEL_MATERIAL } from "./models.js";
 import { zurichParts } from "./sky.js";
+import { roadsidePosition } from "./roadmarks.js";
 
 const API = "https://transport.opendata.ch/v1";
 const MODE = {
@@ -61,8 +62,11 @@ export function stopPlacement(stop, terrain, ctx) {
   let { x, z } = stop;
   let heading = 0;
   if (stop.m === "bus") {
+    const roadside = roadsidePosition(x, z, ctx.roads, ctx.roadIndex, 25);
+    x = roadside.x;
+    z = roadside.z;
     const road = ctx.roadIndex?.nearest(x, z, 25);
-    if (road) heading = road.distance > 0.5 ? Math.atan2(road.x - x, road.z - z) : Math.atan2(-road.tz, road.tx);
+    if (road) heading = Math.atan2(road.x - x, road.z - z);
   } else if (stop.m === "train") {
     const rail = ctx.railIndex?.nearest(x, z, 40);
     if (rail) {
