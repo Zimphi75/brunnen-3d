@@ -515,6 +515,12 @@ async function setupUi(ctx) {
       } catch { return { status: "unavailable" }; }
     };
   ctx.selectBuilding = (index) => {
+    // Läuft eine Kartenanalyse (z. B. Solarpotenzial) zu einem anderen Gebäude, wird sie beendet, damit sich
+    // Analysefenster und neues Gebäudeprofil nicht überlagern. Kamera und Profil des alten Gebäudes bleiben weg.
+    const analysisRecord = ctx.neighborhoodAnalysis?.active ? ctx.neighborhoodAnalysis.record : null;
+    if (ctx.neighborhoodAnalysis?.active && analysisRecord !== ctx.records[index]) {
+      ctx.neighborhoodAnalysis.end({ restoreCamera: false, restoreProfile: false });
+    }
     buildings.select(index);
     const record = ctx.records[index];
     if (ctx.history?.state.active) {
@@ -828,6 +834,7 @@ async function setupUi(ctx) {
 
   ctx.neighborhoodAnalysis = {
     get active() { return Boolean(analysisSession); },
+    get record() { return analysisSession?.record ?? null; },
     startForBuilding: showQuarter,
     startWalking: showWalking,
     startOfficialRoute: showOfficialRouteAnalysis,
