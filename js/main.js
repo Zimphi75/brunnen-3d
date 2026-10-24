@@ -797,7 +797,7 @@ async function setupUi(ctx) {
     ctx.closeMapPanels?.();
     syncAnalysisControls();
     flyToMunicipality();
-    void ctx.demographics.showMunicipalityTotals();
+    if (session.record) void ctx.demographics.highlightBuildingCell(session.record);
     return true;
   }
 
@@ -851,7 +851,7 @@ async function setupUi(ctx) {
       internalLayerChange = true;
       try { layers.setVisible(mode, true); } finally { internalLayerChange = false; }
       syncAnalysisControls();
-      void ctx.demographics.showMunicipalityTotals();
+      if (analysisSession.record) void ctx.demographics.highlightBuildingCell(analysisSession.record);
     } else if (mode.startsWith("demography-") && record) void showQuarter(record, mode);
     else if (mode.startsWith("demography-")) layers.setVisible(mode, true);
     else void showOfficialRouteAnalysis(record, mode);
