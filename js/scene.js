@@ -14,7 +14,8 @@ export function createScene(canvas, { lowPower = false } = {}) {
   } catch (error) {
     throw new Error(`WebGL ist nicht verfügbar (${error.message}). Bitte einen aktuellen Browser mit Hardwarebeschleunigung verwenden.`);
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, lowPower ? 1.25 : 2));
+  // Desktop höchstens 1.5: volle Retina-Auflösung (2×) mit AO und Bloom drückt die Bildrate auf etwa 18 fps.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, lowPower ? 1.25 : 1.5));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
