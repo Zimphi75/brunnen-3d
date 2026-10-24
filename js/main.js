@@ -797,6 +797,7 @@ async function setupUi(ctx) {
     ctx.closeMapPanels?.();
     syncAnalysisControls();
     flyToMunicipality();
+    void ctx.demographics.showMunicipalityTotals();
     return true;
   }
 
@@ -838,13 +839,20 @@ async function setupUi(ctx) {
     },
     end: endAnalysis,
   };
-  quarterButton.addEventListener("click", () => { void showQuarter(analysisSession?.record ?? selectedRecord()); });
+  quarterButton.addEventListener("click", () => { void showQuarter(analysisSession?.record ?? selectedRecord(), ctx.demographics.activeLayer() ?? undefined); });
   municipalityButton.addEventListener("click", showMunicipality);
   analysisModeSelect.addEventListener("change", () => {
     const record = analysisSession?.record ?? selectedRecord();
     const mode = analysisModeSelect.value;
     if (mode === "walking") void showWalking(record);
-    else if (mode.startsWith("demography-") && record) void showQuarter(record, mode);
+    else if (mode.startsWith("demography-") && analysisSession?.view === "municipality") {
+      // Thema wechseln, Gemeindeansicht beibehalten
+      analysisSession.kind = mode;
+      internalLayerChange = true;
+      try { layers.setVisible(mode, true); } finally { internalLayerChange = false; }
+      syncAnalysisControls();
+      void ctx.demographics.showMunicipalityTotals();
+    } else if (mode.startsWith("demography-") && record) void showQuarter(record, mode);
     else if (mode.startsWith("demography-")) layers.setVisible(mode, true);
     else void showOfficialRouteAnalysis(record, mode);
   });

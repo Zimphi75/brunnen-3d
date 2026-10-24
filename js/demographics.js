@@ -84,6 +84,89 @@ export async function fetchDemographicCell(center, fetcher = fetch) {
   };
 }
 
+/** Ringe der Gemeindegrenze als Listen lokaler Punkte [x, z] (Format wie in municipality.json). */
+function municipalityRings(municipality) {
+  const rings = [];
+  for (const polygon of municipality?.polygons ?? []) {
+    for (const ring of polygon ?? []) {
+      if (Array.isArray(ring?.[0])) rings.push(ring.filter((point) => point.length >= 2 && Number.isFinite(point[0]) && Number.isFinite(point[1])));
+      else if (Array.isArray(ring)) {
+        const points = [];
+        for (let index = 0; index + 1 < ring.length; index += 2) points.push([ring[index], ring[index + 1]]);
+        rings.push(points);
+      }
+    }
+  }
+  return rings.filter((ring) => ring.length >= 3);
+}
+
+/** Gerade-Ungerade-Regel über alle Ringe: Löcher (Exklaven anderer Gemeinden) werden korrekt ausgespart. */
+function insideRings(rings, x, z) {
+  let inside = false;
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, zi] = ring[i], [xj, zj] = ring[j];
+      if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** LV03-Hektar-ID («reli», z. B. 69302077) in den LV95-Mittelpunkt der 100-m-Zelle umrechnen. */
+function cellCenterFromReli(reli) {
+  const id = String(reli).padStart(8, "0");
+  const east = Number(id.slice(0, 4)) * 100 + 2000000 + 50;
+  const north = Number(id.slice(4, 8)) * 100 + 1000000 + 50;
+  return Number.isFinite(east) && Number.isFinite(north) ? [east, north] : null;
+}
+
+async function identifyAll(source, envelope, fetcher) {
+  const results = [];
+  for (let offset = 0; offset < 20000; offset += 200) {
+    const params = new URLSearchParams({
+      geometry: envelope, geometryType: "esriGeometryEnvelope", layers: `all:${source.layer}`, sr: "2056", lang: "de", tolerance: "0",
+      mapExtent: envelope, imageDisplay: "200,200,96", returnGeometry: "false", limit: "200", offset: String(offset), timeInstant: source.year,
+    });
+    const page = await getJson(`${IDENTIFY_URL}?${params}`, fetcher);
+    if (!page?.results) return null;
+    results.push(...page.results);
+    if (page.results.length < 200) break;
+  }
+  return results;
+}
+
+/** Summe aller STATPOP-/STATENT-Zellen, deren Mittelpunkt in der Gemeinde liegt. */
+export async function fetchMunicipalityTotals(municipality, frame, fetcher = fetch) {
+  const rings = municipalityRings(municipality);
+  if (!rings.length) return null;
+  let minE = Infinity, minN = Infinity, maxE = -Infinity, maxN = -Infinity;
+  for (const ring of rings) for (const [x, z] of ring) {
+    const { e, n } = frame.toLV95(x, z);
+    minE = Math.min(minE, e); maxE = Math.max(maxE, e); minN = Math.min(minN, n); maxN = Math.max(maxN, n);
+  }
+  const envelope = [minE - CELL_SIZE, minN - CELL_SIZE, maxE + CELL_SIZE, maxN + CELL_SIZE].map(Math.round).join(",");
+  const total = async (source) => {
+    const cells = await identifyAll(source, envelope, fetcher);
+    if (!cells) return null;
+    let value = 0, count = 0;
+    const seen = new Set();
+    for (const cell of cells) {
+      const reli = cell.attributes?.reli, number = Number(cell.attributes?.number);
+      if (reli == null || !Number.isFinite(number) || seen.has(reli)) continue;
+      const center = cellCenterFromReli(reli);
+      if (!center) continue;
+      const local = frame.toLocal(center[0], center[1]);
+      if (!insideRings(rings, local.x, local.z)) continue;
+      seen.add(reli);
+      value += number;
+      count++;
+    }
+    return { value: Math.round(value), year: Number(source.year), cells: count };
+  };
+  const [population, employment] = await Promise.all([total(SOURCES.population), total(SOURCES.employment)]);
+  return { population, employment };
+}
+
 export function rasterGridGeometry(terrain, frame, bounds) {
   const { min_e: minE, min_n: minN, nx, ny, cell } = bounds;
   const maxE = minE + (nx - 1) * cell, maxN = minN + (ny - 1) * cell;
@@ -149,24 +232,34 @@ function makeCellHighlight(cellGeometry, terrain, frame) {
   return outline;
 }
 
-function renderCellInfo(container, data, loading = false) {
+function renderCellInfo(container, data, loading = false, { title: heading = "Werte dieser 100-m-Zelle", scope = "in der 100-m-Zelle", note = "" } = {}) {
   container.replaceChildren();
   container.hidden = false;
   const title = document.createElement("strong");
-  title.textContent = loading ? "Lade Angaben …" : "Werte dieser 100-m-Zelle";
+  title.textContent = loading ? "Lade Angaben …" : heading;
   container.append(title);
   if (loading) return;
+  // Gleiche Darstellung wie «Leben in der Nachbarschaft» im Gebäudeprofil: zwei grosse Zahlen nebeneinander.
+  const stats = document.createElement("div");
+  stats.className = "demographic-stats";
   for (const [label, value] of [
-    ["Einwohner", data.population?.value != null ? fmt(data.population.value) : "Keine Angabe"],
-    ["Vollzeit-Arbeitsplätze", data.employment?.value != null ? fmt(data.employment.value) : "Keine Angabe"],
+    [`Menschen ${scope}`, data.population?.value],
+    [`Vollzeit-Arbeitsplätze ${scope}`, data.employment?.value],
   ]) {
-    const row = document.createElement("div");
-    const name = document.createElement("span");
-    name.textContent = label;
+    const stat = document.createElement("div");
     const number = document.createElement("b");
-    number.textContent = value;
-    row.append(name, number);
-    container.append(row);
+    number.textContent = value != null ? fmt(value) : "–";
+    const name = document.createElement("span");
+    name.textContent = value != null ? label : `${label}: keine Angabe`;
+    stat.append(number, name);
+    stats.append(stat);
+  }
+  container.append(stats);
+  const years = [data.population?.year && `Einwohner ${data.population.year}`, data.employment?.year && `Arbeitsplätze ${data.employment.year}`].filter(Boolean);
+  if (note || years.length) {
+    const small = document.createElement("small");
+    small.textContent = [note, years.length ? `Stand: ${years.join(", ")}` : ""].filter(Boolean).join(" · ");
+    container.append(small);
   }
 }
 
@@ -192,6 +285,7 @@ export function initDemographicLayers(ctx) {
   const walkingCategoryFilter = document.querySelector("#walking-category-filter");
   const walkingResults = document.querySelector("#walking-analysis-results");
   let activeLayer = null, selection = null, clickRequest = 0;
+  let municipalityTotals = null;
 
   function clearSelection() {
     if (!selection) return;
@@ -307,10 +401,24 @@ export function initDemographicLayers(ctx) {
       if (!activeLayer) return false;
       const request = ++clickRequest;
       clearSelection();
+      renderCellInfo(cellInfo, null, true);
       const data = await loadCell(record.center);
       if (request !== clickRequest || !activeLayer) return false;
       selection = makeCellHighlight(data.geometry, terrain, frame);
       if (selection) group.add(selection);
+      renderCellInfo(cellInfo, data, false, { title: "Leben in der Nachbarschaft" });
+      return true;
+    },
+    async showMunicipalityTotals() {
+      if (!activeLayer) return false;
+      const request = ++clickRequest;
+      clearSelection();
+      renderCellInfo(cellInfo, null, true);
+      municipalityTotals ??= fetchMunicipalityTotals(ctx.municipality, frame).catch(() => null);
+      const totals = await municipalityTotals;
+      if (request !== clickRequest || !activeLayer) return false;
+      if (!totals) { municipalityTotals = null; cellInfo.hidden = true; return false; }
+      renderCellInfo(cellInfo, totals, false, { title: "Ganze Gemeinde", scope: "in der Gemeinde", note: "Summe der 100-m-Zellen mit Mittelpunkt in der Gemeinde" });
       return true;
     },
     async activateBuildingCell(record) {
