@@ -113,9 +113,19 @@ function animateNightToLive(ctx, startGate = Promise.resolve()) {
 
 // Shader vor dem Ausblenden des Ladebildschirms kompilieren: sonst stockt der erste Teil des Zeitraffers.
 async function warmUpScene(ctx) {
-  const { renderer, scene, camera } = ctx.scene3d;
-  try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); }
-  catch (error) { console.warn("Shader-Vorbereitung übersprungen:", error); }
+  const { renderer, scene, camera, composer } = ctx.scene3d;
+  // Die Szene wird über den EffectComposer in einen Zwischenpuffer gerendert. Dafür erzeugt three.js andere
+  // Shader-Varianten (ohne Tone-Mapping, linearer Farbraum) als für den Bildschirm, darum mit diesem Ziel kompilieren.
+  const previousTarget = renderer.getRenderTarget();
+  try {
+    renderer.setRenderTarget(composer.readBuffer);
+    const compiled = renderer.compileAsync ? renderer.compileAsync(scene, camera) : renderer.compile(scene, camera);
+    renderer.setRenderTarget(previousTarget);
+    await compiled;
+  } catch (error) {
+    renderer.setRenderTarget(previousTarget);
+    console.warn("Shader-Vorbereitung übersprungen:", error);
+  }
   ctx.scene3d.renderingPaused = false;
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
