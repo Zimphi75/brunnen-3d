@@ -31,6 +31,7 @@ export const subtypeLabel = (value) => SUBTYPES[value] ?? value.replaceAll("_", 
 export function normalizePoi(poi) {
   const tags = poi.t ?? poi.tags ?? {};
   const pick = (...values) => values.find((value) => typeof value === "string" && value.trim())?.trim() ?? "";
+  const subtype = pick(poi.s, poi.subtype);
   const street = [pick(tags["addr:street"]), pick(tags["addr:housenumber"])].filter(Boolean).join(" ");
   const locality = [pick(tags["addr:postcode"]), pick(tags["addr:city"])].filter(Boolean).join(" ");
   const address = pick(tags.address) || [street, locality].filter(Boolean).join(", ");
@@ -41,7 +42,7 @@ export function normalizePoi(poi) {
     osmType: poi.osmType ?? ({ n: "node", w: "way", r: "relation" }[poi.id?.[0]] ?? "node"),
     osmId: poi.osmId ?? poi.id?.slice(1) ?? "",
     name: pick(poi.n, poi.name), category: pick(poi.c, poi.category) || "Sonstiges",
-    subtype: pick(poi.s, poi.subtype) || "", x: poi.x, z: poi.z, lat: poi.lat, lon: poi.lon,
+    subtype, subtypeLabel: SUBTYPES[subtype] ?? subtype.replaceAll("_", " "), x: poi.x, z: poi.z, lat: poi.lat, lon: poi.lon,
     address, openingHours: pick(tags.opening_hours, tags.openingHours),
     website: pick(tags.website, tags["contact:website"]), phone: pick(tags.phone, tags["contact:phone"]),
     email: pick(tags.email, tags["contact:email"]), description: pick(tags.description),

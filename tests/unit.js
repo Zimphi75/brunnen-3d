@@ -123,6 +123,7 @@ test("POI-Normalisierung: Kontaktvarianten und Adresse", () => {
     operator: "Gemeinde", fee: "yes", access: "public", capacity: "4", charge: "22 kW", socket_types: "Typ 2",
   } });
   assert(poi.osmType === "way" && poi.osmId === "42" && poi.name === "Café am See");
+  assert(poi.subtypeLabel === "Café");
   assert(poi.website === "https://example.org" && poi.phone === "+41 41 123 45 67" && poi.email === "info@example.org");
   assert(poi.address === "Seestrasse 4, 6440 Brunnen" && poi.properties.outdoorSeating === "yes");
   assert(poi.properties.operator === "Gemeinde" && poi.properties.fee === "yes" && poi.properties.capacity === "4");
@@ -140,9 +141,9 @@ test("POI-Detail: unsichere Kontakte werden ausgelassen, OSM bleibt verlinkt", (
   const panel = document.createElement("aside"), body = document.createElement("div"), closeButton = document.createElement("button");
   const centered = [];
   const inspector = createInspector({ panel, body, closeButton, codes: {}, onCenterPoi: (poi) => centered.push(poi.id) });
-  inspector.showPoi({ id: "poi-42", name: "Café", category: "Gastronomie", subtype: "cafe", website: "javascript:alert(1)", phone: "javascript:alert(1)", email: "info@example.org", osmType: "node", osmId: 42, properties: { wheelchair: "yes", fee: "no", access: "public", socketTypes: "CCS" } });
+  inspector.showPoi({ id: "poi-42", name: "Ladestation", category: "Mobilität", subtype: "charging_station", subtypeLabel: "E-Ladestation", website: "javascript:alert(1)", phone: "javascript:alert(1)", email: "info@example.org", osmType: "node", osmId: 42, properties: { wheelchair: "yes", fee: "no", access: "public", socketTypes: "CCS" } });
   assert(panel.classList.contains("poi-detail") && panel.getAttribute("role") === "dialog" && panel.getAttribute("aria-labelledby") === "poi-detail-title");
-  assert(body.textContent.includes("Rollstuhlgängig") && body.textContent.includes("Kostenlos") && body.textContent.includes("Steckertypen"));
+  assert(body.textContent.includes("E-Ladestation") && body.textContent.includes("Rollstuhlgängig") && body.textContent.includes("Kostenlos") && body.textContent.includes("Steckertypen"));
   assert(!body.querySelector('a[href^="javascript:"]') && !body.querySelector('a[href^="tel:"]'));
   assert(body.querySelector('a[href="mailto:info@example.org"]') && body.querySelector('a[href="https://www.openstreetmap.org/node/42"]'));
   assert(body.querySelector("[data-center-poi]") && !body.textContent.includes("Standort anzeigen"));

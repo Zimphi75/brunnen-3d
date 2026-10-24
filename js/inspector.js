@@ -88,7 +88,7 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
     ];
     body.innerHTML = `
       <button type="button" class="poi-sheet-handle" aria-label="Detailansicht erweitern" aria-expanded="false"><span></span></button>
-      <header class="poi-detail-head"><div><span class="profile-eyebrow">${esc(poi.category)}</span><h3 id="poi-detail-title">${esc(poi.name)}</h3><p class="sub">${esc(poi.subtype ? poi.subtype.replaceAll("_", " ") : poi.category)}</p></div></header>
+      <header class="poi-detail-head"><div><span class="profile-eyebrow">${esc(poi.category)}</span><h3 id="poi-detail-title">${esc(poi.name)}</h3><p class="sub">${esc(poi.subtypeLabel || (poi.subtype ? poi.subtype.replaceAll("_", " ") : poi.category))}</p></div></header>
       <div class="poi-detail-content">
         ${actions ? `<nav class="poi-actions" aria-label="Kontaktinformationen">${actions}</nav>` : ""}
         ${rows.length ? `<dl>${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join("")}</dl>` : ""}
