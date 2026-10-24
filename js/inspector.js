@@ -122,7 +122,6 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
   }
 
   function hide() { panel.hidden = true; buildingProfile = null; panel.classList.remove("poi-detail", "poi-expanded", "poi-compact"); panel.removeAttribute("role"); panel.removeAttribute("aria-labelledby"); }
-
   body.addEventListener("click", async (event) => {
     const routeButton = event.target.closest("[data-activate-official-route]");
     if (routeButton && buildingProfile?.record) {
@@ -207,13 +206,18 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
   function renderBuildingProfile() {
     const p = buildingProfile;
     const tabs = p.tabs.map(([id, label]) => `<button type="button" role="tab" data-profile-tab="${id}" aria-controls="inspector-profile-panel" aria-selected="${activeTab === id}" tabindex="${activeTab === id ? 0 : -1}">${label}</button>`).join("");
-    const ratingMarkup = p.rating ? `<button type="button" class="profile-rating" data-rating-toggle aria-expanded="${p.ratingOpen}" aria-controls="profile-rating-details">
+    const ratingHue = p.rating?.score == null ? null : Math.round(45 + (Math.max(0, Math.min(100, p.rating.score)) / 100) * 85);
+    const ratingTone = ratingHue == null ? "#8a9290" : `hsl(${ratingHue} 55% 38%)`;
+    const ratingUnrated = p.rating?.score == null;
+    const ratingMarkup = p.rating ? `<button type="button" class="profile-rating${ratingUnrated ? " is-unrated" : ""}" style="--rating-tone:${ratingTone}" data-rating-toggle aria-expanded="${p.ratingOpen}" aria-controls="profile-rating-details">
       <span class="profile-rating-score">${p.rating.score == null ? "–" : fmt(p.rating.score)}<small>Orientierung / 100</small></span>
       <span class="profile-rating-copy"><b>${esc(p.rating.label)}</b><small>Wohnumfeld-Orientierung · ${p.rating.availableDimensions} von ${p.rating.totalDimensions} Bereichen erfasst</small></span>
-      <span class="profile-rating-meter" aria-hidden="true"><i style="width:${p.rating.score ?? 0}%"></i></span>
+      <span class="profile-rating-meter${ratingUnrated ? " is-unrated" : ""}" style="--rating-position:${ratingUnrated ? 50 : p.rating.score}%" aria-hidden="true"><i></i></span>
+      <span class="profile-rating-scale" aria-hidden="true"><small>grössere Distanzen</small><small>kürzere Distanzen</small></span>
       <span class="profile-rating-action"><span>${p.ratingOpen ? "Details schliessen" : "Details und Quellen anzeigen"}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
     </button>${p.ratingOpen ? `<section id="profile-rating-details" class="profile-rating-details" aria-label="Berechnung und Quellen der Standortbewertung">
       <p>${esc(p.rating.model)} ${p.rating.reason ? esc(p.rating.reason) : ""}</p>
+      <p class="profile-note">Gelb bedeutet grössere Luftlinien-Distanzen, grün kürzere. Grau bedeutet, dass für zu wenige Bereiche Daten vorliegen.</p>
       <p class="profile-note">Der Orientierungswert startet mit gleich gewichteten Bereichen. Du kannst die Prioritäten unten ändern. Die Stufen beruhen auf Luftlinien: bis 250 m, 500 m, 1 km und 2 km. Das ist keine amtliche oder professionelle Immobilienbewertung.</p>
       <p class="profile-note">${p.rating.availableDimensions} von ${p.rating.totalDimensions} Bereichen und ${p.rating.factors.length} von 6 Ortstypen enthalten Daten. Fehlende Einträge werden nicht als schlechte Eigenschaft gewertet.</p>
       <fieldset class="profile-rating-priorities"><legend>Was ist dir wichtiger?</legend>${p.rating.dimensions.map((dimension) => `<label><span>${esc(dimension.label)}</span><select data-rating-priority="${esc(dimension.id)}" aria-label="Priorität: ${esc(dimension.label)}"><option value="1"${dimension.priority === 1 ? " selected" : ""}>Gleich wichtig</option><option value="1.5"${dimension.priority === 1.5 ? " selected" : ""}>Wichtig</option><option value="2"${dimension.priority === 2 ? " selected" : ""}>Besonders wichtig</option></select></label>`).join("")}</fieldset>
@@ -244,18 +248,14 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
           </div></section>`
         : `<section class="profile-demographics"><h4>Leben in der Nachbarschaft</h4><p class="profile-empty">Für die Umgebung sind derzeit keine Angaben verfügbar.</p></section>`;
     const nearby = p.nearby.length ? `<section class="profile-section"><div class="profile-section-title"><h4>Orte in der Nähe</h4><span>Weg oder Luftlinie</span></div><ul class="profile-nearby">${p.nearby.map((item) => `<li><span><b>${esc(item.label)}</b><small>${esc(item.name)} · ${item.walkMinutes != null ? `ca. ${item.walkMinutes} min zu Fuss` : "keine passende Fussroute"}</small></span><strong>${item.walkMinutes != null ? `${fmt(item.distance)} m Weg` : `${fmt(item.distance)} m Luftlinie`}</strong></li>`).join("")}</ul><p class="profile-note">Gehzeiten sind aus dem vorbereiteten OSM-Wegenetz und einer mittleren Gehgeschwindigkeit geschätzt. Fehlende Wege und Zugangsbeschränkungen können das Ergebnis beeinflussen.</p></section>` : `<section class="profile-section"><h4>Orte in der Nähe</h4><p class="profile-empty">Im vorbereiteten Ausschnitt wurden keine passenden Orte gefunden.</p></section>`;
-    const departure = p.nextDeparture?.status === "loading"
-      ? `<section class="profile-section"><h4>Nächste ÖV-Abfahrt</h4><p class="profile-empty">Fahrplan wird abgefragt …</p></section>`
-      : p.nextDeparture?.status === "ready"
-        ? `<section class="profile-section"><h4>Nächste ÖV-Abfahrt</h4><p class="profile-highlight">${esc(p.nextDeparture.stop)} · ${esc(p.nextDeparture.time)} · ${esc(p.nextDeparture.line)}</p><p class="profile-note">${esc(p.nextDeparture.kind)} · transport.opendata.ch. Abfahrtszeit, keine Aussage, ob die Haltestelle noch rechtzeitig erreichbar ist.</p></section>`
-        : p.nextDeparture?.status === "unavailable"
-          ? `<section class="profile-section"><h4>Nächste ÖV-Abfahrt</h4><p class="profile-empty">Der Fahrplan ist momentan nicht verfügbar.</p></section>`
-          : "";
+    const departure = p.nextDeparture?.status === "ready"
+      ? `<section class="profile-section"><h4>Nächste ÖV-Abfahrt</h4><p class="profile-highlight">${esc(p.nextDeparture.stop)} · ${esc(p.nextDeparture.time)} · ${esc(p.nextDeparture.line)}</p><p class="profile-note">${esc(p.nextDeparture.kind)} · transport.opendata.ch. Abfahrtszeit, keine Aussage, ob die Haltestelle noch rechtzeitig erreichbar ist.</p></section>`
+      : "";
     const environmentalMarkup = p.environmental?.status === "loading"
       ? `<section class="profile-section"><h4>Umwelt und Belastungen</h4><p class="profile-empty">Amtliche Umweltkarten werden abgefragt …</p></section>`
       : p.environmental?.status === "ready"
-        ? `<section class="profile-section"><h4>Umwelt und Belastungen</h4><p class="profile-note">Modell- und Rasterwerte, keine Messung am Gebäude. Auflösung und Datenstand stehen bei jedem Wert.</p>
-          ${p.environmental.indicators.some((item) => item.available) ? `<ul class="profile-rating-list profile-environment-list">${p.environmental.indicators.map((item) => `<li><span><b>${esc(item.label)}</b><small>${item.available ? `${fmt(item.value, item.unit === "%" ? 0 : 1)} ${esc(item.unit)}${item.resolutionM ? ` · Raster ca. ${fmt(item.resolutionM)} m` : ""}` : esc(item.reason)}</small>${item.available ? `<small>${esc(item.detail)}</small><small>${esc(item.source)}</small>` : ""}</span></li>`).join("")}</ul>` : `<p class="profile-empty">Für diesen Punkt lieferten die Umweltkarten keine Werte.</p>`}
+        ? `<section class="profile-section"><h4>Umwelt und Belastungen</h4><p class="profile-note">Das sind Modell- und Rasterwerte, keine Messungen am Gebäude. Bei jedem Wert steht, wie er berechnet oder räumlich übertragen wurde.</p>
+          ${p.environmental.indicators.some((item) => item.available) ? `<ul class="profile-rating-list profile-environment-list">${p.environmental.indicators.map((item) => `<li><span><b>${esc(item.label)}</b><small>${item.available ? `${fmt(item.value, item.unit === "%" ? 0 : 1)} ${esc(item.unit)}${item.resolutionM ? ` · Raster ca. ${fmt(item.resolutionM)} m` : ""}` : esc(item.reason)}</small>${item.available ? `<small>Berechnung / Aussage: ${esc(item.detail)}</small><small>${esc(item.source)}</small>` : ""}</span></li>`).join("")}</ul>` : `<p class="profile-empty">Für diesen Punkt lieferten die Umweltkarten keine Werte.</p>`}
           ${p.environmental.fetchedAt ? `<p class="profile-note">Abfrage ${esc(new Date(p.environmental.fetchedAt).toLocaleString("de-CH"))}.</p>` : ""}</section>`
         : "";
     const environmentActions = `<section class="profile-section"><h4>Karte erkunden</h4><div class="profile-demographic-actions"><button type="button" class="btn primary" data-activate-walking>Was erreiche ich zu Fuss?</button><button type="button" class="btn" data-activate-official-route="hiking">Wanderwege entdecken</button><button type="button" class="btn" data-activate-official-route="cycling">Velorouten ansehen</button><button type="button" class="btn" data-activate-official-route="roadNoise">Strassenlärm ansehen</button><button type="button" class="btn" data-activate-official-route="railNoise">Bahnlärm ansehen</button><button type="button" class="btn" data-activate-official-route="flood">Hochwasserübersicht ansehen</button><button type="button" class="btn" data-activate-demographic-cell aria-pressed="${p.demographicCellActive}">${p.demographicCellActive ? "Zurück zum Gebäude" : "Einwohner und Arbeitsplätze auf Karte ansehen"}</button></div></section>`;
@@ -264,7 +264,7 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
       const pvSummary = p.pvPlants.length ? `<p class="profile-highlight">Photovoltaik · ${fmt(p.pvPlants.reduce((sum, entry) => sum + (entry.plant.kw ?? 0), 0), 1)} kW registriert</p>` : "";
       content = `<div class="profile-content">${ratingMarkup}<div class="profile-kpis">${kpis}</div>${p.ageMarkup}<button type="button" class="btn primary" data-profile-tab="environment">Umgebung entdecken</button>${pvSummary}</div>`;
     } else if (activeTab === "environment") {
-      content = `<div class="profile-content">${nearby}${departure}${demographicMarkup}${environmentActions}${environmentalMarkup}</div>`;
+      content = `<div class="profile-content">${demographicMarkup}${departure}${environmentActions}${environmentalMarkup}</div>`;
     } else if (activeTab === "building") {
       content = `<div class="profile-content">${p.ageMarkup}<section class="profile-section"><h4>Gebäude</h4>
         <div class="profile-building-metrics"><div><span>GWR-Geschosse</span><strong>${p.gwr.floors == null ? MISSING : fmt(p.gwr.floors)}</strong></div><div><span>Gebäudehöhe</span><strong>${p.record.height == null ? MISSING : `${fmt(p.record.height, 1)} m`}</strong></div></div>

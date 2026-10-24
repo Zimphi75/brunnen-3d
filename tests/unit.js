@@ -279,6 +279,7 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
     nearby: [{ label: "Supermarkt", name: "Coop", distance: 173 }],
     environmental: { status: "ready", indicators: [{ id: "radon", label: "Radon", available: true, inRating: false, value: 16, unit: "%", resolutionM: 1000, detail: "Modellierte Wahrscheinlichkeit, den Referenzwert zu überschreiten.", source: "BAG-Radonkarte · GeoAdmin" }] },
     demographics: { status: "ready", cellSizeM: 100, bounds: [2688500, 1205600, 2688600, 1205700], population: { value: 126, year: 2024 }, employment: { value: 4, year: 2023 } },
+    nextDeparture: { status: "unavailable" },
     solarPotential: { status: "ready", roofAreaM2: 340, annualKwh: 64054, dataStatus: "2023-02-21", features: [{ suitability: "Gut", areaM2: 340, annualKwh: 64054, winterKwh: 16337, slopeDeg: 0, azimuthDeg: -180 }] },
     pv: [{ plant: { kw: 22.28, year: 2023, cat: "angebaut", parts: [[0, 10, 6], [0, 10, 2]] }, requested: 58, placed: 58, onRoof: true }],
     rating,
@@ -289,7 +290,8 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
   assert(!body.querySelector(".profile-age-track") && body.textContent.includes("1971 bis 1980"), "Bauzeit soll als Text statt Heatmap erscheinen");
   assert(!body.querySelector(".profile-kpis").textContent.includes("Bauzeit") && body.querySelectorAll(".profile-kpi").length === 2, "Übersicht soll nur Geschosse und Wohnungen als Kennzahlen zeigen");
   body.querySelector('[data-profile-tab="environment"]').click();
-  assert(body.textContent.includes("Coop") && body.textContent.includes("173 m Luftlinie"), "Umgebung muss nächste Orte und Messart benennen");
+  assert(body.querySelector(".profile-content > .profile-demographics") && !body.textContent.includes("Coop") && !body.textContent.includes("173 m Luftlinie"), "Nachbarschaft gehört nach oben; Score-Orte werden nicht doppelt angezeigt");
+  assert(!body.textContent.includes("Nächste ÖV-Abfahrt"), "Nicht verfügbare ÖV-Abfahrten dürfen nicht erscheinen");
   assert(body.textContent.includes("126") && body.textContent.includes("Menschen in der 100-m-Zelle") && body.textContent.includes("Vollzeit-Arbeitsplätze in der 100-m-Zelle"), "Nachbarschaftswerte brauchen räumlich genaue Bezeichnungen");
   assert(body.textContent.includes("Einwohner und Arbeitsplätze auf Karte ansehen") && !body.textContent.includes("STATPOP"), "Umgebung soll direkte Kartenanalyse ohne Fachbegriffe anbieten");
   body.querySelector('[data-profile-tab="building"]').click();
@@ -297,6 +299,7 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
   body.querySelector('[data-profile-tab="overview"]').click();
   assert(body.textContent.includes("22.3 kW registriert"), "PV-Leistung fehlt in der Übersicht");
   assert(body.querySelector("[data-rating-toggle]") && body.textContent.includes("73") && body.textContent.includes("Wohnumfeld-Orientierung"), "Wohnattraktivitäts-Orientierung fehlt");
+  assert(body.querySelector(".profile-rating").style.getPropertyValue("--rating-tone").startsWith("hsl(") && body.querySelector(".profile-rating-meter").style.getPropertyValue("--rating-position") === "73%", "Aussagekräftige Orientierung braucht eine farbige Skalenposition");
   assert(body.querySelector(".profile-rating-action")?.textContent.includes("Details und Quellen anzeigen") && body.querySelector("[data-rating-toggle]").getAttribute("aria-expanded") === "false", "Rating braucht eine sichtbare Aufklappaktion");
   body.querySelector("[data-rating-toggle]").click();
   assert(body.querySelector(".profile-rating-action")?.textContent.includes("Details schliessen") && body.querySelector("[data-rating-toggle]").getAttribute("aria-expanded") === "true", "Aufgeklapptes Rating braucht eine erkennbare Schliessaktion");
@@ -309,7 +312,7 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
   body.querySelector('[data-rating-priority="leisure"]').value = "1";
   body.querySelector('[data-rating-priority="leisure"]').dispatchEvent(new Event("change", { bubbles: true }));
   body.querySelector('[data-profile-tab="environment"]').click();
-  assert(body.textContent.includes("Umwelt und Belastungen") && body.textContent.includes("BAG-Radonkarte · GeoAdmin") && body.textContent.includes("1'000 m"), "Radon muss mit Rasterauflösung getrennt von der Orientierung erscheinen");
+  assert(body.textContent.includes("Umwelt und Belastungen") && body.textContent.includes("Berechnung / Aussage: Modellierte Wahrscheinlichkeit") && body.textContent.includes("BAG-Radonkarte · GeoAdmin") && body.textContent.includes("1'000 m"), "Umweltwerte müssen Berechnungsweise, Quelle und Auflösung erklären");
   body.querySelector('[data-profile-tab="overview"]').click();
   body.querySelector("[data-rating-toggle]").click();
   assert(!body.querySelector("#profile-rating-details") && body.querySelector(".profile-rating-action").textContent.includes("Details und Quellen anzeigen"), "Rating muss sich wieder schliessen lassen");
@@ -329,6 +332,10 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
   inspector.suspendBuildingProfile();
   inspector.showPoi({ name: "Coop", category: "Einkauf", subtype: "supermarket" });
   assert(inspector.restoreBuildingProfile() && body.querySelector('[data-profile-tab="environment"][aria-selected="true"]'), "Rückkehr aus einem POI-Detail muss den vorherigen Profil-Tab wiederherstellen");
+  const unknownPanel = document.createElement("section"), unknownBody = document.createElement("div"), unknownClose = document.createElement("button");
+  const unknownInspector = createInspector({ panel: unknownPanel, body: unknownBody, closeButton: unknownClose, codes: {} });
+  unknownInspector.showBuilding(profileRecord, { rating: insufficient });
+  assert(unknownBody.querySelector(".profile-rating.is-unrated") && unknownBody.querySelector(".profile-rating-meter.is-unrated") && unknownBody.querySelector(".profile-rating-score").textContent.includes("–"), "Nicht aussagekräftige Orientierung muss grau und ohne Zahl erscheinen");
 });
 
 test("Nachbarschaft: echte Nullwerte bleiben von fehlenden Daten unterscheidbar", () => {
