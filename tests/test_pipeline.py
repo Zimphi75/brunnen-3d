@@ -17,7 +17,7 @@ from pipeline import config
 from pipeline.common import Extent, compute_extent, to_local
 from pipeline.download import overpass_queries
 from pipeline.process_buildings import building_mesh, triangulate_face
-from pipeline.process_osm import process_pois
+from pipeline.process_osm import process_pois, process_roads
 from pipeline.process_parcels import attach_parcels, attach_planning, parse_gml, parse_planning_gml
 
 DATA = config.OUT_DIR
@@ -62,6 +62,19 @@ def test_process_pois_normalizes_contact_tags_and_address():
     assert poi["t"]["email"] == "info@example.org"
     assert poi["t"]["address"] == "Seestrasse 4, 6440 Brunnen"
     assert poi["t"]["outdoor_seating"] == "yes"
+
+
+def test_process_roads_preserves_walk_access_and_highway_kind():
+    raw = {"elements": [
+        {"type": "way", "id": 1, "geometry": [{"lat": 47.0, "lon": 8.6}, {"lat": 47.0001, "lon": 8.6001}], "tags": {"highway": "footway", "foot": "designated"}},
+        {"type": "way", "id": 2, "geometry": [{"lat": 47.0, "lon": 8.6}, {"lat": 47.0001, "lon": 8.6001}], "tags": {"highway": "residential", "foot": "no"}},
+        {"type": "way", "id": 3, "geometry": [{"lat": 47.0, "lon": 8.6}, {"lat": 47.0001, "lon": 8.6001}], "tags": {"highway": "motorway", "foot": "yes"}},
+        {"type": "way", "id": 4, "geometry": [{"lat": 47.0, "lon": 8.6}, {"lat": 47.0001, "lon": 8.6001}], "tags": {"highway": "service", "foot": "customers"}},
+    ]}
+    roads = process_roads(raw, box(-100_000, -100_000, 100_000, 100_000), (2_688_000, 1_206_300))
+    by_id = {road["id"]: road for road in roads}
+    assert by_id[1]["walk"] == 1 and by_id[1]["hw"] == "footway"
+    assert by_id[2]["walk"] == 0 and by_id[3]["walk"] == 1 and by_id[4]["walk"] == 0
 
 
 def test_process_pois_includes_unnamed_public_services_and_chargers():

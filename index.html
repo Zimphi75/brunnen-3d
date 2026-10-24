@@ -280,16 +280,48 @@
     </div>
   </section>
 
-  <section class="panel" id="demographic-analysis" hidden aria-label="Bevölkerung und Arbeit auf der Karte">
+  <section class="panel" id="demographic-analysis" hidden aria-label="Standort und Umgebung auf der Karte erkunden">
     <header class="demographic-analysis-head">
       <div><span class="profile-eyebrow">KARTENANALYSE</span><h2 id="demographic-analysis-title"></h2><p id="demographic-analysis-description"></p></div>
+      <label class="analysis-mode-picker">Thema
+        <select id="analysis-mode" aria-label="Kartenanalyse auswählen">
+          <option value="demography-population">Einwohner</option>
+          <option value="demography-employment">Arbeitsplätze</option>
+          <option value="walking">Zu Fuss erreichbar</option>
+          <option value="hiking">Wanderwege</option>
+          <option value="cycling">Velorouten</option>
+          <option value="closures">Sperrungen</option>
+          <option value="solar">Solarpotenzial</option>
+          <option value="roadNoise">Strassenlärm</option>
+          <option value="railNoise">Bahnlärm</option>
+          <option value="flood">Hochwasserübersicht</option>
+        </select>
+      </label>
     </header>
     <div class="demographic-analysis-legend"><span>Wertebereiche</span><img id="demographic-analysis-legend" alt="" loading="eager"></div>
     <div id="demographic-cell-info" hidden aria-live="polite"></div>
     <div class="seg demographic-analysis-views" role="group" aria-label="Kartenausschnitt">
-      <button type="button" data-analysis-view="quarter" aria-pressed="false" disabled>Mein Quartier</button>
+      <button type="button" data-analysis-view="quarter" aria-pressed="false" disabled>Gebäudeumfeld</button>
       <button type="button" data-analysis-view="municipality" aria-pressed="false">Ganze Gemeinde</button>
     </div>
+    <div id="walking-analysis-controls" class="seg demographic-analysis-times" role="group" aria-label="Gehzeit" hidden>
+      <button type="button" data-walking-minutes="5" aria-pressed="true">5 min</button>
+      <button type="button" data-walking-minutes="10" aria-pressed="false">10 min</button>
+      <button type="button" data-walking-minutes="15" aria-pressed="false">15 min</button>
+    </div>
+    <label id="walking-category-filter" class="walking-category-filter" hidden>Orte
+      <select id="walking-category" aria-label="Orte nach Kategorie filtern">
+        <option value="all">Alle Kategorien</option>
+        <option value="Einkauf">Einkauf</option>
+        <option value="Bildung">Schule und Bildung</option>
+        <option value="Gesundheit">Gesundheit</option>
+        <option value="Gastronomie">Essen und Trinken</option>
+        <option value="Freizeit und Kultur">Freizeit und Kultur</option>
+        <option value="Mobilität">Mobilität</option>
+        <option value="Öffentliche Einrichtungen">Öffentliche Einrichtungen</option>
+      </select>
+    </label>
+    <div id="walking-analysis-results" class="walking-analysis-results" hidden></div>
     <button type="button" class="btn primary demographic-analysis-exit" data-analysis-exit hidden>Zurück zum Gebäude</button>
   </section>
 

@@ -9,12 +9,15 @@ import { zurichParts } from "./sky.js";
 import { roadsidePosition } from "./roadmarks.js";
 
 const API = "https://transport.opendata.ch/v1";
+const GEOADMIN_IDENTIFY = "https://api3.geo.admin.ch/rest/services/api/MapServer/identify";
+const BAV_LAYER = "ch.bav.haltestellen-oev";
 const MODE = {
   train: { label: "Bahn", color: "#d62828" },
   bus: { label: "Bus", color: "#f0a500" },
   ferry: { label: "Schiff", color: "#1d70b8" },
 };
 const cache = new Map();
+const officialStopCache = new Map();
 
 async function apiGet(path, ttl = 60000) {
   const hit = cache.get(path);
@@ -33,6 +36,43 @@ async function apiGet(path, ttl = 60000) {
 const clock = new Intl.DateTimeFormat("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit" });
 
 export const fetchStationboard = (station, extra = "") => apiGet(`/stationboard?station=${encodeURIComponent(station)}&limit=12${extra}`);
+
+export async function fetchOfficialStops(center, fetcher = fetch) {
+  if (!Array.isArray(center) || center.length < 2 || !center.every(Number.isFinite)) return [];
+  const [east, north] = center;
+  const cacheKey = `${Math.floor(east / 250)}:${Math.floor(north / 250)}`;
+  const cached = officialStopCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < 86400000) return cached.stops;
+  const params = new URLSearchParams({
+    geometry: `${east},${north}`, geometryType: "esriGeometryPoint", layers: `all:${BAV_LAYER}`, sr: "2056", lang: "de",
+    tolerance: "300", mapExtent: `${east - 1500},${north - 1500},${east + 1500},${north + 1500}`,
+    imageDisplay: "600,600,96", returnGeometry: "true",
+  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetcher(`${GEOADMIN_IDENTIFY}?${params}`, { signal: controller.signal });
+    if (!response.ok) return [];
+    const data = await response.json();
+    const stops = (data.results ?? []).flatMap((feature) => {
+      const attributes = feature.attributes ?? {};
+      const [x, y] = feature.geometry?.points?.[0] ?? [];
+      const mode = ({ Bus: "bus", Zug: "train", Schiff: "ferry", Tram: "train" })[attributes.verkehrsmittel_de];
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !mode || !attributes.name) return [];
+      return [{
+        id: feature.featureId ?? feature.id,
+        name: attributes.name,
+        abbreviation: attributes.abkuerzung ?? null,
+        operator: attributes.tuabkuerzung ?? null,
+        mode, east: x, north: y,
+      }];
+    }).sort((a, b) => Math.hypot(a.east - east, a.north - north) - Math.hypot(b.east - east, b.north - north));
+    officialStopCache.set(cacheKey, { time: Date.now(), stops });
+    return stops;
+  } catch {
+    return [];
+  } finally { clearTimeout(timer); }
+}
 
 function nearestOnPolyline(flat, x, z) {
   let best = { distance: Infinity, arc: 0 }, arc = 0;

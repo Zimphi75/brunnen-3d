@@ -102,9 +102,18 @@ def process_roads(raw: dict, clip, origin) -> list[dict]:
                 continue
             bridge = tags.get("bridge") not in (None, "no")
             tunnel = tags.get("tunnel") not in (None, "no") or tags.get("covered") == "yes"
+            foot = tags.get("foot")
+            access = tags.get("access")
+            walk = bool(highway) and (
+                foot in {"yes", "designated", "permissive"}
+                or foot not in {"no", "private", "customers"}
+                and access not in {"no", "private", "customers"}
+                and highway not in {"motorway", "motorway_link", "trunk", "trunk_link"}
+            )
             roads.append({
                 "id": element["id"], "c": kind, "n": tags.get("name") or tags.get("ref"),
                 "b": int(bridge), "t": int(tunnel), "lit": int(tags.get("lit") in LIT_VALUES), "l": int(tags.get("layer", 0) or 0) if str(tags.get("layer", "0")).lstrip("-").isdigit() else 0,
+                "hw": highway, "walk": int(walk), "surface": tags.get("surface"), "incline": tags.get("incline"),
                 "ow": oneway_direction(tags), "ln": int(tags["lanes"]) if str(tags.get("lanes", "")).isdigit() else 0,
                 "p": flat(part.coords),
             })

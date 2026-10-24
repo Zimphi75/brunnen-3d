@@ -84,7 +84,7 @@ export async function fetchDemographicCell(center, fetcher = fetch) {
   };
 }
 
-function rasterGridGeometry(terrain, frame, bounds) {
+export function rasterGridGeometry(terrain, frame, bounds) {
   const { min_e: minE, min_n: minN, nx, ny, cell } = bounds;
   const maxE = minE + (nx - 1) * cell, maxN = minN + (ny - 1) * cell;
   const width = maxE - minE, height = maxN - minN;
@@ -153,7 +153,7 @@ function renderCellInfo(container, data, loading = false) {
   container.replaceChildren();
   container.hidden = false;
   const title = document.createElement("strong");
-  title.textContent = loading ? "Lade Angaben …" : "Leben in dieser Nachbarschaft";
+  title.textContent = loading ? "Lade Angaben …" : "Werte dieser 100-m-Zelle";
   container.append(title);
   if (loading) return;
   for (const [label, value] of [
@@ -184,7 +184,13 @@ export function initDemographicLayers(ctx) {
   const legendTitle = document.querySelector("#demographic-analysis-title");
   const legendDescription = document.querySelector("#demographic-analysis-description");
   const legendImage = document.querySelector("#demographic-analysis-legend");
+  const legend = legendImage.closest(".demographic-analysis-legend");
+  const analysisMode = document.querySelector("#analysis-mode");
   const cellInfo = document.querySelector("#demographic-cell-info");
+  const viewControls = document.querySelector(".demographic-analysis-views");
+  const walkingControls = document.querySelector("#walking-analysis-controls");
+  const walkingCategoryFilter = document.querySelector("#walking-category-filter");
+  const walkingResults = document.querySelector("#walking-analysis-results");
   let activeLayer = null, selection = null, clickRequest = 0;
 
   function clearSelection() {
@@ -212,8 +218,15 @@ export function initDemographicLayers(ctx) {
     activeLayer = source.id;
     mesh.visible = false;
     analysisPanel.hidden = false;
+    analysisMode.value = source.id;
+    legend.hidden = false;
+    legendImage.hidden = false;
+    viewControls.hidden = false;
+    walkingControls.hidden = true;
+    walkingCategoryFilter.hidden = true;
+    walkingResults.hidden = true;
     legendTitle.textContent = source.name === "STATPOP" ? "Einwohner" : "Arbeitsplätze";
-    legendDescription.textContent = source.name === "STATPOP" ? "Menschen, die hier wohnen" : "Beschäftigung in der Umgebung";
+    legendDescription.textContent = source.name === "STATPOP" ? "Einwohner in der 100-m-Zelle, keine Gebäudezahl" : "Arbeitsplätze in der 100-m-Zelle";
     if (legendImage.dataset.layer !== source.id) {
       legendImage.dataset.layer = source.id;
       legendImage.alt = `Farblegende: ${source.name === "STATPOP" ? "Einwohner" : "Arbeitsplätze"}`;

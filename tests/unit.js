@@ -12,7 +12,7 @@ import { parseDem, parseBuildings } from "../js/api.js";
 import { weatherCondition, PRESETS, LIVE_WINDOW_MS } from "../js/weather.js";
 import { createInspector, esc } from "../js/inspector.js";
 import { normalizePoi, POI_DISPLAY } from "../js/pois.js";
-import { stopPlacement } from "../js/transport.js";
+import { stopPlacement, fetchOfficialStops } from "../js/transport.js";
 import { initAlmanac } from "../js/almanac.js";
 import { Terrain } from "../js/terrain.js";
 import { createCameraRig } from "../js/controls.js";
@@ -22,6 +22,9 @@ import { fetchDemographicCell } from "../js/demographics.js";
 import { createLayerManager } from "../js/layers.js";
 import { automaticTimeSpeed, buildingVisibleAtYear } from "../js/history.js";
 import { moonIllumination, moonPhaseName } from "../js/time-weather-panel.js";
+import { buildWalkingGraph, closestWalkNode, shortestWalkRoutes, walkingRouteTo, walkingSegmentsWithin } from "../js/routing.js";
+import { officialRouteMapUrl, renderFeatureInfo } from "../js/official-routes.js";
+import { fetchSolarPotential } from "../js/solar-potential.js";
 
 const results = [];
 const tests = [];
@@ -93,6 +96,65 @@ test("Gebäudetyp aus GWR-Klasse", () => {
   assert(typeGroup({ gwr: { class: 1110 } }).id === "wohnen");
   assert(typeGroup({ gwr: { class: 1242 } }).id === "verkehr");
   assert(typeGroup({}) === null);
+});
+
+test("Fussrouting: kürzester OSM-Weg, Sperrung und Gehzeit", () => {
+  const graph = buildWalkingGraph([
+    { id: 1, c: "minor", p: [0, 0, 100, 0] },
+    { id: 2, c: "path", p: [0, 0, 0, 60, 100, 60, 100, 0] },
+    { id: 3, c: "path", walk: false, p: [0, 0, 0, -20, 100, -20, 100, 0] },
+    { id: 4, c: "motorway", p: [0, 0, 200, 0] },
+  ]);
+  const start = closestWalkNode(graph, 0, 0);
+  const search = shortestWalkRoutes(graph, { x: 0, z: 0 });
+  const route = walkingRouteTo(search, { x: 100, z: 0 });
+  assert(start?.id === search.startId && graph.nodeCount === 4, "Nicht begehbare Segmente dürfen keine Routingknoten beisteuern");
+  assert(route?.distanceM === 100 && route.minutes === 1 && route.points.length === 2, "Der direkte öffentliche Weg soll als kürzeste Route gelten");
+  assert(walkingSegmentsWithin(search, 1).length > 0, "Erreichbare Wege sollen für eine Zeitstufe verfügbar sein");
+  assert(walkingRouteTo(shortestWalkRoutes(graph, { x: 0, z: 0 }), { x: 200, z: 0 }) === null, "Autobahn und als nicht begehbar markierte Wege sind auszuschliessen");
+  assert(shortestWalkRoutes(graph, { x: 1000, z: 1000 }) === null, "Ein weit entfernt liegender Startpunkt darf nicht auf das Netz geschnappt werden");
+});
+
+test("BAV-Haltestellen: amtliche IDs, Verkehrsmittel und LV95-Geometrie", async () => {
+  const stops = await fetchOfficialStops([2688933, 1205886], async (input) => {
+    const url = new URL(input);
+    assert(url.searchParams.get("layers") === "all:ch.bav.haltestellen-oev" && url.searchParams.get("returnGeometry") === "true");
+    return { ok: true, json: async () => ({ results: [{
+      featureId: 8577436,
+      attributes: { name: "Brunnen, Kantonalbank", abkuerzung: null, tuabkuerzung: "AAGS", verkehrsmittel_de: "Bus" },
+      geometry: { points: [[2688888, 1205729]] },
+    }] }) };
+  });
+  assert(stops.length === 1 && stops[0].id === 8577436 && stops[0].mode === "bus");
+  assert(stops[0].east === 2688888 && stops[0].north === 1205729 && stops[0].operator === "AAGS");
+});
+
+test("Offizielle Wegkarten: transparente Geländeüberlagerung in LV95", () => {
+  const url = new URL(officialRouteMapUrl({ layer: "ch.astra.veloland" }, { minE: 100, minN: 200, maxE: 900, maxN: 600 }, 512, 256));
+  assert(url.searchParams.get("LAYERS") === "ch.astra.veloland");
+  assert(url.searchParams.get("CRS") === "EPSG:2056" && url.searchParams.get("BBOX") === "100,200,900,600");
+  assert(url.searchParams.get("TRANSPARENT") === "true" && url.searchParams.get("FORMAT") === "image/png");
+});
+
+test("Aquaprotect: leere Gefahrenattribute ergeben keine punktgenaue Risikobehauptung", () => {
+  const container = document.createElement("div");
+  renderFeatureInfo(container, { id: "flood" }, { attributes: {}, geometry: { type: "Polygon" } });
+  assert(container.textContent.includes("keine eindeutige Gefahrenstufe") && !container.textContent.includes("Potenziell überschwemmt"));
+});
+
+test("Solarpotenzial: BFE-Dachflächen werden über EGID und modellierte Erträge zugeordnet", async () => {
+  const record = { egid: 257113, center: [2688933, 1205886] };
+  const feature = (egid, production) => ({
+    featureId: egid, attributes: { gwr_egid: egid, klasse_text: "Gut##Bonne", flaeche: 80, stromertrag: production, stromertrag_winterhalbjahr: 20, ausrichtung: 180, neigung: 20 },
+    geometry: { rings: [[[2688900, 1205800], [2688950, 1205800], [2688950, 1205850], [2688900, 1205800]]] },
+  });
+  const potential = await fetchSolarPotential(record, async (input) => {
+    const url = new URL(input);
+    assert(url.searchParams.get("layers") === "all:ch.bfe.solarenergie-eignung-daecher" && url.searchParams.get("returnGeometry") === "true");
+    return { ok: true, json: async () => ({ results: [feature(257111, 9000), feature(257113, 64054)] }) };
+  });
+  assert(potential.status === "ready" && potential.features.length === 1 && potential.features[0].suitability === "Gut");
+  assert(potential.roofAreaM2 === 80 && potential.annualKwh === 64054 && potential.features[0].winterKwh === 20);
 });
 
 test("Wetter: Codes und Niederschlag", () => {
@@ -175,8 +237,10 @@ test("Gebäude-Inspector zeigt Parzelle und räumliche Zuordnung", () => {
 
 test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
   const panel = document.createElement("section"), body = document.createElement("div"), closeButton = document.createElement("button");
+  let ratingInput;
   const inspector = createInspector({
     panel, body, closeButton,
+    onRatingPreferenceChange: (record, preferences) => buildLocationRating({ ...ratingInput, record, preferences }),
     codes: {
       GKLAS: { 1122: "Gebäude mit drei oder mehr Wohnungen" }, GKAT: { 1020: "Gebäude mit ausschliesslicher Wohnnutzung" },
       GSTAT: { 1004: "Gebäude bestehend" }, GWAERZH1: { 7410: "Heizkessel (generisch) für ein Gebäude" },
@@ -187,7 +251,7 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
     gwr: { class: 1122, category: 1020, periodBuilt: 8015, status: 1004, floors: 5, dwellings: 8, heatGenerator: 7410, heatEnergy: 7530, footprintAreaGwr: 283 },
   };
   const frame = { toLocal: () => ({ x: 0, z: 0 }) };
-  const rating = buildLocationRating({
+  ratingInput = {
     record: profileRecord, frame,
     pois: [
       { n: "Coop", s: "supermarket", x: 173, z: 0 }, { n: "Theresianum", s: "school", x: 593, z: 0 },
@@ -196,10 +260,18 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
     stops: [{ n: "Kantonalbank", m: "bus", x: 170, z: 0 }, { n: "Brunnen", m: "train", x: 215, z: 0 }],
     places: [{ n: "Brunnen", k: "village", x: 487, z: 0 }],
     osmSource: { provider: "OpenStreetMap-Mitwirkende", license: "ODbL 1.0", retrieved: "2026-10-22" },
-  });
-  assert(rating.score === 4.3 && rating.coverage === 100, "Wohnlagen-Score stimmt nicht mit den gewichteten Luftlinien überein");
+  };
+  const rating = buildLocationRating(ratingInput);
+  assert(rating.score === 73 && rating.coverage === 100 && rating.availableDimensions === 3, "Wohnattraktivitäts-Orientierung stimmt nicht mit den erfassten Luftlinien überein");
   const insufficient = buildLocationRating({ record: profileRecord, frame, pois: [{ n: "Coop", s: "supermarket", x: 173, z: 0 }] });
-  assert(insufficient.score === null && insufficient.coverage === 25, "Unzureichende Datenbasis darf keinen Score erzeugen");
+  assert(insufficient.score === null && insufficient.coverage === 33, "Ein einzelner Bereich darf keinen Score erzeugen");
+  const normalizedPois = buildLocationRating({
+    record: profileRecord, frame,
+    pois: [{ name: "Coop", subtype: "supermarket", x: 173, z: 0 }, { name: "Praxis", subtype: "doctors", x: 240, z: 0 }, { name: "Park", subtype: "park", x: 300, z: 0 }],
+    stops: [{ n: "Bus", m: "bus", x: 200, z: 0, sourceProvider: "Bundesamt für Verkehr (BAV) · GeoAdmin", sourceLabel: "BAV-Haltestellenverzeichnis" }],
+  });
+  assert(normalizedPois.factors.some((factor) => factor.label === "Einkaufen") && normalizedPois.availableDimensions === 3, "Normalisierte POIs mit subtype müssen in die Bereiche eingehen");
+  assert(normalizedPois.factors.some((factor) => factor.label === "Bushaltestelle" && factor.source.provider.includes("Bundesamt für Verkehr")), "Amtliche Haltestellen müssen im Score ihre eigene Quelle ausweisen");
   const demographics = { status: "ready", cellSizeM: 100, bounds: [2688500, 1205600, 2688600, 1205700], population: { value: 126, year: 2024 }, employment: { value: 4, year: 2023 } };
   inspector.showBuilding(profileRecord, {
     addresses: ["Rosengartenstrasse 4, 6440 Brunnen"],
@@ -207,36 +279,56 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
     nearby: [{ label: "Supermarkt", name: "Coop", distance: 173 }],
     environmental: { status: "ready", indicators: [{ id: "radon", label: "Radon", available: true, inRating: false, value: 16, unit: "%", resolutionM: 1000, detail: "Modellierte Wahrscheinlichkeit, den Referenzwert zu überschreiten.", source: "BAG-Radonkarte · GeoAdmin" }] },
     demographics: { status: "ready", cellSizeM: 100, bounds: [2688500, 1205600, 2688600, 1205700], population: { value: 126, year: 2024 }, employment: { value: 4, year: 2023 } },
+    solarPotential: { status: "ready", roofAreaM2: 340, annualKwh: 64054, dataStatus: "2023-02-21", features: [{ suitability: "Gut", areaM2: 340, annualKwh: 64054, winterKwh: 16337, slopeDeg: 0, azimuthDeg: -180 }] },
     pv: [{ plant: { kw: 22.28, year: 2023, cat: "angebaut", parts: [[0, 10, 6], [0, 10, 2]] }, requested: 58, placed: 58, onRoof: true }],
     rating,
     demographics,
     gwrExportDate: "2026-10-21",
   });
-  assert(body.textContent.includes("1971 bis 1980") && body.textContent.includes("Coop") && body.textContent.includes("173 m"), "Übersicht mit Bauperiode und Luftlinien fehlt");
+  assert(body.textContent.includes("1971 bis 1980") && !body.textContent.includes("Coop"), "Übersicht soll Bauzeit zeigen und Detailorte der Umgebung überlassen");
   assert(!body.querySelector(".profile-age-track") && body.textContent.includes("1971 bis 1980"), "Bauzeit soll als Text statt Heatmap erscheinen");
-  assert(!body.querySelector(".profile-kpis").textContent.includes("Bauzeit") && body.querySelector(".profile-kpis").textContent.includes("Gebäudehöhe"), "Bauzeit ist doppelt oder die Gebäudehöhe fehlt");
-  assert(body.textContent.includes("Abweichung der beiden Angaben: 0.2 m²") && body.textContent.includes("Median 265 m²"), "Grundfläche braucht Differenz und Vergleichskontext");
-  assert(body.textContent.includes("126") && body.textContent.includes("Menschen, die hier wohnen") && body.textContent.includes("Vollzeit-Arbeitsplätze in der Umgebung"), "Nachbarschaftswerte brauchen verständliche Bezeichnungen");
-  assert(body.textContent.includes("Belebtheit auf Karte erkunden") && !body.textContent.includes("STATPOP"), "Übersicht soll keine Fachbegriffe zeigen und die Kartenanalyse anbieten");
+  assert(!body.querySelector(".profile-kpis").textContent.includes("Bauzeit") && body.querySelectorAll(".profile-kpi").length === 2, "Übersicht soll nur Geschosse und Wohnungen als Kennzahlen zeigen");
+  body.querySelector('[data-profile-tab="environment"]').click();
+  assert(body.textContent.includes("Coop") && body.textContent.includes("173 m Luftlinie"), "Umgebung muss nächste Orte und Messart benennen");
+  assert(body.textContent.includes("126") && body.textContent.includes("Menschen in der 100-m-Zelle") && body.textContent.includes("Vollzeit-Arbeitsplätze in der 100-m-Zelle"), "Nachbarschaftswerte brauchen räumlich genaue Bezeichnungen");
+  assert(body.textContent.includes("Einwohner und Arbeitsplätze auf Karte ansehen") && !body.textContent.includes("STATPOP"), "Umgebung soll direkte Kartenanalyse ohne Fachbegriffe anbieten");
+  body.querySelector('[data-profile-tab="building"]').click();
+  assert(body.textContent.includes("Abweichung der beiden Angaben: 0.2 m²") && body.textContent.includes("Median 265 m²"), "Gebäude-Details brauchen Grundflächendifferenz und Vergleichskontext");
+  body.querySelector('[data-profile-tab="overview"]').click();
   assert(body.textContent.includes("22.3 kW registriert"), "PV-Leistung fehlt in der Übersicht");
-  assert(body.querySelector("[data-rating-toggle]") && body.textContent.includes("4.3"), "Rating-Badge fehlt");
+  assert(body.querySelector("[data-rating-toggle]") && body.textContent.includes("73") && body.textContent.includes("Wohnumfeld-Orientierung"), "Wohnattraktivitäts-Orientierung fehlt");
   assert(body.querySelector(".profile-rating-action")?.textContent.includes("Details und Quellen anzeigen") && body.querySelector("[data-rating-toggle]").getAttribute("aria-expanded") === "false", "Rating braucht eine sichtbare Aufklappaktion");
   body.querySelector("[data-rating-toggle]").click();
   assert(body.querySelector(".profile-rating-action")?.textContent.includes("Details schliessen") && body.querySelector("[data-rating-toggle]").getAttribute("aria-expanded") === "true", "Aufgeklapptes Rating braucht eine erkennbare Schliessaktion");
-  assert(body.textContent.includes("OpenStreetMap-Mitwirkende") && body.textContent.includes("ÖV-Güteklasse") && body.textContent.includes("Luftlinie"), "Ratingquellen oder nicht verfügbare Kriterien fehlen");
-  assert(body.textContent.includes("Umweltindikatoren · nicht im Nähe-Score") && body.textContent.includes("BAG-Radonkarte · GeoAdmin") && body.textContent.includes("1'000 m"), "Radon muss mit Rasterauflösung separat vom Nähe-Score erscheinen");
+  assert(body.textContent.includes("OpenStreetMap-Mitwirkende") && body.textContent.includes("Solarpotenzial") && body.textContent.includes("Luftlinie") && body.textContent.includes("keine amtliche oder professionelle Immobilienbewertung"), "Quellen, Grenzen oder nicht eingerechnete Daten fehlen");
+  const leisurePriority = body.querySelector('[data-rating-priority="leisure"]');
+  assert(leisurePriority?.value === "1", "Bereiche sollen standardmässig gleich gewichtet sein");
+  leisurePriority.value = "2";
+  leisurePriority.dispatchEvent(new Event("change", { bubbles: true }));
+  assert(body.querySelector(".profile-rating-score").textContent.includes("65") && body.querySelector('[data-rating-priority="leisure"]').value === "2", "Persönliche Priorität muss die Orientierung neu berechnen");
+  body.querySelector('[data-rating-priority="leisure"]').value = "1";
+  body.querySelector('[data-rating-priority="leisure"]').dispatchEvent(new Event("change", { bubbles: true }));
+  body.querySelector('[data-profile-tab="environment"]').click();
+  assert(body.textContent.includes("Umwelt und Belastungen") && body.textContent.includes("BAG-Radonkarte · GeoAdmin") && body.textContent.includes("1'000 m"), "Radon muss mit Rasterauflösung getrennt von der Orientierung erscheinen");
+  body.querySelector('[data-profile-tab="overview"]').click();
   body.querySelector("[data-rating-toggle]").click();
   assert(!body.querySelector("#profile-rating-details") && body.querySelector(".profile-rating-action").textContent.includes("Details und Quellen anzeigen"), "Rating muss sich wieder schliessen lassen");
   body.querySelector('[data-profile-tab="compare"]').click();
+  assert(body.textContent.includes("Die Grundfläche dieses Gebäudes liegt") && body.textContent.includes("typischen Wert vergleichbarer Gebäude"), "Vergleich soll zuerst eine verständliche Einordnung zeigen");
   assert(body.textContent.includes("56. Perzentil") && body.textContent.includes("n = 443"), "Vergleichsperzentil oder Stichprobe fehlt");
   assert(body.querySelectorAll(".profile-histogram-bin").length === 2 && body.querySelector(".profile-histogram-bin.is-current"), "Histogrammsäulen oder Gebäudemarkierung fehlen");
   assert(body.textContent.includes("keine Normalverteilungskurve angenommen"), "Vergleich soll die empirische Form nicht als normal verteilen");
   body.querySelector('[data-profile-tab="energy"]').click();
   assert(body.textContent.includes("Heizöl") && body.textContent.includes("58 von 58 Modulen simuliert"), "Heizöl oder Simulationshinweis fehlt");
   assert(body.textContent.includes("Jahresertrag ist nicht verfügbar"), "Fehlender PV-Jahresertrag wird nicht transparent erklärt");
+  assert(body.textContent.includes("64'054 kWh/Jahr modelliert") && body.textContent.includes("Solarpotenzial auf der Karte ansehen"), "BFE-Solarpotenzial muss vom PV-Register getrennt erscheinen");
   body.querySelector('[data-profile-tab="data"]').click();
   assert(body.textContent.includes("GWR-Export 2026-10-21") && body.textContent.includes("EGID"), "Quellenstand oder EGID fehlt");
   assert(body.textContent.includes("STATPOP") && body.textContent.includes("STATENT") && body.textContent.includes("100 × 100 m"), "Technische Demografieangaben gehören in Daten & Quellen");
+  body.querySelector('[data-profile-tab="environment"]').click();
+  inspector.suspendBuildingProfile();
+  inspector.showPoi({ name: "Coop", category: "Einkauf", subtype: "supermarket" });
+  assert(inspector.restoreBuildingProfile() && body.querySelector('[data-profile-tab="environment"][aria-selected="true"]'), "Rückkehr aus einem POI-Detail muss den vorherigen Profil-Tab wiederherstellen");
 });
 
 test("Nachbarschaft: echte Nullwerte bleiben von fehlenden Daten unterscheidbar", () => {
@@ -245,11 +337,15 @@ test("Nachbarschaft: echte Nullwerte bleiben von fehlenden Daten unterscheidbar"
   inspector.showBuilding({ type: "Gebaeude Einzelhaus", center: [2688000, 1206300], gwr: {} }, {
     demographics: { status: "ready", population: { value: 0, year: 2024 }, employment: null },
   });
+  body.querySelector('[data-profile-tab="environment"]').click();
   assert(body.querySelector(".profile-demographic-grid")?.children[0].querySelector("strong")?.textContent === "0", "Ein echter Nullwert muss sichtbar bleiben");
   assert(body.querySelector(".profile-demographic-grid")?.children[1].querySelector("strong")?.textContent === "–", "Fehlende Beschäftigungsdaten dürfen nicht als Null erscheinen");
   assert(!body.textContent.includes("STATPOP") && !body.textContent.includes("STATENT"), "Fachbegriffe gehören nicht in die Profilübersicht");
   body.querySelector('[data-profile-tab="data"]').click();
   assert(body.textContent.includes("STATPOP") && body.textContent.includes("STATENT") && body.textContent.includes("Kein Wert verfügbar"), "Daten & Quellen muss Herkunft und fehlende Werte erklären");
+  panel.hidden = true;
+  inspector.updateBuildingDemographics({ status: "ready", population: { value: 2, year: 2024 }, employment: null });
+  assert(panel.hidden, "Ein später Datenabruf darf das Profil während einer Kartenanalyse nicht wieder einblenden");
 });
 
 test("Umweltkarten: GeoAdmin-Werte behalten Auflösung und Modellhinweise", async () => {

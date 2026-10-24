@@ -11,6 +11,9 @@ flowchart LR
     A[Kanton SZ AV-/ÖREB-WFS]
     O[OpenStreetMap Overpass]
     V[WSL/BAFU Vegetationshöhen]
+    BAV[BAV Haltestellen]
+    SOL[BFE Solar-Dacheignung]
+    ROUTES[swisstopo / ASTRA Routen]
   end
   subgraph Pipeline[Python-Pipeline, offline]
     D[download.py]
@@ -34,6 +37,7 @@ flowchart LR
     W[Open-Meteo]
     OTD[transport.opendata.ch]
     DW[GeoAdmin WMS: STATPOP / STATENT Raster]
+    G[GeoAdmin WMS / Identify: BAV, Routen, Umwelt, Solar]
   end
   S --> D
   B --> D
@@ -50,9 +54,12 @@ flowchart LR
   OTD --> JS
   DW --> JS
   ST --> DW
+  BAV --> G
+  SOL --> G
+  ROUTES --> G
 ```
 
-Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.opendata.ch, swisstopo-WMS) erlauben CORS-Zugriffe direkt aus dem Browser. Die Abstimmungsdaten des BFS erlauben das nicht (und umfassen 6 MB je Tag); die Pipeline zieht darum die Gemeinderesultate einmal nach `votes.json`. Die Datenhaltung besteht aus statischen JSON-Dateien, Binärdateien und Texturen. Ein Proxy (FastAPI oder Node) mit Caching wäre nur nötig, wenn eine API kein CORS bietet oder Schlüssel geschützt werden müssen (zum Beispiel für ÖV-Echtzeitpositionen mit opentransportdata.swiss-Token).
+Es gibt bewusst **kein Backend**: Die Laufzeit-APIs (Open-Meteo, transport.opendata.ch und GeoAdmin WMS/Identify) erlauben CORS-Zugriffe direkt aus dem Browser. Die Abstimmungsdaten des BFS erlauben das nicht (und umfassen 6 MB je Tag); die Pipeline zieht darum die Gemeinderesultate einmal nach `votes.json`. Die Datenhaltung besteht aus statischen JSON-Dateien, Binärdateien und Texturen. Ein Proxy wäre erst für geschützte Schlüssel, CORS-beschränkte Quellen oder serverseitige Routinggraphen nötig.
 
 ## Technische Entscheidungen
 
@@ -99,6 +106,10 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 | `features.js`, `draped.js` | Strassen, Gewässer, Bäume, Gemeindegrenze (auf das Gelände projizierte Bänder und Flächen) |
 | `pois.js`, `labels.js` | POI-Marker (skalieren mit dem Kameraabstand), Ortsnamen, HTML-Beschriftungen |
 | `transport.js` | Haltestellen, Linien, Abfahrten, Fahrplansimulation |
+| `routing.js` | Lokaler Fussweggraph aus `roads.json`, nächster Wegknoten, kürzeste Route und erreichbare Wegsegmente; Gehzeit mit 75 m/min geschätzt |
+| `walking.js` | 5/10/15-Minuten-Wegenetz, Ergebnisliste aus OSM-POIs und Haltestellen, Kategorienfilter und hervorgehobene Zielroute |
+| `official-routes.js` | Gemeinsame GeoAdmin-WMS/FeatureInfo-Ansichten für Wanderwege, Veloland, Sperrungen, Lärm und Aquaprotect |
+| `solar-potential.js` | BFE-Dachpotenzial nach EGID, Modellwerte und Dachflächenzuordnung zur bestehenden 3D-Geometrie |
 | `sky.js` | Sonnenstand (SunCalc-Algorithmus), Himmel, Sterne, Licht, Schatten, Zeitzone Zürich |
 | `weather.js` | Open-Meteo, Vorgaben, Wettereffekte (Overlay und Partikel) |
 | `history.js` | Eigenständige neutrale Zeitreise, GWR-Jahresfilter, Zustandssicherung und -wiederherstellung |
@@ -113,6 +124,12 @@ Es gibt bewusst **kein Backend**: Alle Laufzeit-APIs (Open-Meteo, transport.open
 Die Oberfläche (`index.html`, `css/main.css`) hält die 3D-Karte im Zentrum: Kartentyp-Kacheln und vier Schnellzugriffe liegen unten links; «Mehr» öffnet die gruppierten Kartendetails. Bei Touchgeräten lässt sich die Schnellzugriffsleiste über die Pfeiltaste erweitern. Die Zeitreise nutzt einen eigenen unteren Regler, springt beim Einstieg ohne Animation in die Vogelperspektive, neutralisiert den Boden, setzt Zeit/Wetter auf heute 12:00 und klar, blendet thematische Ebenen aus und stellt beim Verlassen alle vorherigen Zustände einschliesslich Kamera wieder her. Ein per Vertexattribut gespeicherter GWR-Zeitraum steuert den GPU-Dither-Fade ohne einzelne Gebäudeobjekte oder zusätzliche Draw Calls; das Tempo sinkt von 3× auf 0.5× bei 1980, danach bleibt es konstant. Während des Timelapses bewegt sich die Kamera nicht.
 
 Erweiterungspunkte: `ctx.providers` (neue anklickbare Objekte), `ctx.clickHandlers`, `ctx.analysis.register({ id, label, hint, onClick })`, `layers.add({ id, label, apply })`.
+
+Gebäudeprofil und geführte Kartenanalysen verwenden zusätzlich eine gemeinsame Session in `main.js`: Kameraziel/-perspektive, Layerzustand und Zeit-/Wettermodus werden beim Einstieg gesichert und beim Verlassen restauriert. Die Auswahl im Analysepanel unterscheidet Bevölkerung, Arbeit, Fusswege, Wanderwege, Velorouten, Sperrungen, Solar, Lärm und Hochwasser. `analysis.js` bleibt separat für zeigerbasierte Werkzeuge (Messen/Punktabfrage), nicht für diese Themenmodi.
+
+Fussrouting wird lokal auf dem vorbereiteten OSM-Netz berechnet. Die Pipeline exportiert `highway`, `walk`, `surface` und `incline`; der Browser schliesst als nicht begehbar markierte Wege aus, snappt Gebäude/Ziele bis 60 m auf das Netz und verwendet Dijkstra für Wegstrecken. Die Gehzeit verwendet im Basismodell 75 m/min (mit Aufschlag für `highway=steps`); Steigung, individuelle Gehgeschwindigkeit und laufende Sperrungen sind nicht eingerechnet. Das Wegenetz reicht nur bis zum 300-m-Puffer der Gemeindegrenze.
+
+Die Wohnumfeld-Orientierung fasst Luftlinien zu erfassten Alltagsorten in drei gleich gewichteten Bereichen zusammen. Nutzerprioritäten ändern die Gewichtung nur lokal. Unter 2 verfügbaren Bereichen wird kein Wert berechnet; fehlende Objekte gelten nicht als negativ. Das ist eine unverbindliche Orientierung, keine amtliche oder professionelle Immobilienbewertung.
 
 ## Performance-Budget
 
@@ -130,8 +147,11 @@ Messung in der Anwendung: `await window.brunnen.performanceReport()`. Die Werte 
 
 ## Offene Punkte und technische Schulden
 
-- Solarpotenzial und PV-Modi (BFE sonnendach.ch), Objektprofil, Fahrmodus: nicht umgesetzt.
-- Isochronen, Fussgänger-Erreichbarkeit und Velorouten: Erweiterungspunkt vorhanden (`ctx.analysis.register`), Routing-Graph aus `roads.json` fehlt.
+- Fahrmodus und detaillierte, höhen-/zugangsabhängige Fuss- und Veloroutenbewertung sind nicht umgesetzt.
+- Fuss-Erreichbarkeit ist ein Netzwerkausschnitt, keine vollständige Isochrone: mittlere Gehgeschwindigkeit statt individueller Gehprofile, Gelände-/Steigungsaufwand und dynamische Wegsperren fehlen.
+- Offizielle Wander- und Velorouten werden als GeoAdmin-WMS dargestellt; Höhenprofile, Streckenplanung und automatische Umleitung bleiben offen. Sperrungsmeldungen werden nicht als Freigaben interpretiert.
+- Solar nutzt die BFE-Eignungskarte (Datenstand 2023-02-21), verknüpft über EGID und vorhandene 3D-Dachflächen. Die Modellproduktion ist keine Prognose für ein konkretes Anlagendesign; fehlende EGID- oder Dachübereinstimmung verhindert die Dachfärbung.
+- Aquaprotect ist eine grobe BAFU-Übersicht (Datenstand 2008), keine aktuelle Warnung und keine parzellenscharfe Naturgefahrenkarte.
 - STATPOP/STATENT sind als dynamische 100-m-Rasterlayer und Zellwerte integriert. Einwohner- und VZÄ-Werte gelten nur für die Rasterzelle, nicht für einzelne Gebäude oder Personen; Zuverlässigkeitscodes sind noch nicht interpretiert. swissNAMES3D ist nicht integriert. AV-Parzellen und ÖREB-Grundnutzungs-/Überlagerungsflächen sind als Umrisslayer vorhanden; die Gebäudezuordnung basiert auf dem Mittelpunkt, weil kein EGRID geliefert wird. Rechtsverbindlichkeit und Gültigkeit liefert das abgerufene Nutzungsplanungs-Feature-Schema nicht.
 - Gebäude: Sockel fehlen (an Hängen kann der Fuss schweben); Fassaden, Fensterläden und Fenster sind gestalterisch.
 - Tunnel werden nicht dargestellt (ausgeblendet), Brücken folgen dem Gelände.

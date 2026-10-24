@@ -12,7 +12,7 @@ import { createSky, zurichParts, zurichToDate } from "./sky.js";
 import { initDataLayers } from "./features.js";
 import { initParcels } from "./parcels.js";
 import { initPois } from "./pois.js";
-import { initTransport } from "./transport.js";
+import { initTransport, fetchOfficialStops, fetchStationboard } from "./transport.js";
 import { initLighting } from "./lighting.js";
 import { initPv } from "./pv.js";
 import { initRegister } from "./register.js";
@@ -28,6 +28,9 @@ import { initAlmanac } from "./almanac.js";
 import { buildLocationRating } from "./location-rating.js";
 import { fetchBuildingEnvironment } from "./environment.js";
 import { initDemographicLayers } from "./demographics.js";
+import { initWalkingAnalysis } from "./walking.js";
+import { initOfficialRouteAnalyses } from "./official-routes.js";
+import { initSolarPotential } from "./solar-potential.js";
 import { initTimeWeatherPanel } from "./time-weather-panel.js";
 import { initNavigationHint } from "./navigation-hint.js";
 import { addGersauerPeople, addMettlenwegSign } from "./easter-egg.js";
@@ -291,7 +294,29 @@ async function setupUi(ctx) {
     if (index >= 0) { if (!addressesByBuilding.has(index)) addressesByBuilding.set(index, []); addressesByBuilding.get(index).push(label); }
   });
   ctx.addressesByBuilding = addressesByBuilding;
-  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => { ctx.clearPoiSelection?.(); if (ctx.neighborhoodAnalysis?.active) { ctx.neighborhoodAnalysis.profileClosed(); return; } buildings?.select(-1); ctx.parcels?.selectBuilding(-1); ctx.demographics?.deactivateBuildingCell(); }, onCenterPoi: (poi) => focusPoi(poi, null, true), onActivateDemographicCell: (record) => ctx.neighborhoodAnalysis?.startForBuilding(record), onDeactivateDemographicCell: () => ctx.neighborhoodAnalysis?.end() });
+  const ratingPreferencesKey = "brunnen3d-wohnumfeld-priorities";
+  const ratingPreferences = (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(ratingPreferencesKey));
+      return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+    } catch { return {}; }
+  })();
+  const osmSource = ctx.sources?.datasets?.find((dataset) => dataset.title.startsWith("OpenStreetMap"));
+  const rateBuilding = (record, preferences = ratingPreferences, stops = ctx.transport?.stops ?? []) => buildLocationRating({ record, frame, pois: ctx.pois ?? [], stops, osmSource, preferences });
+  const inspector = createInspector({
+    panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes,
+    onClose: () => { ctx.clearPoiSelection?.(); if (ctx.neighborhoodAnalysis?.active) { ctx.neighborhoodAnalysis.profileClosed(); return; } buildings?.select(-1); ctx.parcels?.selectBuilding(-1); ctx.demographics?.deactivateBuildingCell(); },
+    onCenterPoi: (poi) => focusPoi(poi, null, true),
+    onActivateDemographicCell: (record) => ctx.neighborhoodAnalysis?.startForBuilding(record),
+    onActivateWalking: (record) => ctx.neighborhoodAnalysis?.startWalking(record),
+    onActivateOfficialRoute: (record, mode) => ctx.neighborhoodAnalysis?.startOfficialRoute(record, mode),
+    onDeactivateDemographicCell: () => ctx.neighborhoodAnalysis?.end(),
+    onRatingPreferenceChange: (record, preferences) => {
+      Object.assign(ratingPreferences, preferences);
+      try { localStorage.setItem(ratingPreferencesKey, JSON.stringify(ratingPreferences)); } catch {}
+      return rateBuilding(record);
+    },
+  });
   ctx.inspector = inspector;
   function focusPoi(poi, markerPosition = null, forceCenter = false) {
     if (!poi) return;
@@ -322,6 +347,8 @@ async function setupUi(ctx) {
   };
   const environmentalCache = new Map();
   const demographicCache = new Map();
+  const officialStopCache = new Map();
+  const solarPotentialCache = new Map();
   let environmentalRequestId = 0;
     const classPeers = new Map();
     ctx.records.forEach((record) => {
@@ -353,18 +380,64 @@ async function setupUi(ctx) {
       if (!metrics.length) return null;
       return { group: ctx.codes.GKLAS?.[record.gwr.class] ?? `GWR-Klasse ${record.gwr.class}`, count: peers.length, metrics };
     };
-    const nearbyForBuilding = (record) => {
+    const nearbyForBuilding = (record, officialStops = null) => {
       if (!ctx.pois || !ctx.transport?.stops) return [];
       const point = frame.toLocal(record.center[0], record.center[1]);
+      const poiType = (poi) => poi.s ?? poi.subtype;
       const closest = (items, predicate) => items.filter(predicate).map((item) => ({ item, distance: Math.round(Math.hypot(item.x - point.x, item.z - point.z)) })).sort((a, b) => a.distance - b.distance)[0];
-      const results = [];
-      const supermarket = closest(ctx.pois, (poi) => poi.s === "supermarket");
-      if (supermarket) results.push({ label: "Supermarkt", name: supermarket.item.n, distance: supermarket.distance });
-      for (const [mode, label] of [["bus", "Bushaltestelle"], ["train", "Bahnhof"]]) {
-        const stop = closest(ctx.transport.stops, (entry) => entry.m === mode);
-        if (stop) results.push({ label, name: stop.item.n, distance: stop.distance });
-      }
-      return results;
+      const foodTypes = new Set(["supermarket", "convenience", "bakery", "butcher", "greengrocer", "kiosk"]);
+      const healthTypes = new Set(["pharmacy", "doctors", "clinic", "hospital", "dentist"]);
+      const leisureTypes = new Set(["park", "playground", "sports_centre", "pitch"]);
+      const transitStops = officialStops?.length ? officialStops : ctx.transport.stops;
+      const groups = [
+        { label: "Einkaufen", items: ctx.pois.filter((poi) => foodTypes.has(poiType(poi))) },
+        { label: "Schule", items: ctx.pois.filter((poi) => ["school", "kindergarten"].includes(poiType(poi))) },
+        { label: "Gesundheit", items: ctx.pois.filter((poi) => healthTypes.has(poiType(poi))) },
+        { label: "Bushaltestelle", items: transitStops.filter((stop) => stop.m === "bus") },
+        { label: "Bahnhof", items: transitStops.filter((stop) => stop.m === "train") },
+        { label: "Schiffstation", items: transitStops.filter((stop) => stop.m === "ferry") },
+        { label: "Freizeit und Erholung", items: ctx.pois.filter((poi) => leisureTypes.has(poiType(poi))) },
+      ];
+      const items = groups.flatMap((group) => group.items);
+      const routes = ctx.walking?.routesFrom(record, items) ?? [];
+      let index = 0;
+      return groups.flatMap((group) => {
+        const choices = group.items.map((item) => ({ item, route: routes[index++] }));
+        const routed = choices.filter((choice) => choice.route).sort((a, b) => a.route.minutes - b.route.minutes || a.route.distanceM - b.route.distanceM)[0];
+        const fallback = closest(group.items, () => true);
+        const best = routed ?? (fallback ? choices.find((choice) => choice.item === fallback.item) : null);
+        if (!best) return [];
+        const { item, route } = best;
+        return [{
+          label: group.label, name: item.name ?? item.n,
+          distance: route?.distanceM ?? fallback.distance,
+          walkMinutes: route?.minutes ?? null,
+          stop: item.m ? item : null,
+        }];
+      });
+    };
+    const localizeOfficialStops = (stops) => stops.map((stop) => {
+      const point = frame.toLocal(stop.east, stop.north);
+      return { ...stop, x: point.x, z: point.z, m: stop.mode, n: stop.name, sourceLabel: "BAV-Haltestellenverzeichnis", sourceProvider: "Bundesamt für Verkehr (BAV) · GeoAdmin", sourceLicense: "Open Government Data, Quellenangabe" };
+    });
+    const nextDepartureForStop = async (stop) => {
+      try {
+        const board = await fetchStationboard(stop.name ?? stop.n);
+        const now = Date.now();
+        const departures = (board.stationboard ?? []).flatMap((journey) => {
+          const predicted = journey.stop?.prognosis?.departure;
+          const timestamp = predicted ?? journey.stop?.departure;
+          const time = Date.parse(timestamp ?? "");
+          return Number.isFinite(time) && time >= now ? [{ journey, predicted: Boolean(predicted), time }] : [];
+        }).sort((a, b) => a.time - b.time);
+        const next = departures[0];
+        if (!next) return { status: "unavailable" };
+        const time = new Intl.DateTimeFormat("de-CH", { timeZone: "Europe/Zurich", hour: "2-digit", minute: "2-digit" }).format(next.time);
+        const minutes = Math.max(0, Math.round((next.time - now) / 60000));
+        const journey = next.journey;
+        const line = `${journey.category ?? ""}${journey.number ?? ""} Richtung ${journey.to ?? "Ziel nicht angegeben"}`.trim();
+        return { status: "ready", stop: stop.name ?? stop.n, time: `${time} · in ${minutes} min`, line, kind: next.predicted ? "Echtzeitprognose" : "Fahrplan" };
+      } catch { return { status: "unavailable" }; }
     };
   ctx.selectBuilding = (index) => {
     buildings.select(index);
@@ -388,13 +461,38 @@ async function setupUi(ctx) {
     const requestId = ++environmentalRequestId;
     const demographicCellKey = `${Math.floor(record.center[0] / 100) * 100}:${Math.floor(record.center[1] / 100) * 100}`;
     const cacheKey = record.egid ?? record.id;
-    const osmSource = ctx.sources?.datasets?.find((dataset) => dataset.title.startsWith("OpenStreetMap"));
+    const stopCacheKey = `${Math.floor(record.center[0] / 250)}:${Math.floor(record.center[1] / 250)}`;
+    const solarCacheKey = record.egid ?? record.id;
+    let solarPotentialPromise = solarPotentialCache.get(solarCacheKey);
+    if (!solarPotentialPromise) {
+      solarPotentialPromise = ctx.solarPotential.forBuilding(record);
+      solarPotentialCache.set(solarCacheKey, solarPotentialPromise);
+    }
+    let officialStopsPromise = officialStopCache.get(stopCacheKey);
+    if (!officialStopsPromise) {
+      officialStopsPromise = fetchOfficialStops(record.center).then((stops) => localizeOfficialStops(stops));
+      officialStopCache.set(stopCacheKey, officialStopsPromise);
+      void officialStopsPromise.then((stops) => { if (!stops.length) officialStopCache.delete(stopCacheKey); });
+    }
     inspector.showBuilding(record, {
       addresses: addressesByBuilding.get(index) ?? [], elevationOffset: frame.elevationOffset, pv: ctx.pv?.byBuilding.get(index) ?? [],
       comparison: buildingComparison(record), nearby: nearbyForBuilding(record), gwrExportDate: meta.statistics?.gwrExportDate,
-      rating: buildLocationRating({ record, frame, pois: ctx.pois ?? [], stops: ctx.transport?.stops ?? [], places: ctx.places ?? [], osmSource }),
+      rating: rateBuilding(record), nextDeparture: { status: "loading" },
+      solarPotential: { status: "loading" },
       environmental: { status: "loading", indicators: [] },
       demographics: { status: "loading" },
+    });
+    void solarPotentialPromise.then((result) => {
+      if (requestId === environmentalRequestId) inspector.updateBuildingSolarPotential(result);
+    });
+    void officialStopsPromise.then(async (officialStops) => {
+      if (requestId !== environmentalRequestId) return;
+      const stops = officialStops.length ? officialStops : ctx.transport?.stops ?? [];
+      const nearby = nearbyForBuilding(record, officialStops);
+      const stop = nearby.find((item) => item.stop)?.stop;
+      const nextDeparture = stop ? await nextDepartureForStop(stop) : { status: "unavailable" };
+      if (requestId !== environmentalRequestId) return;
+      inspector.updateBuildingLocation({ nearby, rating: rateBuilding(record, ratingPreferences, stops), nextDeparture });
     });
     let environmental = environmentalCache.get(cacheKey);
     if (!environmental) {
@@ -420,8 +518,11 @@ async function setupUi(ctx) {
   ctx.clickHandlers = [];
   initDemographicLayers(ctx);
   const analysisPanel = $("#demographic-analysis");
+  const analysisModeSelect = $("#analysis-mode");
   const quarterButton = analysisPanel.querySelector('[data-analysis-view="quarter"]');
   const municipalityButton = analysisPanel.querySelector('[data-analysis-view="municipality"]');
+  const analysisViewControls = analysisPanel.querySelector(".demographic-analysis-views");
+  const walkingControls = $("#walking-analysis-controls");
   const exitButton = analysisPanel.querySelector("[data-analysis-exit]");
   const inspectorPanel = $("#inspector");
   let analysisSession = null;
@@ -437,8 +538,16 @@ async function setupUi(ctx) {
 
   function syncAnalysisControls() {
     const record = analysisSession?.record ?? selectedRecord();
-    quarterButton.disabled = !record;
+    const activeMode = analysisSession?.kind ?? ctx.demographics.activeLayer() ?? analysisModeSelect.value;
+    const walkingActive = activeMode === "walking";
+    const demographicActive = activeMode.startsWith("demography-");
+    analysisModeSelect.value = activeMode;
+    for (const option of analysisModeSelect.options) if (!option.value.startsWith("demography-")) option.disabled = !record;
+    analysisViewControls.hidden = !demographicActive;
+    walkingControls.hidden = !walkingActive;
+    quarterButton.disabled = !record || !demographicActive;
     quarterButton.setAttribute("aria-pressed", String(analysisSession?.view === "quarter"));
+    municipalityButton.hidden = !demographicActive;
     municipalityButton.setAttribute("aria-pressed", String(analysisSession?.view === "municipality"));
     exitButton.hidden = analysisPanel.hidden;
     exitButton.textContent = analysisSession?.record && !analysisSession.restoreInspectorHidden ? "Zurück zum Gebäude" : "Kartenanalyse beenden";
@@ -476,6 +585,7 @@ async function setupUi(ctx) {
       userChangedLayers: new Set(),
       restoreInspectorHidden: inspectorPanel.hidden,
       record: openRecord,
+      kind: "demography-population",
       view: null,
     };
     internalLayerChange = true;
@@ -524,30 +634,88 @@ async function setupUi(ctx) {
     rig.flyTo({ target, distance, heading: view.heading, tilt: THREE.MathUtils.degToRad(1), duration: 1 });
   }
 
-  async function showQuarter(record) {
+  async function showQuarter(record, layerId = "demography-population") {
     if (!record) return false;
     const session = beginAnalysis(record);
     if (inspectorPanel.hidden) session.restoreInspectorHidden = false;
+    session.kind = layerId;
     session.view = "quarter";
     inspectorPanel.hidden = true;
     ctx.closeMapPanels?.();
     syncAnalysisControls();
     const request = ++analysisRequest;
-    if (!ctx.demographics.activeLayer()) {
-      let pending;
-      internalLayerChange = true;
-      try { pending = ctx.demographics.activateBuildingCell(record); } finally { internalLayerChange = false; }
-      flyToNeighborhood(record);
-      await pending;
-    } else {
-      flyToNeighborhood(record);
-      await ctx.demographics.highlightBuildingCell(record);
-    }
+    ctx.walking?.deactivate();
+    ctx.officialRoutes?.deactivate();
+    ctx.solarPotential?.deactivate();
+    internalLayerChange = true;
+    try {
+      const activeLayer = ctx.demographics.activeLayer();
+      if (activeLayer && activeLayer !== layerId) layers.setVisible(activeLayer, false);
+      if (activeLayer !== layerId) layers.setVisible(layerId, true);
+    } finally { internalLayerChange = false; }
+    flyToNeighborhood(record);
+    await ctx.demographics.highlightBuildingCell(record);
+    return analysisRequest === request && analysisSession === session;
+  }
+
+  async function showWalking(record, minutes = 5) {
+    if (!record) return false;
+    const session = beginAnalysis(record);
+    if (inspectorPanel.hidden) session.restoreInspectorHidden = false;
+    session.kind = "walking";
+    session.view = "walking";
+    inspectorPanel.hidden = true;
+    ctx.closeMapPanels?.();
+    ctx.officialRoutes?.deactivate();
+    ctx.solarPotential?.deactivate();
+    internalLayerChange = true;
+    try {
+      for (const id of ["demography-population", "demography-employment"]) if (layers.isVisible(id)) layers.setVisible(id, false);
+    } finally { internalLayerChange = false; }
+    const request = ++analysisRequest;
+    flyToNeighborhood(record);
+    ctx.walking.activate(record, minutes);
+    syncAnalysisControls();
+    return analysisRequest === request && analysisSession === session;
+  }
+
+  async function showOfficialRouteAnalysis(record, mode) {
+    if (!record || !["hiking", "cycling", "closures", "solar", "roadNoise", "railNoise", "flood"].includes(mode)) return false;
+    const session = beginAnalysis(record);
+    if (inspectorPanel.hidden) session.restoreInspectorHidden = false;
+    session.kind = mode;
+    session.view = mode;
+    inspectorPanel.hidden = true;
+    ctx.closeMapPanels?.();
+    internalLayerChange = true;
+    try {
+      for (const id of ["demography-population", "demography-employment"]) if (layers.isVisible(id)) layers.setVisible(id, false);
+    } finally { internalLayerChange = false; }
+    ctx.walking?.deactivate();
+    if (mode === "solar") ctx.officialRoutes?.deactivate();
+    else ctx.solarPotential?.deactivate();
+    const local = frame.toLocal(record.center[0], record.center[1]);
+    const target = new THREE.Vector3(local.x, terrain.heightAt(local.x, local.z) ?? 0, local.z);
+    const view = rig.currentView();
+    const tilt = THREE.MathUtils.degToRad(mode === "solar" ? 60 : mode === "hiking" ? 42 : 30);
+    rig.flyTo({ target, distance: mode === "solar" ? 240 : mode === "hiking" ? 1400 : 1750, heading: view.heading, tilt, duration: 1 });
+    const request = ++analysisRequest;
+    const activation = mode === "solar" ? ctx.solarPotential.activate(record) : ctx.officialRoutes.activate(mode);
+    syncAnalysisControls();
+    await activation;
     return analysisRequest === request && analysisSession === session;
   }
 
   function showMunicipality() {
     const session = beginAnalysis();
+    if (!session.kind.startsWith("demography-")) {
+      ctx.walking?.deactivate();
+      ctx.officialRoutes?.deactivate();
+      ctx.solarPotential?.deactivate();
+      session.kind = "demography-population";
+      internalLayerChange = true;
+      try { layers.setVisible("demography-population", true); } finally { internalLayerChange = false; }
+    }
     session.view = "municipality";
     if (session.record) inspectorPanel.hidden = true;
     ctx.closeMapPanels?.();
@@ -562,6 +730,9 @@ async function setupUi(ctx) {
     analysisSession = null;
     analysisRequest++;
     rig.stop();
+    ctx.walking?.deactivate();
+    ctx.officialRoutes?.deactivate();
+    ctx.solarPotential?.deactivate();
     ctx.demographics.deactivateBuildingCell();
     inspector.setDemographicCellActive(false);
     internalLayerChange = true;
@@ -572,13 +743,17 @@ async function setupUi(ctx) {
       ctx.timeWeatherPanel?.restore(session.displaySnapshot, { restoreWeatherEffects: !session.userChangedLayers.has("weather") });
     } finally { internalLayerChange = false; }
     if (restoreCamera) rig.flyTo({ target: session.cameraTarget, ...session.cameraView, duration: 1 });
-    if (restoreProfile) inspectorPanel.hidden = session.restoreInspectorHidden;
+    if (restoreProfile && !session.restoreInspectorHidden) {
+      if (!inspector.restoreBuildingProfile()) inspectorPanel.hidden = false;
+    } else if (restoreProfile) inspectorPanel.hidden = true;
     syncAnalysisControls();
   }
 
   ctx.neighborhoodAnalysis = {
     get active() { return Boolean(analysisSession); },
     startForBuilding: showQuarter,
+    startWalking: showWalking,
+    startOfficialRoute: showOfficialRouteAnalysis,
     showMunicipality,
     profileClosed() {
       if (!analysisSession) return;
@@ -589,6 +764,14 @@ async function setupUi(ctx) {
   };
   quarterButton.addEventListener("click", () => { void showQuarter(analysisSession?.record ?? selectedRecord()); });
   municipalityButton.addEventListener("click", showMunicipality);
+  analysisModeSelect.addEventListener("change", () => {
+    const record = analysisSession?.record ?? selectedRecord();
+    const mode = analysisModeSelect.value;
+    if (mode === "walking") void showWalking(record);
+    else if (mode.startsWith("demography-") && record) void showQuarter(record, mode);
+    else if (mode.startsWith("demography-")) layers.setVisible(mode, true);
+    else void showOfficialRouteAnalysis(record, mode);
+  });
   exitButton.addEventListener("click", () => {
     if (analysisSession) endAnalysis();
     else {
@@ -721,8 +904,11 @@ async function setupUi(ctx) {
 
   await initPois(ctx);
   await initTransport(ctx);
+  initWalkingAnalysis(ctx);
+  initOfficialRouteAnalyses(ctx);
   await initLighting(ctx);
   await initPv(ctx);
+  initSolarPotential(ctx);
   await initRegister(ctx);
   await initSearch(ctx);
   initAnalysis(ctx);

@@ -12,7 +12,7 @@ const OBJECT_TYPES = {
 };
 const MISSING = '<span class="tag">nicht erfasst</span>';
 const PROFILE_TABS = [
-  ["overview", "Übersicht"], ["building", "Gebäude"], ["energy", "Energie"], ["compare", "Vergleich"], ["data", "Daten & Quellen"],
+  ["overview", "Übersicht"], ["environment", "Umgebung"], ["building", "Gebäude"], ["energy", "Energie"], ["compare", "Vergleich"], ["data", "Daten & Quellen"],
 ];
 
 const PV_ORIENTATION = { 1: "Norden", 2: "Nordost", 3: "Osten", 4: "Südost", 5: "Süden", 6: "Südwest", 7: "Westen", 8: "Nordwest", 9: "Zenit (flach)" };
@@ -41,9 +41,11 @@ function rowsMarkup(rows) {
   return rows.length ? `<dl>${rows.map(([key, value, raw]) => `<dt>${esc(key)}</dt><dd>${raw ? value : esc(value)}</dd>`).join("")}</dl>` : "";
 }
 
-export function createInspector({ panel, body, closeButton, codes, onClose, onCenterPoi, onActivateDemographicCell, onDeactivateDemographicCell }) {
+export function createInspector({ panel, body, closeButton, codes, onClose, onCenterPoi, onActivateDemographicCell, onDeactivateDemographicCell, onActivateWalking, onActivateOfficialRoute, onRatingPreferenceChange }) {
   let buildingProfile = null;
+  let suspendedBuildingProfile = null;
   let activeTab = "overview";
+  let suspendedTab = "overview";
   closeButton.addEventListener("click", () => { hide(); onClose?.(); });
 
   function showPoi(poi) {
@@ -122,6 +124,22 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
   function hide() { panel.hidden = true; buildingProfile = null; panel.classList.remove("poi-detail", "poi-expanded", "poi-compact"); panel.removeAttribute("role"); panel.removeAttribute("aria-labelledby"); }
 
   body.addEventListener("click", async (event) => {
+    const routeButton = event.target.closest("[data-activate-official-route]");
+    if (routeButton && buildingProfile?.record) {
+      const profile = buildingProfile;
+      routeButton.disabled = true;
+      const active = await onActivateOfficialRoute?.(profile.record, routeButton.dataset.activateOfficialRoute);
+      if (buildingProfile === profile && active) panel.hidden = true;
+      return;
+    }
+    const walkingButton = event.target.closest("[data-activate-walking]");
+    if (walkingButton && buildingProfile?.record) {
+      const profile = buildingProfile;
+      walkingButton.disabled = true;
+      const active = await onActivateWalking?.(profile.record);
+      if (buildingProfile === profile && active) panel.hidden = true;
+      return;
+    }
     const demographicButton = event.target.closest("[data-activate-demographic-cell]");
     if (demographicButton && buildingProfile?.record) {
       const profile = buildingProfile;
@@ -160,6 +178,16 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
     event.preventDefault();
     tabs[(index + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length].click();
   });
+  body.addEventListener("change", (event) => {
+    const select = event.target.closest("[data-rating-priority]");
+    if (!select || !buildingProfile?.rating) return;
+    const profile = buildingProfile;
+    const preferences = { ...profile.rating.preferences, [select.dataset.ratingPriority]: Number(select.value) };
+    const rating = onRatingPreferenceChange?.(profile.record, preferences);
+    if (rating) profile.rating = rating;
+    renderBuildingProfile();
+    body.querySelector(`[data-rating-priority="${select.dataset.ratingPriority}"]`)?.focus({ preventScroll: true });
+  });
 
   function render({ title, sub, tags = [], sections = [], source, links = [] }) {
     buildingProfile = null;
@@ -180,61 +208,91 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
     const p = buildingProfile;
     const tabs = p.tabs.map(([id, label]) => `<button type="button" role="tab" data-profile-tab="${id}" aria-controls="inspector-profile-panel" aria-selected="${activeTab === id}" tabindex="${activeTab === id ? 0 : -1}">${label}</button>`).join("");
     const ratingMarkup = p.rating ? `<button type="button" class="profile-rating" data-rating-toggle aria-expanded="${p.ratingOpen}" aria-controls="profile-rating-details">
-      <span class="profile-rating-score">${p.rating.score == null ? "–" : fmt(p.rating.score, 1)}<small>von 5</small></span>
-      <span class="profile-rating-copy"><b>${esc(p.rating.label)}</b><small>Standortnähe · ${p.rating.factors.length} von ${p.rating.totalFactors} Modellkriterien · ${fmt(p.rating.coverage)} % Gewicht</small></span>
-      <span class="profile-rating-meter" aria-hidden="true">${Array.from({ length: 5 }, (_, index) => `<i class="${p.rating.score != null && index < Math.round(p.rating.score) ? "on" : ""}"></i>`).join("")}</span>
+      <span class="profile-rating-score">${p.rating.score == null ? "–" : fmt(p.rating.score)}<small>Orientierung / 100</small></span>
+      <span class="profile-rating-copy"><b>${esc(p.rating.label)}</b><small>Wohnumfeld-Orientierung · ${p.rating.availableDimensions} von ${p.rating.totalDimensions} Bereichen erfasst</small></span>
+      <span class="profile-rating-meter" aria-hidden="true"><i style="width:${p.rating.score ?? 0}%"></i></span>
       <span class="profile-rating-action"><span>${p.ratingOpen ? "Details schliessen" : "Details und Quellen anzeigen"}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
     </button>${p.ratingOpen ? `<section id="profile-rating-details" class="profile-rating-details" aria-label="Berechnung und Quellen der Standortbewertung">
-      <p>${esc(p.rating.model ?? "Standortnähe-Modell")} · ${esc(p.rating.reason ?? "Score auf eine Dezimalstelle gerundet.")}</p>
-      <p class="profile-note">Distanzstufen: bis 250 m = 5, bis 500 m = 4, bis 1'000 m = 3, bis 2'000 m = 2, darüber = 1.</p>
-      ${p.rating.factors.length ? `<h4>Im Rating berücksichtigt</h4><ul class="profile-rating-list">${p.rating.factors.map((factor) => `<li><span><b>${esc(factor.label)} · ${esc(factor.name)}</b><small>${fmt(factor.distance)} m Luftlinie · Gewicht ${fmt(factor.weight)} % · ${esc(factor.sourceLabel)}</small><small>${esc(factor.source?.provider ?? "OpenStreetMap-Mitwirkende")}${factor.source?.retrieved ? ` · Abruf ${esc(factor.source.retrieved)}` : ""}${factor.source?.license ? ` · ${esc(factor.source.license)}` : ""}</small></span><strong>${factor.score} / 5</strong></li>`).join("")}</ul>` : `<p class="profile-empty">Keine Ratingkriterien mit ausreichender Datenbasis.</p>`}
-      ${p.environmental?.status === "loading" ? `<p class="profile-empty">BAG-/BAFU-Umweltkarten werden abgefragt …</p>` : ""}
-      ${p.environmental?.status === "ready" ? `<h4>Umweltindikatoren · nicht im Nähe-Score</h4><p class="profile-note">Die Werte ergänzen das Gebäudeprofil, werden wegen unterschiedlicher Mess- und Modellgrundlagen aber nicht in die Zahl oben eingerechnet.${p.environmental.fetchedAt ? ` GeoAdmin-Abfrage ${esc(new Date(p.environmental.fetchedAt).toLocaleString("de-CH"))}.` : ""}</p>
-        ${p.environmental.indicators.some((item) => item.available) ? `<ul class="profile-rating-list profile-environment-list">${p.environmental.indicators.map((item) => `<li><span><b>${esc(item.label)}</b><small>${item.available ? `${fmt(item.value, item.unit === "%" ? 0 : 1)} ${esc(item.unit)}${item.resolutionM ? ` · Raster ca. ${fmt(item.resolutionM)} m` : ""}` : esc(item.reason)}</small>${item.available ? `<small>${esc(item.detail)}</small><small>${esc(item.source)}</small>` : ""}</span></li>`).join("")}</ul>` : `<p class="profile-empty">Für diesen Punkt lieferten die Umweltkarten keine Werte.</p>`}
-      ` : ""}
+      <p>${esc(p.rating.model)} ${p.rating.reason ? esc(p.rating.reason) : ""}</p>
+      <p class="profile-note">Der Orientierungswert startet mit gleich gewichteten Bereichen. Du kannst die Prioritäten unten ändern. Die Stufen beruhen auf Luftlinien: bis 250 m, 500 m, 1 km und 2 km. Das ist keine amtliche oder professionelle Immobilienbewertung.</p>
+      <p class="profile-note">${p.rating.availableDimensions} von ${p.rating.totalDimensions} Bereichen und ${p.rating.factors.length} von 6 Ortstypen enthalten Daten. Fehlende Einträge werden nicht als schlechte Eigenschaft gewertet.</p>
+      <fieldset class="profile-rating-priorities"><legend>Was ist dir wichtiger?</legend>${p.rating.dimensions.map((dimension) => `<label><span>${esc(dimension.label)}</span><select data-rating-priority="${esc(dimension.id)}" aria-label="Priorität: ${esc(dimension.label)}"><option value="1"${dimension.priority === 1 ? " selected" : ""}>Gleich wichtig</option><option value="1.5"${dimension.priority === 1.5 ? " selected" : ""}>Wichtig</option><option value="2"${dimension.priority === 2 ? " selected" : ""}>Besonders wichtig</option></select></label>`).join("")}</fieldset>
+      ${p.rating.factors.length ? `<h4>Erfasste Orte in der Nähe</h4><ul class="profile-rating-list">${p.rating.factors.map((factor) => `<li><span><b>${esc(factor.label)} · ${esc(factor.name)}</b><small>${esc(factor.dimensionLabel)} · ${fmt(factor.distance)} m Luftlinie · ${esc(factor.sourceLabel)}</small><small>${esc(factor.source?.provider ?? "OpenStreetMap-Mitwirkende")}${factor.source?.retrieved ? ` · Abruf ${esc(factor.source.retrieved)}` : ""}${factor.source?.license ? ` · ${esc(factor.source.license)}` : ""}</small></span></li>`).join("")}</ul>` : `<p class="profile-empty">Für diese Bereiche sind noch zu wenige Orte erfasst.</p>`}
       ${p.rating.dataCaveat ? `<p class="profile-note">${esc(p.rating.dataCaveat)}</p>` : ""}
-      ${p.rating.excluded.length ? `<h4>Nicht eingerechnet</h4><ul class="profile-rating-list profile-rating-excluded">${p.rating.excluded.map((item) => `<li><span><b>${esc(item.label)}</b><small>${esc(item.detail)}</small><small>Mögliche Quelle: ${esc(item.possibleSource)}</small></span></li>`).join("")}</ul>` : ""}
+      ${p.rating.excluded.length ? `<h4>Nicht in dieser Orientierung enthalten</h4><ul class="profile-rating-list profile-rating-excluded">${p.rating.excluded.map((item) => `<li><span><b>${esc(item.label)}</b><small>${esc(item.detail)}</small><small>Mögliche Quelle: ${esc(item.possibleSource)}</small></span></li>`).join("")}</ul>` : ""}
     </section>` : ""}` : "";
+    const modelArea = p.record.footprintArea;
+    const gwrArea = p.gwr.footprintAreaGwr;
+    const areaMetric = p.comparison?.metrics.find((metric) => metric.label === "Grundfläche GWR");
+    const areaDifference = modelArea != null && gwrArea != null ? Math.abs(modelArea - gwrArea) : null;
+    const areaCompare = modelArea != null || gwrArea != null ? `<section class="profile-section"><h4>Grundfläche</h4><div class="profile-area-compare">
+      ${modelArea == null ? "" : `<div><span>3D-Modell</span><b>${fmt(modelArea, 1)} m²</b></div>`}
+      ${gwrArea == null ? "" : `<div><span>GWR-Grundfläche</span><b>${fmt(gwrArea, 0)} m²</b></div>`}
+      </div>${areaDifference == null ? "" : `<p class="profile-area-delta">Abweichung der beiden Angaben: ${fmt(areaDifference, 1)} m².</p>`}
+      ${areaMetric ? `<div class="profile-area-reference"><b>Einordnung in Ingenbohl</b><span>${areaMetric.percentile}. Perzentil · Median ${fmt(areaMetric.median)} m²</span><small>Vergleichsgruppe: ${fmt(areaMetric.count)} Gebäude derselben GWR-Klasse</small></div>` : ""}
+      <p class="profile-note">3D-Modell und GWR haben unterschiedliche Datenquellen und Definitionen; die Werte werden separat verglichen.</p></section>` : "";
+    const kpis = [
+      ["Geschosse", p.gwr.floors], ["Wohnungen", p.gwr.dwellings],
+    ].map(([label, value]) => `<div class="profile-kpi"><span>${esc(label)}</span><strong>${value == null ? MISSING : esc(String(value))}</strong></div>`).join("");
+    const demographicMarkup = p.demographics?.status === "loading"
+      ? `<section class="profile-demographics"><h4>Leben in der Nachbarschaft</h4><p class="profile-empty">Angaben zur Umgebung werden geladen …</p></section>`
+      : p.demographics?.status === "ready"
+        ? `<section class="profile-demographics"><h4>Leben in der Nachbarschaft</h4>
+          <div class="profile-demographic-grid">
+            <div><strong>${p.demographics.population?.value != null ? fmt(p.demographics.population.value) : "–"}</strong><span>Menschen in der 100-m-Zelle</span></div>
+            <div><strong>${p.demographics.employment?.value != null ? fmt(p.demographics.employment.value) : "–"}</strong><span>Vollzeit-Arbeitsplätze in der 100-m-Zelle</span></div>
+          </div></section>`
+        : `<section class="profile-demographics"><h4>Leben in der Nachbarschaft</h4><p class="profile-empty">Für die Umgebung sind derzeit keine Angaben verfügbar.</p></section>`;
+    const nearby = p.nearby.length ? `<section class="profile-section"><div class="profile-section-title"><h4>Orte in der Nähe</h4><span>Weg oder Luftlinie</span></div><ul class="profile-nearby">${p.nearby.map((item) => `<li><span><b>${esc(item.label)}</b><small>${esc(item.name)} · ${item.walkMinutes != null ? `ca. ${item.walkMinutes} min zu Fuss` : "keine passende Fussroute"}</small></span><strong>${item.walkMinutes != null ? `${fmt(item.distance)} m Weg` : `${fmt(item.distance)} m Luftlinie`}</strong></li>`).join("")}</ul><p class="profile-note">Gehzeiten sind aus dem vorbereiteten OSM-Wegenetz und einer mittleren Gehgeschwindigkeit geschätzt. Fehlende Wege und Zugangsbeschränkungen können das Ergebnis beeinflussen.</p></section>` : `<section class="profile-section"><h4>Orte in der Nähe</h4><p class="profile-empty">Im vorbereiteten Ausschnitt wurden keine passenden Orte gefunden.</p></section>`;
+    const departure = p.nextDeparture?.status === "loading"
+      ? `<section class="profile-section"><h4>Nächste ÖV-Abfahrt</h4><p class="profile-empty">Fahrplan wird abgefragt …</p></section>`
+      : p.nextDeparture?.status === "ready"
+        ? `<section class="profile-section"><h4>Nächste ÖV-Abfahrt</h4><p class="profile-highlight">${esc(p.nextDeparture.stop)} · ${esc(p.nextDeparture.time)} · ${esc(p.nextDeparture.line)}</p><p class="profile-note">${esc(p.nextDeparture.kind)} · transport.opendata.ch. Abfahrtszeit, keine Aussage, ob die Haltestelle noch rechtzeitig erreichbar ist.</p></section>`
+        : p.nextDeparture?.status === "unavailable"
+          ? `<section class="profile-section"><h4>Nächste ÖV-Abfahrt</h4><p class="profile-empty">Der Fahrplan ist momentan nicht verfügbar.</p></section>`
+          : "";
+    const environmentalMarkup = p.environmental?.status === "loading"
+      ? `<section class="profile-section"><h4>Umwelt und Belastungen</h4><p class="profile-empty">Amtliche Umweltkarten werden abgefragt …</p></section>`
+      : p.environmental?.status === "ready"
+        ? `<section class="profile-section"><h4>Umwelt und Belastungen</h4><p class="profile-note">Modell- und Rasterwerte, keine Messung am Gebäude. Auflösung und Datenstand stehen bei jedem Wert.</p>
+          ${p.environmental.indicators.some((item) => item.available) ? `<ul class="profile-rating-list profile-environment-list">${p.environmental.indicators.map((item) => `<li><span><b>${esc(item.label)}</b><small>${item.available ? `${fmt(item.value, item.unit === "%" ? 0 : 1)} ${esc(item.unit)}${item.resolutionM ? ` · Raster ca. ${fmt(item.resolutionM)} m` : ""}` : esc(item.reason)}</small>${item.available ? `<small>${esc(item.detail)}</small><small>${esc(item.source)}</small>` : ""}</span></li>`).join("")}</ul>` : `<p class="profile-empty">Für diesen Punkt lieferten die Umweltkarten keine Werte.</p>`}
+          ${p.environmental.fetchedAt ? `<p class="profile-note">Abfrage ${esc(new Date(p.environmental.fetchedAt).toLocaleString("de-CH"))}.</p>` : ""}</section>`
+        : "";
+    const environmentActions = `<section class="profile-section"><h4>Karte erkunden</h4><div class="profile-demographic-actions"><button type="button" class="btn primary" data-activate-walking>Was erreiche ich zu Fuss?</button><button type="button" class="btn" data-activate-official-route="hiking">Wanderwege entdecken</button><button type="button" class="btn" data-activate-official-route="cycling">Velorouten ansehen</button><button type="button" class="btn" data-activate-official-route="roadNoise">Strassenlärm ansehen</button><button type="button" class="btn" data-activate-official-route="railNoise">Bahnlärm ansehen</button><button type="button" class="btn" data-activate-official-route="flood">Hochwasserübersicht ansehen</button><button type="button" class="btn" data-activate-demographic-cell aria-pressed="${p.demographicCellActive}">${p.demographicCellActive ? "Zurück zum Gebäude" : "Einwohner und Arbeitsplätze auf Karte ansehen"}</button></div></section>`;
     let content = "";
     if (activeTab === "overview") {
-      const modelArea = p.record.footprintArea;
-      const gwrArea = p.gwr.footprintAreaGwr;
-      const areaMetric = p.comparison?.metrics.find((metric) => metric.label === "Grundfläche GWR");
-      const areaDifference = modelArea != null && gwrArea != null ? Math.abs(modelArea - gwrArea) : null;
-      const areaCompare = modelArea != null || gwrArea != null ? `<section class="profile-section"><h4>Grundfläche</h4><div class="profile-area-compare">
-        ${modelArea == null ? "" : `<div><span>3D-Modell</span><b>${fmt(modelArea, 1)} m²</b></div>`}
-        ${gwrArea == null ? "" : `<div><span>GWR-Grundfläche</span><b>${fmt(gwrArea, 0)} m²</b></div>`}
-        </div>${areaDifference == null ? "" : `<p class="profile-area-delta">Abweichung der beiden Angaben: ${fmt(areaDifference, 1)} m².</p>`}
-        ${areaMetric ? `<div class="profile-area-reference"><b>Einordnung in Ingenbohl</b><span>${areaMetric.percentile}. Perzentil · Median ${fmt(areaMetric.median)} m²</span><small>Vergleichsgruppe: ${fmt(areaMetric.count)} Gebäude derselben GWR-Klasse</small></div>` : ""}
-        <p class="profile-note">3D-Modell und GWR haben unterschiedliche Datenquellen und Definitionen; die Werte werden separat verglichen.</p></section>` : "";
-      const kpis = [
-        ["Geschosse", p.gwr.floors], ["Wohnungen", p.gwr.dwellings], ["Gebäudehöhe", p.record.height == null ? null : `${fmt(p.record.height, 1)} m`], ["Grundfläche GWR", gwrArea == null ? null : `${fmt(gwrArea)} m²`],
-      ].map(([label, value]) => `<div class="profile-kpi"><span>${esc(label)}</span><strong>${value == null ? MISSING : esc(String(value))}</strong></div>`).join("");
-      const demographicMarkup = p.demographics?.status === "loading"
-        ? `<section class="profile-demographics"><h4>Leben in der Nachbarschaft</h4><p class="profile-empty">Angaben zur Umgebung werden geladen …</p></section>`
-        : p.demographics?.status === "ready"
-          ? `<section class="profile-demographics"><h4>Leben in der Nachbarschaft</h4>
-            <div class="profile-demographic-grid">
-              <div><strong>${p.demographics.population?.value != null ? fmt(p.demographics.population.value) : "–"}</strong><span>Menschen, die hier wohnen</span></div>
-              <div><strong>${p.demographics.employment?.value != null ? fmt(p.demographics.employment.value) : "–"}</strong><span>Vollzeit-Arbeitsplätze in der Umgebung</span></div>
-            </div>
-            <p class="profile-note">Die Angaben beziehen sich auf die unmittelbare Umgebung von 100 × 100 Metern, nicht nur auf dieses Gebäude.</p>
-            <button type="button" class="btn primary" data-activate-demographic-cell aria-pressed="${p.demographicCellActive}">${p.demographicCellActive ? "Zurück zum Gebäude" : "Belebtheit auf Karte erkunden"}</button></section>`
-          : "";
-      const nearby = p.nearby.length ? `<section class="profile-section"><div class="profile-section-title"><h4>In der Nähe</h4><span>Luftlinie</span></div><ul class="profile-nearby">${p.nearby.map((item) => `<li><span><b>${esc(item.label)}</b><small>${esc(item.name)}</small></span><strong>${fmt(item.distance)} m</strong></li>`).join("")}</ul></section>` : "";
       const pvSummary = p.pvPlants.length ? `<p class="profile-highlight">Photovoltaik · ${fmt(p.pvPlants.reduce((sum, entry) => sum + (entry.plant.kw ?? 0), 0), 1)} kW registriert</p>` : "";
-      content = `<div class="profile-content">${ratingMarkup}<div class="profile-kpis">${kpis}</div>${demographicMarkup}${p.ageMarkup}${areaCompare}${nearby}${pvSummary}</div>`;
+      content = `<div class="profile-content">${ratingMarkup}<div class="profile-kpis">${kpis}</div>${p.ageMarkup}<button type="button" class="btn primary" data-profile-tab="environment">Umgebung entdecken</button>${pvSummary}</div>`;
+    } else if (activeTab === "environment") {
+      content = `<div class="profile-content">${nearby}${departure}${demographicMarkup}${environmentActions}${environmentalMarkup}</div>`;
     } else if (activeTab === "building") {
       content = `<div class="profile-content">${p.ageMarkup}<section class="profile-section"><h4>Gebäude</h4>
         <div class="profile-building-metrics"><div><span>GWR-Geschosse</span><strong>${p.gwr.floors == null ? MISSING : fmt(p.gwr.floors)}</strong></div><div><span>Gebäudehöhe</span><strong>${p.record.height == null ? MISSING : `${fmt(p.record.height, 1)} m`}</strong></div></div>
-        ${p.floorStack}</section><section class="profile-section"><h4>Wohnnutzung</h4>${rowsMarkup(p.buildingRows)}</section></div>`;
+        ${p.floorStack}</section>${areaCompare}<section class="profile-section"><h4>Wohnnutzung</h4>${rowsMarkup(p.buildingRows)}</section></div>`;
     } else if (activeTab === "energy") {
+      const solar = p.solarPotential?.status === "loading"
+        ? `<section class="profile-section"><h4>Solarpotenzial dieses Dachs</h4><p class="profile-empty">BFE-Dachmodell wird abgefragt …</p></section>`
+        : p.solarPotential?.status === "ready"
+          ? `<section class="profile-section"><h4>Solarpotenzial dieses Dachs</h4><p class="profile-highlight">${fmt(p.solarPotential.roofAreaM2, 0)} m² erfasst · ${fmt(p.solarPotential.annualKwh)} kWh/Jahr modelliert</p>
+            <ul class="profile-rating-list">${p.solarPotential.features.map((feature) => `<li><span><b>${esc(feature.suitability)}</b><small>${fmt(feature.areaM2, 0)} m² Dachfläche · ${fmt(feature.annualKwh)} kWh/Jahr</small>${feature.slopeDeg == null ? "" : `<small>${fmt(feature.slopeDeg, 0)}° Neigung${feature.slopeDeg > 0 && feature.azimuthDeg != null ? ` · Ausrichtungswinkel ${fmt(feature.azimuthDeg, 0)}°` : ""}</small>`}</span></li>`).join("")}</ul>
+            <p class="profile-note">BFE-Modellwert, kein gemessener Ertrag und keine Garantie für eine Anlage. Datenstand ${esc(p.solarPotential.dataStatus)}. Bestehende Anlagen siehe oben.</p>
+            <button type="button" class="btn" data-activate-official-route="solar">Solarpotenzial auf der Karte ansehen</button></section>`
+          : `<section class="profile-section"><h4>Solarpotenzial dieses Dachs</h4><p class="profile-empty">${esc(p.solarPotential?.reason ?? "Für dieses Gebäude liegt kein zuordenbarer BFE-Dachwert vor.")} Ein fehlender Eintrag bedeutet nicht, dass kein Potenzial besteht.</p></section>`;
       content = `<div class="profile-content"><section class="profile-section"><h4>Heizung</h4>${rowsMarkup(p.energyRows)}</section>
         ${p.pv.length ? p.pv.map((rows, index) => `<section class="profile-section"><h4>${p.pv.length > 1 ? `Photovoltaikanlage ${index + 1}` : "Photovoltaik"}</h4>${rowsMarkup(rows)}</section>`).join("") : `<p class="profile-empty">Keine Photovoltaikanlage ist diesem Gebäude im BFE-Register zugeordnet. Daraus folgt keine Aussage zum theoretischen Solarpotenzial.</p>`}
-        ${p.pv.length ? `<p class="profile-note">Leistung und Anlagenmerkmale stammen aus dem Register. Anzahl und Lage der dargestellten Module sind simuliert; ein Jahresertrag ist nicht verfügbar.</p>` : ""}</div>`;
+        ${p.pv.length ? `<p class="profile-note">Leistung und Anlagenmerkmale stammen aus dem Register. Anzahl und Lage der dargestellten Module sind simuliert; ein Jahresertrag ist nicht verfügbar.</p>` : ""}${solar}</div>`;
     } else if (activeTab === "compare") {
       const metrics = p.comparison?.metrics ?? [];
-      content = `<div class="profile-content"><p class="profile-note">Verglichen mit Gebäuden derselben GWR-Klasse innerhalb Ingenbohls. Perzentil = Anteil der Vergleichsgebäude mit gleichem oder kleinerem Wert. Der rote Balken enthält dieses Gebäude.</p>
+      const headline = metrics.find((metric) => metric.label === "Grundfläche GWR") ?? metrics[0];
+      const compareHeadline = headline
+        ? (() => {
+          const close = Math.abs(headline.value - headline.median) <= Math.max(1, Math.abs(headline.median) * 0.1);
+          const comparison = close ? "liegt nahe am typischen Wert" : headline.value < headline.median ? "ist kleiner als der typische Wert" : "ist grösser als der typische Wert";
+          const subject = headline.label === "Grundfläche GWR" ? "Die Grundfläche dieses Gebäudes" : `Der Wert für ${headline.label.toLowerCase()}`;
+          return `<p class="profile-compare-summary">${subject} ${comparison} vergleichbarer Gebäude in Ingenbohl.</p>`;
+        })()
+        : `<p class="profile-empty">Für dieses Gebäude liegen keine passenden Vergleichsdaten vor.</p>`;
+      content = `<div class="profile-content">${compareHeadline}<p class="profile-note">Verglichen mit Gebäuden derselben GWR-Klasse innerhalb Ingenbohls. Perzentil = Anteil der Vergleichsgebäude mit gleichem oder kleinerem Wert. Der rote Balken enthält dieses Gebäude.</p>
         ${metrics.map((metric) => {
           const bins = metric.histogram ?? [];
           const maxCount = Math.max(1, ...bins.map((bin) => bin.count));
@@ -267,7 +325,9 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
     panel.hidden = false;
   }
 
-  function showBuilding(record, { addresses = [], elevationOffset = 0, pv = [], comparison = null, nearby = [], rating = null, environmental = null, demographics = null, gwrExportDate = null } = {}) {
+  function showBuilding(record, { addresses = [], elevationOffset = 0, pv = [], comparison = null, nearby = [], rating = null, environmental = null, demographics = null, nextDeparture = null, solarPotential = null, gwrExportDate = null } = {}) {
+    suspendedBuildingProfile = null;
+    suspendedTab = "overview";
     const gwr = record.gwr ?? {};
     const year = buildYear(record);
     const group = typeGroup(record);
@@ -310,14 +370,14 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
       ["Energieträger", heatingGroup(record)?.label ?? MISSING, !heatingGroup(record)],
       ["Heizsystem", heat ?? MISSING, !heat],
     ];
-    const profileSource = `swisstopo swissBUILDINGS3D 3.0 beta, BFS GWR (Gebäude- und Wohnungsregister)${parcelSections.length ? ", Amtliche Vermessung Kanton Schwyz (räumliche Mittelpunktzuordnung)" : ""}${landUseSections.length ? ", ÖREB-Fachdaten Nutzungsplanung Kanton Schwyz (räumliche Mittelpunktzuordnung)" : ""}${pv.length ? ", BFE Elektrizitätsproduktionsanlagen (Photovoltaik). Anzahl und Lage der Module sind simuliert" : ""}`;
+    const profileSource = `swisstopo swissBUILDINGS3D 3.0 beta, BFS GWR (Gebäude- und Wohnungsregister)${parcelSections.length ? ", Amtliche Vermessung Kanton Schwyz (räumliche Mittelpunktzuordnung)" : ""}${landUseSections.length ? ", ÖREB-Fachdaten Nutzungsplanung Kanton Schwyz (räumliche Mittelpunktzuordnung)" : ""}${pv.length ? ", BFE Elektrizitätsproduktionsanlagen (Photovoltaik). Anzahl und Lage der Module sind simuliert" : ""}${solarPotential ? ", BFE Solar-Dacheignung (modellierte Potenzialwerte, getrennt vom Anlagenregister)" : ""}`;
     const ageLabel = year ? (year.exact ? String(year.year) : year.label) : null;
     const ageMarkup = year ? `<section class="profile-age"><div class="profile-section-title"><h4>Bauzeit</h4><span>${year.exact ? "GWR-Baujahr" : "GWR-Bauperiode"}</span></div>
       <strong class="profile-age-value">${esc(year.exact ? String(year.year) : year.label)}</strong>
       ${year.exact ? "" : `<p class="profile-note">Ein genaues Baujahr ist nicht erfasst.</p>`}</section>` : `<section class="profile-age"><h4>Bauzeit</h4><p class="profile-empty">Baujahr und Bauperiode sind im GWR nicht erfasst.</p></section>`;
     const floors = gwr.floors;
     const floorStack = floors >= 1 && floors <= 14 ? `<div class="profile-floor-stack" role="img" aria-label="${fmt(floors)} Geschosse gemäss GWR">${Array.from({ length: floors }, () => "<span></span>").join("")}</div>` : "";
-    const availableTabs = PROFILE_TABS.filter(([id]) => id !== "energy" || energyRows.some(([, value, missing]) => !missing) || pv.length)
+    const availableTabs = PROFILE_TABS.filter(([id]) => id !== "energy" || energyRows.some(([, value, missing]) => !missing) || pv.length || solarPotential)
       .filter(([id]) => id !== "compare" || (comparison?.metrics?.length ?? 0) > 0);
     const title = addresses[0] ?? record.name ?? OBJECT_TYPES[record.type] ?? record.type;
     const subtitle = classText ?? (group ? group.label : OBJECT_TYPES[record.type] ?? record.type);
@@ -331,11 +391,14 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
         ...(!record.gwr ? [{ text: "Kein GWR-Eintrag", warn: true }] : []),
         ...(pv.length ? [{ text: "Photovoltaik" }] : []),
       ],
-      record, gwr, ageLabel, ageMarkup, floorStack, buildingRows, energyRows, pvPlants: pv, pv: pvSections(pv), nearby, comparison, rating, ratingOpen: false, environmental, demographics, demographicCellActive: false,
+      record, gwr, ageLabel, ageMarkup, floorStack, buildingRows, energyRows, pvPlants: pv, pv: pvSections(pv), nearby, comparison, rating, ratingOpen: false, environmental, demographics, nextDeparture, solarPotential, demographicCellActive: false,
       dataRows: [
         ["EGID", record.egid ?? MISSING, record.egid == null],
         ["LV95", formatLv95(record.center[0], record.center[1])],
         ["WGS84", `${wgs.lat.toFixed(5)}, ${wgs.lon.toFixed(5)}`],
+        ["ÖV-Haltestellen", "BAV via GeoAdmin; OSM als Fallback"],
+        ["Fusswege", "OpenStreetMap · vorbereiteter Gemeindeausschnitt mit 300-m-Puffer"],
+        ...(solarPotential ? [["Solarpotenzial", `BFE · ${solarPotential.source ?? "ch.bfe.solarenergie-eignung-daecher"} · Modellstand ${solarPotential.dataStatus ?? "2023-02-21"}`]] : []),
       ],
       parcels: parcelSections,
       landUse: landUseSections,
@@ -350,21 +413,77 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
   }
 
   function updateBuildingEnvironment(environmental) {
-    if (!buildingProfile) return;
-    buildingProfile.environmental = environmental;
-    if (buildingProfile.ratingOpen) renderBuildingProfile();
+    const profile = buildingProfile ?? suspendedBuildingProfile;
+    if (!profile) return;
+    profile.environmental = environmental;
+    if (buildingProfile === profile && (profile.ratingOpen || activeTab === "environment")) {
+      const wasHidden = panel.hidden;
+      renderBuildingProfile();
+      panel.hidden = wasHidden;
+    }
   }
 
   function updateBuildingDemographics(demographics) {
-    if (!buildingProfile) return;
-    buildingProfile.demographics = demographics;
-    if (activeTab === "overview") renderBuildingProfile();
+    const profile = buildingProfile ?? suspendedBuildingProfile;
+    if (!profile) return;
+    profile.demographics = demographics;
+    if (buildingProfile === profile && (activeTab === "overview" || activeTab === "environment")) {
+      const wasHidden = panel.hidden;
+      renderBuildingProfile();
+      panel.hidden = wasHidden;
+    }
+  }
+
+  function updateBuildingLocation({ nearby, rating, nextDeparture } = {}) {
+    const profile = buildingProfile ?? suspendedBuildingProfile;
+    if (!profile) return;
+    if (nearby) profile.nearby = nearby;
+    if (rating) profile.rating = rating;
+    if (nextDeparture) profile.nextDeparture = nextDeparture;
+    if (buildingProfile !== profile) return;
+    const wasHidden = panel.hidden;
+    renderBuildingProfile();
+    panel.hidden = wasHidden;
+  }
+
+  function updateBuildingSolarPotential(solarPotential) {
+    const profile = buildingProfile ?? suspendedBuildingProfile;
+    if (!profile) return;
+    profile.solarPotential = solarPotential;
+    if (buildingProfile !== profile) return;
+    const wasHidden = panel.hidden;
+    renderBuildingProfile();
+    panel.hidden = wasHidden;
   }
 
   function setDemographicCellActive(active) {
-    if (!buildingProfile) return;
-    buildingProfile.demographicCellActive = active;
-    if (activeTab === "overview") renderBuildingProfile();
+    const profile = buildingProfile ?? suspendedBuildingProfile;
+    if (!profile) return;
+    profile.demographicCellActive = active;
+    if (buildingProfile === profile && (activeTab === "overview" || activeTab === "environment")) {
+      const wasHidden = panel.hidden;
+      renderBuildingProfile();
+      panel.hidden = wasHidden;
+    }
+  }
+
+  function suspendBuildingProfile() {
+    if (!buildingProfile) return false;
+    suspendedBuildingProfile = buildingProfile;
+    suspendedTab = activeTab;
+    return true;
+  }
+
+  function restoreBuildingProfile() {
+    if (!suspendedBuildingProfile) return false;
+    buildingProfile = suspendedBuildingProfile;
+    activeTab = suspendedTab;
+    suspendedBuildingProfile = null;
+    panel.classList.remove("poi-detail", "poi-expanded", "poi-compact");
+    panel.removeAttribute("role");
+    panel.removeAttribute("aria-labelledby");
+    renderBuildingProfile();
+    return true;
   }
 
   document.addEventListener("keydown", (event) => {
@@ -372,5 +491,5 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onCe
     hide(); onClose?.();
   });
 
-  return { render, showPoi, showBuilding, updateBuildingEnvironment, updateBuildingDemographics, setDemographicCellActive, hide, showGeneric: render };
+  return { render, showPoi, showBuilding, updateBuildingEnvironment, updateBuildingDemographics, updateBuildingLocation, updateBuildingSolarPotential, setDemographicCellActive, suspendBuildingProfile, restoreBuildingProfile, hide, showGeneric: render };
 }
