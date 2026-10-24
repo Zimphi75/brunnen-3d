@@ -16,8 +16,44 @@ const count = (list, key) => [...list.reduce((m, x) => { const k = key(x); if (k
 async function loadVotes() {
   const file = await loadOptionalJson("votes.json");
   if (!file) return { rows: [], retrieved: null };
-  const rows = file.votes.map((v) => ({ ...v, date: `${v.date.slice(6)}.${v.date.slice(4, 6)}.${v.date.slice(0, 4)}` }));
+  const rows = [...file.votes].sort((a, b) => b.date.localeCompare(a.date));
   return { rows, retrieved: file.retrieved };
+}
+
+const voteDate = (date) => `${date.slice(6)}.${date.slice(4, 6)}.${date.slice(0, 4)}`;
+const voteShare = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
+const isTieBreak = (row) => /Stichfrage/i.test(row.title);
+const localDecision = (row) => isTieBreak(row) || !voteShare(row.local) ? "unknown" : row.local > 50 ? "accepted" : "rejected";
+
+export function voteTitle(title) {
+  const short = title.trim().match(/\(([^()]+)\)[»\s]*$/)?.[1];
+  return short?.replace(/,\s*[A-ZÄÖÜ][A-ZÄÖÜ\d-]*$/, "") ?? title.replace(/^(?:Volksinitiative\s+|Änderung des |Bundesgesetz über |Bundesbeschluss über )/, "").replace(/^«|»\s*$/g, "");
+}
+
+export function renderVote(row) {
+  const decision = localDecision(row), local = voteShare(row.local), swiss = voteShare(row.swiss);
+  const tieBreak = isTieBreak(row);
+  const result = decision === "accepted" ? "Angenommen" : decision === "rejected" ? "Abgelehnt" : tieBreak ? "Stichfrage" : "Ergebnis fehlt";
+  const delta = local && swiss ? Math.round((row.local - row.swiss) * 10) / 10 : null;
+  const comparison = tieBreak ? "Kein Ja-/Nein-Vergleich bei Stichfragen" : delta == null ? "Schweizer Vergleich nicht verfügbar" : delta === 0 ? "Gleicher Ja-Anteil wie die Schweiz" : `${delta > 0 ? "+" : "−"}${fmt(Math.abs(delta), 1)} Prozentpunkte Ja gegenüber der Schweiz`;
+  const shares = (value) => `<span>Ja <strong class="num">${fmt(value, 1)} %</strong></span><span>Nein <strong class="num">${fmt(100 - value, 1)} %</strong></span>`;
+  return `<article class="vote" data-decision="${decision}">
+    <div class="vote-heading"><h3>${esc(voteTitle(row.title))}</h3><time datetime="${row.date.slice(0, 4)}-${row.date.slice(4, 6)}-${row.date.slice(6)}">${voteDate(row.date)}</time></div>
+    <div class="vote-local"><strong>Ingenbohl</strong><strong class="vote-result">${result}</strong></div>
+    ${local && !tieBreak ? `<div class="vote-shares">${shares(row.local)}</div><div class="vote-bar" aria-hidden="true"><span style="width:${row.local}%"></span></div>` : `<p class="note">${tieBreak ? "Die Quelle ordnet den erfassten Anteil keiner Antwortoption zu." : "Kein Gemeindeanteil verfügbar."}</p>`}
+    <p class="vote-delta">${comparison}</p>
+    ${swiss && !tieBreak ? `<div class="vote-swiss"><span>Schweiz · Ja <span class="num">${fmt(row.swiss, 1)} %</span></span><div class="vote-bar" aria-hidden="true"><span style="width:${row.swiss}%"></span></div></div>` : ""}
+    <details class="vote-details"><summary>Details und Volltitel</summary>
+      <p class="vote-full-title">${esc(row.title)}</p>
+      <dl><dt>Abstimmungsdatum</dt><dd>${voteDate(row.date)}</dd>
+        <dt>Stimmbeteiligung Ingenbohl</dt><dd>${row.turnout != null ? `${fmt(row.turnout, 1)} %` : "Keine Angabe"}</dd>
+        <dt>${tieBreak ? "Ingenbohl · erfasster Anteil" : "Ingenbohl · Entscheid"}</dt><dd>${tieBreak ? `${fmt(row.local, 1)} % (Antwortoption unbekannt)` : result}${row.local === 50 && !tieBreak ? " (keine Ja-Mehrheit)" : ""}</dd>
+        <dt>Schweiz · ${tieBreak ? "erfasster Anteil" : "Stimmenanteile"}</dt><dd>${tieBreak ? `${fmt(row.swiss, 1)} % (Antwortoption unbekannt)` : swiss ? shares(row.swiss) : "Keine Angabe"}</dd>
+        ${!tieBreak ? `<dt>Schweiz · nationaler Entscheid</dt><dd>${row.accepted == null ? "Keine Angabe" : row.accepted ? "Angenommen" : "Abgelehnt"}</dd>` : ""}
+        <dt>Kanton Schwyz · ${tieBreak ? "erfasster Anteil" : "Ja-Anteil"}</dt><dd>${voteShare(row.canton) ? `${fmt(row.canton, 1)} %` : "Keine Angabe"}</dd>
+      </dl>
+    </details>
+  </article>`;
 }
 
 export async function initAlmanac(ctx) {
@@ -101,9 +137,12 @@ export async function initAlmanac(ctx) {
     body.innerHTML = '<p class="note">Lade Resultate der eidgenössischen Abstimmungen …</p>';
     votes ??= await loadVotes();
     if (!votes.rows.length) return '<p>Abstimmungsdaten fehlen (Pipeline: python -m pipeline.run_all votes). Resultate: <a href="https://www.bfs.admin.ch/bfs/de/home/statistiken/politik/abstimmungen.html" target="_blank" rel="noopener">BFS Abstimmungen</a>.</p>';
-    return `<p class="note">Ja-Anteil in der Gemeinde (Balken) gegenüber Kanton Schwyz (Strich). Quelle: BFS voteinfo (Open Data), Stand der Datenabfrage ${votes.retrieved}. Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert.</p>${votes.rows.map((r) => `
-      <div class="vote"><div><div class="t">${esc(r.title)}</div><div class="note">${r.date}${r.turnout != null ? `, Stimmbeteiligung ${fmt(r.turnout, 1)} %` : ""}${r.accepted != null ? `, national ${r.accepted ? "angenommen" : "abgelehnt"}` : ""}</div></div>
-      <div><div class="vbar"><i style="width:${r.local}%"></i>${r.canton != null ? `<b style="left:${r.canton}%"></b>` : ""}</div><div class="vlbl num"><span>${fmt(r.local, 1)} %</span><span>CH ${fmt(r.swiss)} %</span></div></div></div>`).join("")}`;
+    return `<div class="vote-filters" aria-label="Abstimmungen filtern">
+      <label>Abstimmungsdatum<select id="vote-date"><option value="all">Alle Daten · neuste zuerst</option>${[...new Set(votes.rows.map((row) => row.date))].map((date) => `<option value="${date}">${voteDate(date)}</option>`).join("")}</select></label>
+      <label>Entscheid in Ingenbohl<select id="vote-decision"><option value="all">Alle Vorlagen</option><option value="accepted">Angenommen</option><option value="rejected">Abgelehnt</option></select></label>
+    </div><p id="vote-count" class="note" role="status">${votes.rows.length} Vorlagen</p>
+    <div id="vote-results">${votes.rows.map(renderVote).join("")}</div>
+    <p class="note">Quelle: BFS voteinfo (Open Data). Abfragestand ${esc(votes.retrieved ?? "unbekannt")}. Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert. Der Entscheid in Ingenbohl bezeichnet die lokale Stimmenmehrheit, nicht den nationalen Entscheid.</p>`;
   }
   function quality() {
     const b = meta.buildings ?? {}, m = b.match ?? {}, t = meta.trees ?? {}, o = meta.osm ?? {};
@@ -147,6 +186,13 @@ export async function initAlmanac(ctx) {
   }
   tabs.innerHTML = TABS.map((t) => `<button type="button" role="tab" data-tab="${t}" aria-selected="false">${t}</button>`).join("");
   tabs.addEventListener("click", (event) => { const t = event.target.closest("button")?.dataset.tab; if (t) show(t); });
+  body.addEventListener("change", (event) => {
+    if (!event.target.matches("#vote-date, #vote-decision")) return;
+    const date = body.querySelector("#vote-date").value, decision = body.querySelector("#vote-decision").value;
+    const rows = votes.rows.filter((row) => (date === "all" || row.date === date) && (decision === "all" || localDecision(row) === decision));
+    body.querySelector("#vote-results").innerHTML = rows.length ? rows.map(renderVote).join("") : '<p class="vote-empty">Keine Vorlagen für diese Filter.</p>';
+    body.querySelector("#vote-count").textContent = `${rows.length} von ${votes.rows.length} Vorlagen`;
+  });
   body.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-imprint-action]");
     if (button?.dataset.imprintAction === "location" && imprintAddress && ctx.searchChoose) {
@@ -163,7 +209,7 @@ export async function initAlmanac(ctx) {
       link.focus();
     }
   });
-  const open = (tab = "Übersicht") => { modal.hidden = false; show(tab); };
+  const open = (tab = "Übersicht") => { modal.hidden = false; return show(tab); };
   $("#btn-almanac").addEventListener("click", () => open());
   $("#almanac-close").addEventListener("click", () => { modal.hidden = true; });
   modal.addEventListener("click", (event) => { if (event.target === modal) modal.hidden = true; });

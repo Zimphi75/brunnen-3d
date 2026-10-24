@@ -13,7 +13,7 @@ import { weatherCondition, PRESETS, LIVE_WINDOW_MS } from "../js/weather.js";
 import { createInspector, esc } from "../js/inspector.js";
 import { normalizePoi, POI_DISPLAY } from "../js/pois.js";
 import { stopPlacement, fetchOfficialStops } from "../js/transport.js";
-import { initAlmanac } from "../js/almanac.js";
+import { initAlmanac, renderVote, voteTitle } from "../js/almanac.js";
 import { Terrain } from "../js/terrain.js";
 import { createCameraRig } from "../js/controls.js";
 import { buildLocationRating } from "../js/location-rating.js";
@@ -443,6 +443,58 @@ test("Ebenen: nach Nutzeraufgabe gruppiert und mit Aktivzählern", () => {
   layers.restore(saved);
   assert(layers.isVisible("terrain") && !layers.isVisible("roads") && layers.isVisible("lamps"), "Layerzustände wurden nicht wiederhergestellt");
   assert(!list.querySelector(":scope > .layer-row"), "Layer dürfen nicht ungegliedert bleiben");
+});
+
+test("Abstimmungen: lokaler Entscheid, Vergleich und Sonderfälle", () => {
+  const element = document.createElement("div");
+  const row = { title: 'Volksinitiative «Test (Testinitiative)»', date: "20260614", local: 60, swiss: 48, canton: 70, accepted: false, turnout: 55 };
+  element.innerHTML = renderVote(row);
+  assert(voteTitle(row.title) === "Testinitiative");
+  assert(voteTitle("Bundesgesetz über den elektronischen Identitätsnachweis (E-ID-Gesetz, BGEID)") === "E-ID-Gesetz");
+  assert(element.querySelector(".vote-result").textContent === "Angenommen", "Nationaler Entscheid darf nicht lokal verwendet werden");
+  assert(element.querySelector(".vote-shares").textContent.includes("Ja 60.0 %") && element.querySelector(".vote-shares").textContent.includes("Nein 40.0 %"));
+  assert(element.querySelector(".vote-delta").textContent.includes("+12.0 Prozentpunkte"));
+  assert(element.querySelector(".vote-swiss").textContent.includes("48.0 %"), "Vergleich muss Schweiz statt Kanton verwenden");
+  assert(element.querySelector("details").textContent.includes(row.title) && element.querySelector("details").textContent.includes("Abgelehnt"));
+  element.innerHTML = renderVote({ ...row, local: 40 });
+  assert(element.querySelector(".vote-result").textContent === "Abgelehnt");
+  assert(element.querySelector(".vote-delta").textContent.includes("−8.0 Prozentpunkte"));
+  element.innerHTML = renderVote({ ...row, local: 50, swiss: 50 });
+  assert(element.querySelector(".vote-result").textContent === "Abgelehnt");
+  assert(element.querySelector(".vote-delta").textContent.includes("Gleicher Ja-Anteil"));
+  element.innerHTML = renderVote({ ...row, local: null, swiss: null, turnout: null, accepted: null });
+  assert(element.querySelector(".vote-result").textContent === "Ergebnis fehlt" && !element.querySelector(".vote-shares"));
+  assert(!element.textContent.includes("NaN") && element.textContent.includes("Vergleich nicht verfügbar"));
+  element.innerHTML = renderVote({ ...row, title: "Bargeldinitiative und Gegenvorschlag: Stichfrage" });
+  assert(element.querySelector(".vote-result").textContent === "Stichfrage" && !element.querySelector(".vote-shares"));
+  assert(!element.querySelector(".vote-swiss") && element.textContent.includes("Antwortoption unbekannt"));
+});
+
+test("Abstimmungen: Datums- und lokale Entscheidfilter kombinieren", async () => {
+  const elements = new Map(["#almanac", "#almanac-body", "#almanac-tabs", "#btn-almanac", "#almanac-close"].map((selector) => [selector, document.createElement("div")]));
+  const ctx = { $: (selector) => elements.get(selector), meta: {}, records: [] };
+  const originalFetch = window.fetch;
+  window.fetch = (input, options) => originalFetch(typeof input === "string" && input.startsWith("public/data/") ? `../${input}` : input, options);
+  try {
+    await initAlmanac(ctx);
+    await ctx.almanac.open("Abstimmungen");
+  } finally {
+    window.fetch = originalFetch;
+  }
+  const body = elements.get("#almanac-body"), date = body.querySelector("#vote-date"), decision = body.querySelector("#vote-decision");
+  assert(date && decision && body.querySelectorAll(".vote").length > 10);
+  date.value = "20260614";
+  decision.value = "accepted";
+  decision.dispatchEvent(new Event("change", { bubbles: true }));
+  assert(body.querySelectorAll(".vote").length === 2, "Beide lokalen Ja-Mehrheiten müssen trotz unterschiedlichem nationalem Entscheid erscheinen");
+  assert([...body.querySelectorAll(".vote")].every((vote) => vote.dataset.decision === "accepted"));
+  decision.value = "rejected";
+  decision.dispatchEvent(new Event("change", { bubbles: true }));
+  assert(body.querySelector(".vote-empty") && body.querySelector("#vote-count").textContent.startsWith("0 von"));
+  date.value = "all";
+  decision.value = "all";
+  date.dispatchEvent(new Event("change", { bubbles: true }));
+  assert(body.querySelectorAll(".vote").length > 10 && body.querySelector('[data-decision="unknown"]'));
 });
 
 test("Almanach: direkte Tab-Navigation ohne Zurück-Button", async () => {
