@@ -63,7 +63,7 @@ function startLoadingMessages() {
   loadingMessageTimer = setInterval(update, 2600);
 }
 
-function animateNightToLive(ctx) {
+function animateNightToLive(ctx, startGate = Promise.resolve()) {
   ctx.cancelTimeTransition = null;
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
   const endDate = ctx.simDate();
@@ -74,10 +74,12 @@ function animateNightToLive(ctx) {
     startDate = zurichToDate(previousDay.year, previousDay.month, previousDay.day, 4 * 60);
   }
   const duration = 10;
-  let elapsed = 0, lastUpdate = 0, removeFrame = () => {};
+  // Wanduhr statt aufsummierter Frame-Deltas: Ruckler (Datenverarbeitung, Shader, Texturen) bremsen den Zeitraffer nicht mehr aus.
+  let elapsed = 0, lastUpdate = 0, startedAt = null, cancelled = false, removeFrame = () => {};
   let resolveTransition;
   const transitionComplete = new Promise((resolve) => { resolveTransition = resolve; });
   const interrupt = () => {
+    cancelled = true;
     removeFrame();
     if (ctx.cancelTimeTransition === interrupt) ctx.cancelTimeTransition = null;
     for (const [id, event] of [["#time-slider", "input"], ["#date-input", "change"], ["#weather-mode", "click"], ["#btn-play", "click"]]) {
@@ -89,8 +91,9 @@ function animateNightToLive(ctx) {
   Object.assign(ctx.timeState, zurichParts(startDate));
   ctx.applyTime();
 
-  const onFrame = (delta) => {
-    elapsed = Math.min(duration, elapsed + delta);
+  const onFrame = (_delta, now) => {
+    if (startedAt === null) startedAt = now;
+    elapsed = Math.min(duration, (now - startedAt) / 1000);
     if (elapsed - lastUpdate < 0.1 && elapsed < duration) return;
     lastUpdate = elapsed;
     const t = elapsed / duration;
@@ -100,11 +103,20 @@ function animateNightToLive(ctx) {
     ctx.applyTime();
     if (t >= 1) interrupt();
   };
-  removeFrame = ctx.scene3d.onFrame(onFrame);
+  // Start erst, wenn der Ladebildschirm weg ist: sonst läuft ein Teil des Zeitraffers unsichtbar dahinter ab.
+  void startGate.then(() => { if (!cancelled) removeFrame = ctx.scene3d.onFrame(onFrame); });
   for (const [id, event] of [["#time-slider", "input"], ["#date-input", "change"], ["#weather-mode", "click"], ["#btn-play", "click"]]) {
     $(id).addEventListener(event, interrupt);
   }
   return transitionComplete;
+}
+
+// Shader vor dem Ausblenden des Ladebildschirms kompilieren: sonst stockt der erste Teil des Zeitraffers.
+async function warmUpScene(ctx) {
+  const { renderer, scene, camera } = ctx.scene3d;
+  try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); }
+  catch (error) { console.warn("Shader-Vorbereitung übersprungen:", error); }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
 function reportError(message, error) {
@@ -178,7 +190,10 @@ async function start() {
   Object.assign(ctx, { buildings, records: records?.buildings ?? [], codes: codes ?? {}, addresses: addresses ?? [] });
 
   await setupUi(ctx);
-  const timeTransitionReady = animateNightToLive(ctx);
+  $("#loading-text").textContent = "Szene wird vorbereitet …";
+  await warmUpScene(ctx);
+  const loaderHidden = new Promise((resolve) => setTimeout(resolve, 750));
+  const timeTransitionReady = animateNightToLive(ctx, loaderHidden);
   if (mobileStartup) {
     void timeTransitionReady.then(() => {
       document.body.classList.remove("mobile-tools-open", "mobile-startup-sequence");

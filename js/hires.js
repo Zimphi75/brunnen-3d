@@ -53,7 +53,8 @@ export function initHires(ctx) {
     const u = terrain.uniforms;
     const mix = state.enabled && state.current ? THREE.MathUtils.clamp((FULL_DISTANCE + FADE_DISTANCE - distance) / FADE_DISTANCE, 0, 1) : 0;
     u.uHiresMix.value = mix;
-    if (!state.enabled || state.failed || state.loading || now - last < 700 || distance > FULL_DISTANCE + FADE_DISTANCE) return;
+    // Während des Start-Zeitraffers keine Luftbildkacheln laden: Dekodieren und GPU-Upload erzeugen sichtbare Ruckler.
+    if (!state.enabled || state.failed || state.loading || ctx.cancelTimeTransition || now - last < 700 || distance > FULL_DISTANCE + FADE_DISTANCE) return;
     last = now;
     const target = scene3d.controls.target;
     const key = `${Math.round(target.x / GRID)}:${Math.round(target.z / GRID)}`;
