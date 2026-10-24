@@ -263,6 +263,7 @@ test("Gebäudeprofil: Vergleich, Luftlinien, PV und Quellen", () => {
   };
   const rating = buildLocationRating(ratingInput);
   assert(rating.score === 73 && rating.coverage === 100 && rating.availableDimensions === 3, "Wohnattraktivitäts-Orientierung stimmt nicht mit den erfassten Luftlinien überein");
+  assert(rating.label === "Eher kurze Distanzen zu erfassten Angeboten" && rating.model.includes("Luftlinien-Distanz"), "Die Standortorientierung muss verständlich erklären, was der Wert einordnet");
   const insufficient = buildLocationRating({ record: profileRecord, frame, pois: [{ n: "Coop", s: "supermarket", x: 173, z: 0 }] });
   assert(insufficient.score === null && insufficient.coverage === 33, "Ein einzelner Bereich darf keinen Score erzeugen");
   const normalizedPois = buildLocationRating({

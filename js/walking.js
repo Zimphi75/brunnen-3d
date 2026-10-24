@@ -99,6 +99,7 @@ export function initWalkingAnalysis(ctx) {
 
   function setMinutes(minutes) {
     if (!MINUTE_OPTIONS.includes(minutes) || !activeRecord) return false;
+    const previousMinutes = activeMinutes;
     activeMinutes = minutes;
     clearRoute();
     timeButtons.forEach((button) => button.setAttribute("aria-pressed", String(Number(button.dataset.walkingMinutes) === minutes)));
@@ -110,6 +111,13 @@ export function initWalkingAnalysis(ctx) {
         mesh = new THREE.Mesh(buildRibbons(lines, { width: 2.1, lift: 2, terrain: ctx.terrain, step: 12 }), material);
         mesh.renderOrder = 12;
         overlay.add(mesh);
+      }
+    }
+    if (minutes > previousMinutes && ctx.rig) {
+      const view = ctx.rig.currentView();
+      const distance = Math.max(view.distance, 650 * (minutes / 5) * 1.35);
+      if (distance > view.distance) {
+        ctx.rig.flyTo({ target: ctx.scene3d.controls.target.clone(), distance, heading: view.heading, tilt: view.tilt, duration: 0.8 });
       }
     }
     title.textContent = `Zu Fuss in ${minutes} Minuten`;

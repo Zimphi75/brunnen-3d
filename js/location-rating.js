@@ -114,16 +114,16 @@ export function buildLocationRating({ record, frame, pois = [], stops = [], osmS
     : null;
   const coverage = Math.round((availableDimensions.length / DIMENSIONS.length) * 100);
   const label = score == null ? "Noch zu wenig erfasst"
-    : score >= 80 ? "Viele erfasste Ziele liegen nah"
-      : score >= 60 ? "Mehrere erfasste Ziele liegen nah"
-        : score >= 40 ? "Ein Teil der Ziele liegt weiter entfernt"
-          : "Viele erfasste Ziele liegen weiter entfernt";
+    : score >= 80 ? "Kurze Distanzen zu erfassten Angeboten"
+      : score >= 60 ? "Eher kurze Distanzen zu erfassten Angeboten"
+        : score >= 40 ? "Eher längere Distanzen zu erfassten Angeboten"
+          : "Längere Distanzen zu erfassten Angeboten";
 
   return {
     score, label, coverage, availableDimensions: availableDimensions.length, totalDimensions: DIMENSIONS.length,
     factorCoverage: Math.round((factors.length / candidates.length) * 100), factors, dimensions, excluded, source, preferences: priorities,
     reason: score == null ? "Für eine Orientierung müssen mindestens zwei der drei Bereiche Daten enthalten." : null,
-    model: "Wohnattraktivitäts-Orientierung aus der Nähe erfasster Orte; kein amtliches oder professionelles Immobilienrating.",
+    model: "Der Wert fasst die Luftlinien-Distanz zu den jeweils nächstgelegenen erfassten Angeboten in Alltag, Mobilität und Freizeit zusammen. Kürzere Distanzen ergeben höhere Werte. Er ist kein amtliches oder professionelles Immobilienrating.",
     dataCaveat: "Die Berechnung nutzt Luftlinien, keine Fusswege. OpenStreetMap kann unvollständig oder veraltet sein. Fehlende Einträge gelten nicht als negative Eigenschaft.",
     distanceBands: DISTANCE_BANDS,
   };
