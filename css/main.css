@@ -591,7 +591,8 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
   #quick-panel { left: 8px; bottom: 104px; width: min(350px, calc(100vw - 16px)); }
   #quick-panel[data-mode="buildings"], #quick-panel[data-mode="traffic"] { top: 146px; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: none; }
   #layers-panel { top: auto; bottom: 108px; left: 8px; right: 8px; width: auto; max-height: calc(100% - 170px); }
-  #demographic-analysis { left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); width: auto; max-height: min(25dvh, 220px); overflow: auto; overscroll-behavior: contain; padding: 8px 10px; gap: 5px; }
+  #demographic-analysis { left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); width: auto; max-height: min(58dvh, 500px); overflow: auto; overscroll-behavior: contain; padding: 8px 10px; gap: 5px; }
+  .demographic-analysis-exit { position: sticky; bottom: 0; z-index: 2; }
   body.map-details-open #demographic-analysis { bottom: max(8px, env(safe-area-inset-bottom)); }
   .demographic-analysis-legend { padding-top: 4px; }
   .demographic-analysis-legend img { max-height: 42px; }
@@ -611,7 +612,8 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
   .sheet-head .btn { padding: 5px 9px; }
   .tabs { padding: 0 8px; }
   #almanac-body { padding: 14px; }
-  #inspector { top: auto; right: 0; bottom: 0; left: 0; width: 100%; max-height: min(82dvh, 760px); border-right: 0; border-bottom: 0; border-left: 0; border-radius: 14px 14px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  #inspector { top: auto; right: 0; bottom: 0; left: 0; width: 100%; max-height: calc(100dvh - 16px - env(safe-area-inset-top)); border-right: 0; border-bottom: 0; border-left: 0; border-radius: 14px 14px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  #inspector:has(#inspector-body.building-profile) { height: min(92dvh, 760px); }
   #inspector-body.building-profile { display: flex; height: 100%; min-height: 0; flex-direction: column; overflow: hidden; }
   #inspector-body.building-profile .profile-header { flex: none; }
   #inspector-body.building-profile .profile-panel { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
