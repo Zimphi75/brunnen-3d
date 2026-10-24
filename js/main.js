@@ -130,7 +130,7 @@ async function start() {
   const frame = createFrame(meta);
   progress.finish("meta", "Gelände wird geladen …");
 
-  const scene3d = createScene($("#scene"));
+  const scene3d = createScene($("#scene"), { lowPower });
   if (lowPower) scene3d.settings.ambientOcclusion = false;
   const ctx = { meta, frame, scene3d, errors, reportError, $, lowPower };
 
@@ -150,7 +150,7 @@ async function start() {
     progress.finish("ortho");
   }).catch((error) => { reportError("Luftbild (ortho.jpg) fehlt oder ist fehlerhaft. Pipeline: python -m pipeline.process_terrain", error); progress.finish("ortho"); });
 
-  await terrain.build({ nearCenter: home, nearRadius: lowPower ? 900 : 1500, onProgress: (f) => setLoading(0.15 + 0.45 * f, "Gelände wird aufgebaut …") });
+  await terrain.build({ nearCenter: home, nearRadius: lowPower ? 650 : 1500, onProgress: (f) => setLoading(0.15 + 0.45 * f, "Gelände wird aufgebaut …") });
   progress.finish("terrain", "Gebäude werden geladen …");
 
   const [buildingBuffer, records, codes, addresses] = await Promise.all([
@@ -891,9 +891,12 @@ async function setupUi(ctx) {
     play.setAttribute("aria-label", state.playing ? "Tagesverlauf pausieren" : "Tagesverlauf abspielen");
   });
   ctx.stopTimePlayback = stopTimePlayback;
-  scene3d.onFrame((delta) => {
+  let lastPlaybackUpdate = 0;
+  scene3d.onFrame((delta, now) => {
     if (!state.playing) return;
     state.minutes = (state.minutes + delta * 20) % 1440; // 1 s = 20 min
+    if (now - lastPlaybackUpdate < 100) return;
+    lastPlaybackUpdate = now;
     applyTime();
   });
   setNow();

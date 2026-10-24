@@ -114,6 +114,8 @@ export function createSky({ scene, renderer, camera, latitude, longitude, shadow
     date: new Date(), altitude: 0, azimuth: 0, direction: new THREE.Vector3(0, 1, 0),
     cloudCover: 0, fogBoost: 0, shadows: true, dayFactor: 1, night: 0,
   };
+  let cachedTimesDay = null;
+  let cachedTimes = null;
 
   function apply() {
     const { azimuth, altitude } = sunPosition(state.date, latitude, longitude);
@@ -170,6 +172,13 @@ export function createSky({ scene, renderer, camera, latitude, longitude, shadow
     setFogBoost(value) { state.fogBoost = value; apply(); },
     setShadows(enabled) { state.shadows = enabled; apply(); },
     update,
-    times: (date) => sunTimes(date, latitude, longitude),
+    times(date) {
+      const day = Math.floor(date.getTime() / DAY_MS);
+      if (day !== cachedTimesDay) {
+        cachedTimesDay = day;
+        cachedTimes = sunTimes(date, latitude, longitude);
+      }
+      return cachedTimes;
+    },
   };
 }
