@@ -38,6 +38,14 @@ import { addGersauerPeople, addMettlenwegSign } from "./easter-egg.js";
 const $ = (selector) => document.querySelector(selector);
 const errors = [];
 const lowPower = matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4;
+const mobileStartup = matchMedia("(max-width: 760px)").matches;
+if (mobileStartup) {
+  document.body.classList.add("mobile-tools-open", "mobile-startup-sequence");
+  $("#mobile-tools-toggle").setAttribute("aria-expanded", "true");
+} else {
+  document.body.classList.remove("mobile-tools-open", "mobile-startup-sequence");
+  $("#mobile-tools-toggle").setAttribute("aria-expanded", "false");
+}
 const LOADING_MESSAGES = [
   "Die Höhenlinien bekommen noch ihre Frisur.",
   "Wir zählen die Häuser. Die letzten stehen etwas verstreut.",
@@ -171,6 +179,12 @@ async function start() {
 
   await setupUi(ctx);
   const timeTransitionReady = animateNightToLive(ctx);
+  if (mobileStartup) {
+    void timeTransitionReady.then(() => {
+      document.body.classList.remove("mobile-tools-open", "mobile-startup-sequence");
+      $("#mobile-tools-toggle").setAttribute("aria-expanded", "false");
+    });
+  }
   ctx.readyAt = performance.now() - started;
   clearInterval(loadingMessageTimer);
   $("#loading").classList.add("done");
@@ -971,6 +985,8 @@ async function setupUi(ctx) {
 
 start().catch((error) => {
   clearInterval(loadingMessageTimer);
+  document.body.classList.remove("mobile-tools-open", "mobile-startup-sequence");
+  $("#mobile-tools-toggle").setAttribute("aria-expanded", "false");
   reportError(`Start fehlgeschlagen: ${error.message}`, error);
   $("#loading-text").textContent = "Start fehlgeschlagen.";
 });

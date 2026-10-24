@@ -632,6 +632,12 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
   .time-travel-active #statusbar { display: none; }
   .profile-header { padding-left: 12px; }
   .profile-content { gap: 9px; padding: 8px 10px 14px; }
+  .profile-demographics { gap: 4px; padding: 6px 8px; }
+  .profile-demographics h4 { margin: 0; font-size: 12px; line-height: 1.2; }
+  .profile-demographic-grid { gap: 5px; }
+  .profile-demographic-grid > div { gap: 1px; }
+  .profile-demographic-grid strong { font-size: 16px; line-height: 1; }
+  .profile-demographic-grid span { font-size: 9px; line-height: 1.2; }
   .profile-kpis { gap: 4px; }
   .profile-kpi { padding: 5px 7px; border-radius: 6px; }
   .profile-kpi span { font-size: 9.5px; line-height: 1.2; }

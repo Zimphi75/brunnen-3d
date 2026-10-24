@@ -18,11 +18,14 @@ export function initMapNavigation(ctx) {
   const dock = $("#map-dock"), baseCards = $("#base-map-cards"), quickPanel = $("#quick-panel"), quickTitle = $("#quick-title"), quickContent = $("#quick-content");
   const details = $("#layers-panel"), colorSelect = $("#color-mode");
   const mobileToolsToggle = $("#mobile-tools-toggle");
+  const startupSequenceActive = () => document.body.classList.contains("mobile-startup-sequence");
   const closeMobileTools = () => {
+    if (startupSequenceActive()) return;
     document.body.classList.remove("mobile-tools-open");
     mobileToolsToggle?.setAttribute("aria-expanded", "false");
   };
   mobileToolsToggle?.addEventListener("click", () => {
+    if (startupSequenceActive()) return;
     const open = document.body.classList.toggle("mobile-tools-open");
     mobileToolsToggle.setAttribute("aria-expanded", String(open));
   });
