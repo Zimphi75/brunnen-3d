@@ -108,6 +108,8 @@ select.wide { width: 100%; }
 
 #brand, #clock-btn, #view-panel { height: 48px; }
 #brand { top: 14px; left: 14px; width: 320px; padding: 5px 7px; z-index: 5; }
+#mobile-tools-toggle { display: none; }
+#mobile-tools-toggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .search { position: relative; }
 .search input { display: block; width: 100%; height: 36px; }
 #search-results { position: absolute; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px; list-style: none; max-height: 320px; overflow: auto;
@@ -519,13 +521,15 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
 }
 @media (max-width: 760px) {
   #brand, #clock-btn, #view-panel { height: 38px; }
-  #brand { top: 8px; left: 8px; width: calc(100vw - 16px); padding: 3px 7px; }
+  #brand { top: 8px; left: 8px; width: calc(100vw - 16px); padding: 3px 5px 3px 7px; display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; gap: 4px; }
+  #mobile-tools-toggle { display: grid; width: 32px; height: 32px; }
   .search input { height: 30px; }
-  #clock-btn { top: 54px; left: 8px; right: 8px; transform: none; width: auto; grid-template-columns: 136px minmax(0, 1fr) 24px; padding: 5px 7px; gap: 6px; }
+  #clock-btn, #view-panel { display: none; }
+  body.mobile-tools-open #clock-btn { display: grid; top: 54px; left: 8px; right: 8px; transform: none; width: auto; grid-template-columns: minmax(86px, 1fr) minmax(0, 1.5fr) 24px; padding: 5px 7px; gap: 6px; }
   #clock-time { font-size: 16px; }
   #clock-wx { display: block; font-size: 11px; }
   .clock-chevron { width: 21px; height: 21px; }
-  #view-panel { top: 100px; left: 8px; right: 8px; display: grid; grid-template-columns: 30px 1px repeat(2, 30px) 1px repeat(2, 30px) 1px minmax(0, 1fr) 30px; gap: 4px; padding: 3px 4px; }
+  body.mobile-tools-open #view-panel { top: 100px; left: 8px; right: 8px; display: grid; grid-template-columns: 30px 1px repeat(2, 30px) 1px repeat(2, 30px) 1px minmax(0, 1fr) 30px; gap: 4px; padding: 3px 4px; }
   #view-panel .toolbar-button { width: 30px; height: 30px; }
   #view-panel .toolbar-icon { width: 19px; height: 19px; }
   #view-panel .toolbar-divider { margin: 0; height: 19px; }
@@ -541,7 +545,11 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
   #sky-panel-content { padding-left: 11px; padding-right: 11px; }
   .sky-head { padding-left: 11px; padding-right: 11px; }
   .weather-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #map-dock { left: 8px; bottom: 8px; max-width: calc(100vw - 16px); padding: 5px; gap: 2px; }
+  #map-dock { left: 8px; bottom: max(8px, env(safe-area-inset-bottom)); max-width: calc(100vw - 16px); padding: 5px; gap: 2px; }
+  body:has(#inspector:not([hidden])) #map-dock,
+  body:has(#demographic-analysis:not([hidden])) #map-dock,
+  body:has(#inspector:not([hidden])) #dock,
+  body:has(#demographic-analysis:not([hidden])) #dock { display: none; }
   #base-map-cards .map-card { width: 62px; height: 84px; font-size: 9.5px; }
   .map-card-preview { width: 52px; }
   #base-map-cards { flex-basis: 66px; width: 66px; height: 84px; }
@@ -556,8 +564,11 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
   #quick-panel { left: 8px; bottom: 104px; width: min(350px, calc(100vw - 16px)); }
   #quick-panel[data-mode="buildings"], #quick-panel[data-mode="traffic"] { top: 146px; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: none; }
   #layers-panel { top: auto; bottom: 108px; left: 8px; right: 8px; width: auto; max-height: calc(100% - 170px); }
-  #demographic-analysis { left: 8px; right: 8px; bottom: 104px; width: auto; max-height: min(36vh, 270px); overflow: auto; padding: 9px 11px; }
-  body.map-details-open #demographic-analysis { bottom: min(48vh, 380px); }
+  #demographic-analysis { left: 8px; right: 8px; bottom: max(8px, env(safe-area-inset-bottom)); width: auto; max-height: min(25dvh, 220px); overflow: auto; overscroll-behavior: contain; padding: 8px 10px; gap: 5px; }
+  body.map-details-open #demographic-analysis { bottom: max(8px, env(safe-area-inset-bottom)); }
+  .demographic-analysis-legend { padding-top: 4px; }
+  .demographic-analysis-legend img { max-height: 42px; }
+  .demographic-analysis-views button { min-height: 34px; }
   .map-details-head { padding: 10px 12px 8px; }
   .map-details-scroll { padding: 8px 12px 12px; }
   #layer-list { grid-template-columns: 1fr; }
@@ -573,7 +584,10 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
   .sheet-head .btn { padding: 5px 9px; }
   .tabs { padding: 0 8px; }
   #almanac-body { padding: 14px; }
-  #inspector { top: 54px; right: 8px; width: calc(100vw - 16px); max-height: calc(100% - 72px); }
+  #inspector { top: auto; right: 0; bottom: 0; left: 0; width: 100%; max-height: min(82dvh, 760px); border-right: 0; border-bottom: 0; border-left: 0; border-radius: 14px 14px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  #inspector-body.building-profile { display: flex; height: 100%; min-height: 0; flex-direction: column; overflow: hidden; }
+  #inspector-body.building-profile .profile-header { flex: none; }
+  #inspector-body.building-profile .profile-panel { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
   #inspector.poi-detail { top: auto; right: 0; bottom: 0; left: 0; width: 100%; max-height: min(58vh, 520px); border-right: 0; border-bottom: 0; border-left: 0; border-radius: 14px 14px 0 0; padding-bottom: env(safe-area-inset-bottom); transition: max-height .24s ease, transform .24s ease; }
   #inspector.poi-detail.poi-compact { max-height: min(31vh, 250px); }
   #inspector.poi-detail.poi-expanded { max-height: calc(100dvh - 20px - env(safe-area-inset-top)); }

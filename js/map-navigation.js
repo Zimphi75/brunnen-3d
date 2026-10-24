@@ -17,6 +17,20 @@ export function initMapNavigation(ctx) {
   const $ = (selector) => document.querySelector(selector);
   const dock = $("#map-dock"), baseCards = $("#base-map-cards"), quickPanel = $("#quick-panel"), quickTitle = $("#quick-title"), quickContent = $("#quick-content");
   const details = $("#layers-panel"), colorSelect = $("#color-mode");
+  const mobileToolsToggle = $("#mobile-tools-toggle");
+  const closeMobileTools = () => {
+    document.body.classList.remove("mobile-tools-open");
+    mobileToolsToggle?.setAttribute("aria-expanded", "false");
+  };
+  mobileToolsToggle?.addEventListener("click", () => {
+    const open = document.body.classList.toggle("mobile-tools-open");
+    mobileToolsToggle.setAttribute("aria-expanded", String(open));
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!document.body.classList.contains("mobile-tools-open") || event.target.closest("#brand, #clock-btn, #view-panel, #sky-panel")) return;
+    closeMobileTools();
+  });
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMobileTools(); });
   const quickButtons = [...dock.querySelectorAll("[data-quick]")];
   const disclosureButtons = quickButtons.filter((button) => ["buildings", "traffic"].includes(button.dataset.quick));
   $("#app").append(quickPanel);
