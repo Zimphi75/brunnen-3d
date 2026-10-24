@@ -344,7 +344,12 @@
   </div>
 
   <div id="statusbar" class="num" aria-live="off"></div>
-  <div id="loading" role="status">
+  <div id="loading" role="status" style="--loading-lqip: url(data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//2wBDAQ4ODhMREyYVFSZPNS01T09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0//wAARCAAYACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDGt4Sa0YbXgE8VjR3rKMrJFx71PBruMLKgP0NdMatN9TNxkuhurCnTcCazL04JVePeov7dgBJVSCBxWFqerz3GQhCAntUucE77lWk0VY4D61ZS1zRRXnSkzSwPaDHWqc1qw6UUURkwaP/Z)">
+    <picture class="loading-bg" aria-hidden="true">
+      <source type="image/avif" srcset="public/images/loading/brunnen-nacht-640.avif 640w, public/images/loading/brunnen-nacht-1080.avif 1080w, public/images/loading/brunnen-nacht-1600.avif 1600w, public/images/loading/brunnen-nacht-2400.avif 2400w" sizes="(max-aspect-ratio: 4/3) 133vh, 100vw">
+      <source type="image/webp" srcset="public/images/loading/brunnen-nacht-640.webp 640w, public/images/loading/brunnen-nacht-1080.webp 1080w, public/images/loading/brunnen-nacht-1600.webp 1600w, public/images/loading/brunnen-nacht-2400.webp 2400w" sizes="(max-aspect-ratio: 4/3) 133vh, 100vw">
+      <img src="public/images/loading/brunnen-nacht-1080.jpg" srcset="public/images/loading/brunnen-nacht-640.jpg 640w, public/images/loading/brunnen-nacht-1080.jpg 1080w, public/images/loading/brunnen-nacht-1600.jpg 1600w, public/images/loading/brunnen-nacht-2400.jpg 2400w" sizes="(max-aspect-ratio: 4/3) 133vh, 100vw" width="2400" height="1800" alt="" decoding="async" fetchpriority="high" onload="this.classList.add('is-loaded')">
+    </picture>
     <div class="loading-card"><span class="loading-spinner" aria-hidden="true"></span><h2>Brunnen 3D</h2><div class="bar"><div id="loading-bar"></div></div><p id="loading-text">Lade Daten …</p><p id="loading-note" class="loading-note" aria-live="polite">Die Höhenlinien bekommen noch ihre Frisur.</p></div>
   </div>
   <div id="error-banner" hidden role="alert"></div>
