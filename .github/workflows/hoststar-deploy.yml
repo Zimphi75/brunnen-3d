@@ -53,6 +53,11 @@ jobs:
           v="${GITHUB_SHA::8}"
           sed -i "s#href=\"css/main.css\"#href=\"css/main.css?v=$v\"#; s#src=\"js/main.js\"#src=\"js/main.js?v=$v\"#" _site/index.html
           grep -q "main.css?v=$v" _site/index.html && grep -q "main.js?v=$v" _site/index.html
+          # Auch alle relativen Modul-Importe versionieren: Sonst kombiniert der Browser ein neues main.js mit
+          # bis zu 10 Minuten alten Modulen aus dem Cache (GitHub Pages: max-age=600), und der Start schlägt fehl.
+          sed -i -E "s#(from[[:space:]]*\")(\./[^\"?]+\.js)\"#\1\2?v=$v\"#g" _site/js/*.js
+          ! grep -nE "from[[:space:]]*\"\./[^\"?]+\.js\"" _site/js/*.js
+          grep -q "from \"./scene.js?v=$v\"" _site/js/main.js
 
       - name: Upload website artifact
         uses: actions/upload-artifact@v4
