@@ -25,6 +25,12 @@ Die maschinenlesbare Fassung mit Abrufdatum steht in `public/data/sources.json` 
 | Zeitreise (historische Karten) | swisstopo | WMS `ch.swisstopo.zeitreihen`, `TIME=JJJJ1231` | Bild, CORS offen | Kartenstände 1864 bis 2021 | OGD swisstopo, Quellenangabe |
 | Gebäude-Umweltindikatoren (on demand) | BAG/BAFU via GeoAdmin | Identify `ch.bag.radonkarte`; WMS GetFeatureInfo `ch.bafu.laerm-{strassenlaerm,bahnlaerm}_{tag,nacht}` und `ch.bafu.geochemischer-bodenatlas_schweiz_{arsen,cadmium,blei}` | Abfrage beim Gebäudeauswählen, LV95-Gebäudemittelpunkt; keine Daten beim App-Start | Lärm: Modell/Verkehrsdaten 2021; Bodenatlas: Probenahme 2011–2015 | GeoAdmin/BAG/BAFU, Quellenangabe |
 
+### OSM-POIs und öffentliche Dienste
+
+Der OSM-Import berücksichtigt neben benannten Orten nun auch unbenannte öffentliche Objekte: Toiletten, Trinkwasserstellen, Recycling-/Entsorgungsstellen, Parkplätze, Veloparkplätze, E-Ladestationen und Defibrillatoren. Flächen und Relationen werden über ihren Overpass-Mittelpunkt verortet; nahe gleichartige Objekte mit gleichem Namen werden innerhalb von 8 m zusammengeführt. Fehlt ein Eigenname, zeigt die UI die verständliche Objektart statt eines erfundenen Ortsnamens.
+
+Betreiber, Gebühren, Zugang, Kapazität, Parkdauer sowie verfügbare Stecker/Ladeleistung werden nur aus den jeweiligen OSM-Tags übernommen. Daraus wird keine aktuelle Belegung oder Ladeverfügbarkeit abgeleitet. Live-Daten zu freien Parkplätzen oder Ladepunkten sind nicht integriert.
+
 ## Nicht verwendet oder nicht verfügbar
 
 - **STATPOP/STATENT**: Einwohner und Beschäftigte (VZÄ) werden als 100-m-Rasterzellen beim Gebäudeauswählen und über die zuschaltbaren Rasterlayer abgefragt. Sie sind Zellwerte und werden nicht als individuelle Gebäudewerte interpretiert; `statistics.json` enthält weiterhin nur GWR-Aggregate.
@@ -38,6 +44,8 @@ Die maschinenlesbare Fassung mit Abrufdatum steht in `public/data/sources.json` 
 - **Solarpotenzial der Dächer (BFE sonnendach.ch)**: nicht integriert.
 - **Strassenlaternen**: OSM enthält nur 27 Knoten. Weitere 215 Standorte sind entlang von Strassen mit `lit=yes` modelliert und im Modell als «mod.» gekennzeichnet.
 - **Bus- und Bahnausstattung**: Wartehäuschen und Bänke nur, wo OSM sie erfasst hat; sonst nur Mast bzw. Bahnsteig.
+- **Veranstaltungen, Baustellen und Abfallkalender**: im aktuellen Quellenverzeichnis ist kein geprüfter, lizenzierter strukturierter Feed für Ingenbohl hinterlegt. Diese Angaben werden deshalb weder gescrapt noch aus Beispieldaten erzeugt.
+- **Live-Park- und Ladeverfügbarkeit**: OSM liefert hier nur den statischen Bestand und gepflegte Attribute; Belegung, freie Plätze oder ein aktueller Ladestatus werden nicht behauptet.
 
 ## Wichtige Hinweise zu den Attributen
 

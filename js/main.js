@@ -291,8 +291,35 @@ async function setupUi(ctx) {
     if (index >= 0) { if (!addressesByBuilding.has(index)) addressesByBuilding.set(index, []); addressesByBuilding.get(index).push(label); }
   });
   ctx.addressesByBuilding = addressesByBuilding;
-  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => { if (ctx.neighborhoodAnalysis?.active) { ctx.neighborhoodAnalysis.profileClosed(); return; } buildings?.select(-1); ctx.parcels?.selectBuilding(-1); ctx.demographics?.deactivateBuildingCell(); }, onActivateDemographicCell: (record) => ctx.neighborhoodAnalysis?.startForBuilding(record), onDeactivateDemographicCell: () => ctx.neighborhoodAnalysis?.end() });
+  const inspector = createInspector({ panel: $("#inspector"), body: $("#inspector-body"), closeButton: $("#inspector-close"), codes: ctx.codes, onClose: () => { ctx.clearPoiSelection?.(); if (ctx.neighborhoodAnalysis?.active) { ctx.neighborhoodAnalysis.profileClosed(); return; } buildings?.select(-1); ctx.parcels?.selectBuilding(-1); ctx.demographics?.deactivateBuildingCell(); }, onCenterPoi: (poi) => focusPoi(poi, null, true), onActivateDemographicCell: (record) => ctx.neighborhoodAnalysis?.startForBuilding(record), onDeactivateDemographicCell: () => ctx.neighborhoodAnalysis?.end() });
   ctx.inspector = inspector;
+  function focusPoi(poi, markerPosition = null, forceCenter = false) {
+    if (!poi) return;
+    const point = markerPosition?.clone() ?? new THREE.Vector3(poi.x, (terrain.heightAt(poi.x, poi.z) ?? 0) + 2, poi.z);
+    const view = rig.currentView();
+    const projected = point.clone().project(camera);
+    if (forceCenter || projected.z > 1 || projected.z < -1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) {
+      rig.flyTo({ target: point, ...view, duration: 0.65, instant: matchMedia("(prefers-reduced-motion: reduce)").matches });
+      return;
+    }
+    const rect = $("#inspector").getBoundingClientRect();
+    const width = $("#scene").clientWidth, height = $("#scene").clientHeight;
+    const screenX = (projected.x * 0.5 + 0.5) * width, screenY = (-projected.y * 0.5 + 0.5) * height;
+    const covered = !$("#inspector").hidden && screenX >= rect.left && screenX <= rect.right && screenY >= rect.top && screenY <= rect.bottom;
+    if (!covered) return;
+    const mobile = matchMedia("(max-width: 600px)").matches;
+    const desiredX = mobile ? width * 0.5 : Math.min(width * 0.43, rect.left - 40);
+    const desiredY = mobile ? height * 0.34 : height * 0.5;
+    const scale = 2 * view.distance * Math.tan(camera.fov * Math.PI / 360) / height;
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    const shift = right.multiplyScalar((screenX - desiredX) * scale).addScaledVector(up, (desiredY - screenY) * scale);
+    rig.flyTo({ target: controls.target.clone().add(shift), ...view, duration: 0.65, instant: matchMedia("(prefers-reduced-motion: reduce)").matches });
+  }
+  ctx.onPoiSelected = (index, markerPosition) => {
+    ctx.selectedPoiId = ctx.pois?.[index]?.id;
+    focusPoi(ctx.pois?.[index], markerPosition);
+  };
   const environmentalCache = new Map();
   const demographicCache = new Map();
   let environmentalRequestId = 0;
@@ -593,6 +620,7 @@ async function setupUi(ctx) {
         inspector.hide();
         return;
       }
+      if (hit?.kind !== "poi") ctx.clearPoiSelection?.();
       buildings?.select(-1);
       ctx.parcels?.selectBuilding(-1);
       if (hit?.kind === "building") ctx.selectBuilding(hit.index);
@@ -611,6 +639,7 @@ async function setupUi(ctx) {
     ctx.parcels?.selectBuilding(-1);
     ctx.demographics?.resetSelection?.();
     inspector.hide();
+    ctx.clearPoiSelection?.();
     canvas.style.cursor = "";
     statusText = "";
     status.textContent = "";

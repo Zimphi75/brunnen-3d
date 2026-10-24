@@ -335,6 +335,34 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
 #inspector dt { color: var(--ink-3); }
 #inspector dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
 #inspector .src { font-size: 11.5px; color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 8px; margin-top: 10px; }
+.poi-marker-layer { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.poi-marker { position: absolute; left: 0; top: 0; display: block; width: var(--poi-touch-target, 44px); height: 60px; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--poi-color); pointer-events: none; cursor: pointer; opacity: 0; visibility: hidden; transition: opacity var(--poi-fade-out, 190ms) ease, visibility 0s linear var(--poi-fade-out, 190ms); }
+.poi-marker.is-visible { opacity: var(--poi-opacity, 1); visibility: visible; pointer-events: auto; transition: opacity var(--poi-fade-in, 220ms) ease, visibility 0s; }
+.poi-marker::before { content: ""; position: absolute; left: 50%; bottom: 12px; width: calc(var(--poi-size, 20px) * .82); height: var(--poi-size, 20px); border: 1px solid rgba(240, 252, 255, .66); border-radius: 50% 50% 50% 5% / 50% 50% 50% 5%; background: linear-gradient(145deg, rgba(255,255,255,.62), color-mix(in srgb, var(--poi-color) 30%, rgba(166,222,239,.24)) 48%, rgba(226,250,255,.2)); box-shadow: inset 1px 1px 2px rgba(255,255,255,.78), inset -1px -2px 4px rgba(16,43,61,.22), 0 0 11px color-mix(in srgb, var(--poi-color) 25%, transparent), 0 2px 5px rgba(0,0,0,.2); backdrop-filter: blur(5px) saturate(160%); -webkit-backdrop-filter: blur(5px) saturate(160%); transform: translateX(-50%) rotate(-45deg); transition: width .2s ease, height .2s ease, box-shadow .2s ease; }
+.poi-glass-stem { position: absolute; left: 50%; top: 50px; width: 1px; height: 10px; background: linear-gradient(rgba(226,250,255,.62), color-mix(in srgb, var(--poi-color) 28%, transparent)); box-shadow: 0 0 5px color-mix(in srgb, var(--poi-color) 35%, transparent); transform: translateX(-50%); }
+.poi-marker svg { position: absolute; left: 50%; bottom: calc(12px + var(--poi-size, 20px) * .5 - 6px); width: min(18px, calc(var(--poi-size, 20px) * .52)); height: min(18px, calc(var(--poi-size, 20px) * .52)); fill: none; stroke: rgba(249,254,255,.98); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 2px rgba(35,73,93,.7)); pointer-events: none; transform: translateX(-50%); }
+.poi-marker.is-near::before, .poi-marker:hover::before, .poi-marker:focus-visible::before { box-shadow: inset 1px 1px 2px rgba(255,255,255,.78), inset -1px -2px 4px rgba(16,43,61,.25), 0 0 12px color-mix(in srgb, var(--poi-color) 34%, transparent), 0 2px 6px rgba(0,0,0,.24); }
+.poi-marker.is-selected::before { box-shadow: inset 1px 1px 2px rgba(255,255,255,.86), inset -1px -2px 4px rgba(16,43,61,.22), 0 0 16px color-mix(in srgb, var(--poi-color) 42%, transparent), 0 2px 7px rgba(0,0,0,.28); animation: poi-glass-select 260ms ease-out; }
+.poi-marker[data-name]:not([data-name=""])::after { content: attr(data-name); position: absolute; left: 50%; bottom: calc(100% + 1px); width: max-content; max-width: min(220px, 70vw); overflow: hidden; padding: 4px 7px; border: 1px solid var(--rule); border-radius: 5px; background: var(--panel-solid); color: var(--ink); font: 600 11px/1.3 var(--f-ui); text-overflow: ellipsis; white-space: nowrap; box-shadow: var(--shadow); transform: translateX(-50%); }
+.poi-marker:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+@keyframes poi-glass-select { from { filter: brightness(1.3); transform: translateX(-50%) rotate(-45deg) scale(.88); } to { filter: brightness(1); transform: translateX(-50%) rotate(-45deg) scale(1); } }
+#inspector.poi-detail { width: min(400px, calc(100vw - 28px)); max-height: min(76vh, 680px); padding: 0; }
+#inspector.poi-detail #inspector-body { overflow: auto; padding: 0; }
+.poi-sheet-handle { display: none; }
+.poi-detail-head { padding: 18px 52px 8px 18px; }
+.poi-detail-head .profile-eyebrow { margin-bottom: 4px; }
+.poi-detail-head h3 { margin: 0; font-size: 21px; line-height: 1.18; }
+.poi-detail-head .sub { margin: 5px 0 0; }
+.poi-detail-content { padding: 8px 18px 18px; }
+.poi-actions { display: flex; flex-wrap: wrap; gap: 7px; margin: 2px 0 12px; }
+.poi-action { display: inline-flex; min-height: 38px; align-items: center; padding: 7px 11px; border: 1px solid var(--rule); border-radius: 7px; background: var(--field); color: var(--ink); font-size: 12px; font-weight: 600; text-decoration: none; }
+.poi-action:hover { border-color: var(--accent); background: var(--accent-soft); }
+#inspector.poi-detail dl { grid-template-columns: minmax(86px, auto) minmax(0, 1fr); gap: 7px 14px; margin: 12px 0; }
+#inspector.poi-detail dd { text-align: left; }
+.poi-description { margin: 12px 0; color: var(--ink-2); }
+.poi-more { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rule); }
+.poi-more summary { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--ink-2); }
+.poi-source { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: 11px; }
 .profile-header { position: sticky; top: 0; z-index: 2; padding: 14px 44px 0 16px; background: var(--panel-solid); border-bottom: 1px solid var(--rule); }
 .profile-eyebrow { display: block; margin-bottom: 3px; color: var(--ink-3); font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .profile-header h3 { overflow-wrap: anywhere; }
@@ -546,6 +574,18 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
   .tabs { padding: 0 8px; }
   #almanac-body { padding: 14px; }
   #inspector { top: 54px; right: 8px; width: calc(100vw - 16px); max-height: calc(100% - 72px); }
+  #inspector.poi-detail { top: auto; right: 0; bottom: 0; left: 0; width: 100%; max-height: min(58vh, 520px); border-right: 0; border-bottom: 0; border-left: 0; border-radius: 14px 14px 0 0; padding-bottom: env(safe-area-inset-bottom); transition: max-height .24s ease, transform .24s ease; }
+  #inspector.poi-detail.poi-compact { max-height: min(31vh, 250px); }
+  #inspector.poi-detail.poi-expanded { max-height: calc(100dvh - 20px - env(safe-area-inset-top)); }
+  #inspector.poi-detail #inspector-body { overscroll-behavior: contain; }
+  .poi-sheet-handle { display: block; width: 100%; height: 28px; padding: 9px 0; border: 0; background: transparent; touch-action: pan-y; }
+  .poi-sheet-handle span { display: block; width: 38px; height: 4px; margin: auto; border-radius: 999px; background: var(--ink-3); opacity: .55; }
+  .poi-detail-head { padding: 3px 52px 7px 16px; }
+  .poi-detail-head h3 { font-size: 19px; }
+  .poi-detail-content { padding: 6px 16px 14px; }
+  .poi-action { min-height: 44px; }
+  #inspector.poi-detail.poi-compact .poi-description, #inspector.poi-detail.poi-compact .poi-more, #inspector.poi-detail.poi-compact .poi-source,
+  #inspector.poi-detail.poi-compact #inspector-body dl { display: none; }
   .time-travel-active #statusbar { display: none; }
   .profile-header { padding-left: 12px; }
   .profile-content { padding: 12px; }

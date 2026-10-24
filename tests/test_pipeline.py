@@ -15,7 +15,9 @@ from shapely.geometry import Polygon, box
 
 from pipeline import config
 from pipeline.common import Extent, compute_extent, to_local
+from pipeline.download import overpass_queries
 from pipeline.process_buildings import building_mesh, triangulate_face
+from pipeline.process_osm import process_pois
 from pipeline.process_parcels import attach_parcels, attach_planning, parse_gml, parse_planning_gml
 
 DATA = config.OUT_DIR
@@ -39,6 +41,56 @@ def test_extent_is_aligned_and_covers_area():
 def test_to_local_axes():
     x, y, z = to_local(2_688_100, 1_206_400, 530.0, (2_688_000, 1_206_300), 430.0)
     assert (x, y, z) == (100, 100.0, -100)  # Ost = +x, Nord = -z, Höhe = y
+
+
+def test_process_pois_normalizes_contact_tags_and_address():
+    raw = {"elements": [{
+        "type": "node", "id": 42, "lat": 47.0, "lon": 8.6,
+        "tags": {
+            "name": "Café am See", "amenity": "cafe", "contact:website": "https://example.org",
+            "contact:phone": "+41 41 123 45 67", "contact:email": "info@example.org",
+            "addr:street": "Seestrasse", "addr:housenumber": "4", "addr:postcode": "6440", "addr:city": "Brunnen",
+            "outdoor_seating": "yes", "opening_hours": "Mo-Fr 09:00-18:00",
+        },
+    }]}
+    items = process_pois(raw, box(-100_000, -100_000, 100_000, 100_000), (2_688_000, 1_206_300))
+    assert len(items) == 1
+    poi = items[0]
+    assert (poi["osmType"], poi["osmId"], poi["lat"], poi["lon"]) == ("node", 42, 47.0, 8.6)
+    assert poi["t"]["website"] == "https://example.org"
+    assert poi["t"]["phone"] == "+41 41 123 45 67"
+    assert poi["t"]["email"] == "info@example.org"
+    assert poi["t"]["address"] == "Seestrasse 4, 6440 Brunnen"
+    assert poi["t"]["outdoor_seating"] == "yes"
+
+
+def test_process_pois_includes_unnamed_public_services_and_chargers():
+    raw = {"elements": [
+        {"type": "node", "id": 1, "lat": 47.0, "lon": 8.6, "tags": {"amenity": "toilets"}},
+        {"type": "node", "id": 2, "lat": 47.0, "lon": 8.6001, "tags": {"amenity": "toilets"}},
+        {"type": "way", "id": 3, "center": {"lat": 47.001, "lon": 8.601}, "tags": {
+            "amenity": "charging_station", "capacity": "4", "fee": "yes", "operator": "Gemeinde",
+            "socket:type2": "4", "socket:type2:output": "22 kW",
+        }},
+        {"type": "node", "id": 4, "lat": 47.002, "lon": 8.602, "tags": {"emergency": "defibrillator"}},
+        {"type": "node", "id": 5, "lat": 47.003, "lon": 8.603, "tags": {"amenity": "drinking_water"}},
+    ]}
+    items = process_pois(raw, box(-100_000, -100_000, 100_000, 100_000), (2_688_000, 1_206_300))
+    assert [(item["n"], item["c"]) for item in items] == [
+        ("Öffentliche Toilette", "Öffentliche Einrichtungen"),
+        ("E-Ladestation", "Mobilität"),
+        ("Defibrillator", "Gesundheit"),
+        ("Trinkwasserstelle", "Öffentliche Einrichtungen"),
+    ]
+    charger = items[1]
+    assert charger["t"]["capacity"] == "4" and charger["t"]["fee"] == "yes"
+    assert charger["t"]["socket_types"] == "Typ 2" and charger["t"]["charge"] == "22 kW"
+
+
+def test_overpass_query_fetches_unnamed_public_service_areas():
+    query = overpass_queries("1,2,3,4")["pois"]
+    assert 'way["amenity"~"^(toilets|drinking_water' in query
+    assert 'node["emergency"="defibrillator"]' in query
 
 
 def unit_cube(origin=(2_688_000.0, 1_206_300.0), size=10.0, base=500.0):

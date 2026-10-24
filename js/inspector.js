@@ -41,12 +41,85 @@ function rowsMarkup(rows) {
   return rows.length ? `<dl>${rows.map(([key, value, raw]) => `<dt>${esc(key)}</dt><dd>${raw ? value : esc(value)}</dd>`).join("")}</dl>` : "";
 }
 
-export function createInspector({ panel, body, closeButton, codes, onClose, onActivateDemographicCell, onDeactivateDemographicCell }) {
+export function createInspector({ panel, body, closeButton, codes, onClose, onCenterPoi, onActivateDemographicCell, onDeactivateDemographicCell }) {
   let buildingProfile = null;
   let activeTab = "overview";
   closeButton.addEventListener("click", () => { hide(); onClose?.(); });
 
-  function hide() { panel.hidden = true; buildingProfile = null; }
+  function showPoi(poi) {
+    buildingProfile = null;
+    body.classList.remove("building-profile");
+    panel.classList.add("poi-detail");
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-labelledby", "poi-detail-title");
+    const properties = poi.properties ?? {};
+    const propertyLabels = [
+      ["cuisine", "Angebot", (value) => value.replaceAll(";", ", ")],
+      ["wheelchair", "Rollstuhlgängig", (value) => ({ yes: "Ja", no: "Nein", limited: "Eingeschränkt", designated: "Ja" }[value] ?? value)],
+      ["outdoorSeating", "Aussenplätze", (value) => ({ yes: "Vorhanden", no: "Keine" }[value] ?? value)],
+      ["takeaway", "Take-away", (value) => ({ yes: "Ja", no: "Nein" }[value] ?? value)],
+      ["operator", "Betreiber"],
+      ["fee", "Gebühren", (value) => ({ yes: "Gebührenpflichtig", no: "Kostenlos" }[value] ?? value)],
+      ["access", "Zugang", (value) => ({ yes: "Öffentlich", public: "Öffentlich", permissive: "Öffentlich", customers: "Für Kundschaft", private: "Privat", no: "Nicht öffentlich" }[value] ?? value)],
+      ["capacity", poi.subtype === "charging_station" ? "Ladepunkte" : "Kapazität"],
+      ["maxStay", "Maximale Parkdauer"], ["power", "Ladeleistung"], ["socketTypes", "Steckertypen"],
+    ];
+    const propertyRows = propertyLabels.filter(([key]) => properties[key]).map(([key, label, format]) => [label, format ? format(properties[key]) : properties[key]]);
+    const safeWebsite = (() => {
+      try { const url = new URL(poi.website); return ["http:", "https:"].includes(url.protocol) ? url.href : ""; } catch { return ""; }
+    })();
+    const phone = (poi.phone ?? "").trim();
+    const safePhone = /^[+\d][\d\s()./-]{4,}$/.test(phone) ? phone.replace(/[\s()./-]/g, "") : "";
+    const email = (poi.email ?? "").trim();
+    const safeEmail = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) ? email : "";
+    const osmTypes = { node: "node", way: "way", relation: "relation" };
+    const osmType = osmTypes[poi.osmType];
+    const osmLink = osmType && /^\d+$/.test(String(poi.osmId)) ? `https://www.openstreetmap.org/${osmType}/${poi.osmId}` : "https://www.openstreetmap.org/";
+    const actions = [
+      safeWebsite ? `<a class="poi-action" href="${esc(safeWebsite)}" target="_blank" rel="noopener noreferrer">Website öffnen</a>` : "",
+      safePhone ? `<a class="poi-action" href="tel:${esc(safePhone)}">Anrufen</a>` : "",
+      safeEmail ? `<a class="poi-action" href="mailto:${esc(safeEmail)}">E-Mail schreiben</a>` : "",
+      onCenterPoi ? `<button type="button" class="poi-action" data-center-poi>Auf Karte zentrieren</button>` : "",
+    ].filter(Boolean).join("");
+    const rows = [
+      ...(poi.address ? [["Adresse", poi.address]] : []),
+      ...(poi.openingHours ? [["Öffnungszeiten", poi.openingHours]] : []),
+      ...propertyRows,
+    ];
+    body.innerHTML = `
+      <button type="button" class="poi-sheet-handle" aria-label="Detailansicht erweitern" aria-expanded="false"><span></span></button>
+      <header class="poi-detail-head"><div><span class="profile-eyebrow">${esc(poi.category)}</span><h3 id="poi-detail-title">${esc(poi.name)}</h3><p class="sub">${esc(poi.subtype ? poi.subtype.replaceAll("_", " ") : poi.category)}</p></div></header>
+      <div class="poi-detail-content">
+        ${actions ? `<nav class="poi-actions" aria-label="Kontaktinformationen">${actions}</nav>` : ""}
+        ${rows.length ? `<dl>${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join("")}</dl>` : ""}
+        ${poi.description ? `<p class="poi-description">${esc(poi.description)}</p>` : ""}
+        <details class="poi-more"><summary>Weitere Angaben</summary><dl>${poi.lat != null && poi.lon != null ? `<dt>Koordinaten</dt><dd>${esc(Number(poi.lat).toFixed(5))}, ${esc(Number(poi.lon).toFixed(5))}</dd>` : ""}<dt>OpenStreetMap</dt><dd><a href="${osmLink}" target="_blank" rel="noopener noreferrer">Informationen auf OpenStreetMap ansehen</a></dd></dl></details>
+        <footer class="poi-source">Daten: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap-Mitwirkende</a> · ODbL</footer>
+      </div>`;
+    panel.classList.add("poi-compact");
+    panel.hidden = false;
+    const handle = body.querySelector(".poi-sheet-handle");
+    handle.addEventListener("click", () => {
+      const expanded = panel.classList.toggle("poi-expanded");
+      panel.classList.toggle("poi-compact", !expanded);
+      handle.setAttribute("aria-expanded", String(expanded));
+      handle.setAttribute("aria-label", expanded ? "Detailansicht verkleinern" : "Detailansicht erweitern");
+    });
+    handle.addEventListener("pointerdown", (event) => { handle.dataset.dragY = String(event.clientY); });
+    handle.addEventListener("pointerup", (event) => {
+      const start = Number(handle.dataset.dragY);
+      if (!Number.isFinite(start) || Math.abs(event.clientY - start) < 36) return;
+      if (event.clientY < start) {
+        panel.classList.add("poi-expanded"); panel.classList.remove("poi-compact"); handle.setAttribute("aria-expanded", "true");
+      } else if (panel.classList.contains("poi-expanded")) {
+        panel.classList.remove("poi-expanded"); panel.classList.add("poi-compact"); handle.setAttribute("aria-expanded", "false");
+      } else { hide(); onClose?.(); }
+      delete handle.dataset.dragY;
+    });
+    body.querySelector("[data-center-poi]")?.addEventListener("click", () => onCenterPoi(poi));
+  }
+
+  function hide() { panel.hidden = true; buildingProfile = null; panel.classList.remove("poi-detail", "poi-expanded", "poi-compact"); panel.removeAttribute("role"); panel.removeAttribute("aria-labelledby"); }
 
   body.addEventListener("click", async (event) => {
     const demographicButton = event.target.closest("[data-activate-demographic-cell]");
@@ -90,6 +163,8 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onAc
 
   function render({ title, sub, tags = [], sections = [], source, links = [] }) {
     buildingProfile = null;
+    panel.classList.remove("poi-detail", "poi-expanded", "poi-compact");
+    panel.removeAttribute("role"); panel.removeAttribute("aria-labelledby");
     body.classList.remove("building-profile");
     body.innerHTML = `
       <h3>${esc(title)}</h3>
@@ -292,5 +367,10 @@ export function createInspector({ panel, body, closeButton, codes, onClose, onAc
     if (activeTab === "overview") renderBuildingProfile();
   }
 
-  return { render, showBuilding, updateBuildingEnvironment, updateBuildingDemographics, setDemographicCellActive, hide, showGeneric: render };
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || panel.hidden || !panel.classList.contains("poi-detail")) return;
+    hide(); onClose?.();
+  });
+
+  return { render, showPoi, showBuilding, updateBuildingEnvironment, updateBuildingDemographics, setDemographicCellActive, hide, showGeneric: render };
 }

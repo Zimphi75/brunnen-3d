@@ -40,12 +40,12 @@ AMENITY_GROUPS = {
     "Gesundheit": {"doctors", "pharmacy", "clinic", "hospital", "dentist", "veterinary", "nursing_home"},
     "Verwaltung und Dienste": {"townhall", "post_office", "bank", "police", "fire_station", "community_centre", "post_box", "atm", "courthouse"},
     "Religion": {"place_of_worship"},
-    "Verkehr": {"ferry_terminal", "bus_station", "taxi", "car_rental", "bicycle_rental", "charging_station", "fuel"},
+    "Mobilität": {"ferry_terminal", "bus_station", "taxi", "car_rental", "bicycle_rental", "charging_station", "fuel", "parking", "parking_space", "parking_entrance", "bicycle_parking", "motorcycle_parking"},
+    "Öffentliche Einrichtungen": {"toilets", "drinking_water", "recycling", "waste_disposal", "waste_transfer_station"},
     "Freizeit und Kultur": {"theatre", "cinema", "arts_centre", "events_venue", "marketplace", "social_facility"},
 }
-IGNORED_AMENITIES = {"parking", "bench", "waste_basket", "recycling", "toilets", "bicycle_parking", "drinking_water", "vending_machine",
-                     "shelter", "waste_disposal", "parking_space", "parking_entrance", "motorcycle_parking", "fountain", "clock", "give_box",
-                     "bbq", "post_box", "atm", "charging_station", "lounger", "hunting_stand", "grit_bin", "waste_transfer_station"}
+IGNORED_AMENITIES = {"bench", "waste_basket", "vending_machine", "shelter", "fountain", "clock", "give_box",
+                     "bbq", "lounger", "hunting_stand", "grit_bin"}
 
 
 def to_local_xy(lon: float, lat: float, origin) -> tuple[float, float]:
@@ -166,6 +166,8 @@ def process_water(raw: dict, clip, origin) -> dict:
 
 
 def poi_category(tags: dict) -> tuple[str, str] | None:
+    if tags.get("emergency") == "defibrillator" or tags.get("amenity") == "defibrillator":
+        return "Gesundheit", "defibrillator"
     amenity, shop, tourism, historic, leisure = (tags.get(k) for k in ("amenity", "shop", "tourism", "historic", "leisure"))
     if amenity and amenity not in IGNORED_AMENITIES:
         for group, values in AMENITY_GROUPS.items():
@@ -187,12 +189,23 @@ def poi_category(tags: dict) -> tuple[str, str] | None:
 
 def process_pois(raw: dict, clip, origin) -> list[dict]:
     pois = []
+    seen = defaultdict(list)
+    fallback_names = {
+        "toilets": "Öffentliche Toilette", "drinking_water": "Trinkwasserstelle", "defibrillator": "Defibrillator",
+        "recycling": "Recyclingstelle", "waste_disposal": "Entsorgungsstelle", "waste_transfer_station": "Entsorgungsstelle",
+        "parking": "Parkplatz", "parking_space": "Parkplatz", "parking_entrance": "Parkhauseinfahrt",
+        "bicycle_parking": "Veloparkplatz", "motorcycle_parking": "Motorradparkplatz", "charging_station": "E-Ladestation",
+        "post_box": "Briefkasten", "atm": "Bancomat",
+    }
     for element in raw["elements"]:
         tags = element.get("tags", {})
-        if not tags.get("name"):
-            continue
         category = poi_category(tags)
         if category is None:
+            continue
+        name = tags.get("name") or fallback_names.get(category[1])
+        if not name:
+            continue
+        if element["type"] == "node" and stop_mode(tags) is not None:
             continue
         lon = element.get("lon") or element.get("center", {}).get("lon")
         lat = element.get("lat") or element.get("center", {}).get("lat")
@@ -201,11 +214,39 @@ def process_pois(raw: dict, clip, origin) -> list[dict]:
         x, z = to_local_xy(lon, lat, origin)
         if not clip.contains(Point(x, z)):
             continue
-        address = " ".join(filter(None, [tags.get("addr:street"), tags.get("addr:housenumber")]))
-        entry = {"id": f"{element['type'][0]}{element['id']}", "n": tags["name"], "c": category[0], "s": category[1], "x": round(x, 1), "z": round(z, 1)}
-        extras = {k: tags[k] for k in ("opening_hours", "website", "cuisine", "wheelchair") if k in tags}
+        dedupe_key = (category, name.casefold())
+        if any((x - seen_x) ** 2 + (z - seen_z) ** 2 < 8 ** 2 for seen_x, seen_z in seen[dedupe_key]):
+            continue
+        seen[dedupe_key].append((x, z))
+        street = " ".join(filter(None, [tags.get("addr:street"), tags.get("addr:housenumber")]))
+        locality = " ".join(filter(None, [tags.get("addr:postcode"), tags.get("addr:city")]))
+        address = ", ".join(filter(None, [street, locality]))
+        entry = {
+            "id": f"{element['type'][0]}{element['id']}", "osmType": element["type"], "osmId": element["id"],
+            "n": name, "c": category[0], "s": category[1], "x": round(x, 1), "z": round(z, 1),
+            "lat": lat, "lon": lon,
+        }
+        extras = {}
+        for key, variants in {
+            "opening_hours": ("opening_hours",), "website": ("contact:website", "website"),
+            "phone": ("contact:phone", "phone"), "email": ("contact:email", "email"),
+            "cuisine": ("cuisine",), "wheelchair": ("wheelchair",),
+            "outdoor_seating": ("outdoor_seating",), "takeaway": ("takeaway",),
+            "description": ("description",), "operator": ("operator",), "fee": ("fee",),
+            "access": ("access",), "capacity": ("capacity",), "maxstay": ("maxstay",),
+            "charge": ("charging_station:output", "socket:type2_combo:output", "socket:type2:output"),
+        }.items():
+            value = next((tags[tag] for tag in variants if tags.get(tag)), None)
+            if value:
+                extras[key] = value
         if address:
-            extras["address"] = address + (f", {tags['addr:postcode']} {tags['addr:city']}" if "addr:postcode" in tags and "addr:city" in tags else "")
+            extras["address"] = address
+        socket_types = []
+        for key, label in (("socket:type2_combo", "CCS"), ("socket:ccs", "CCS"), ("socket:type2", "Typ 2"), ("socket:chademo", "CHAdeMO"), ("socket:schuko", "Haushaltssteckdose")):
+            if tags.get(key) not in (None, "no", "0"):
+                socket_types.append(label)
+        if socket_types:
+            extras["socket_types"] = ", ".join(dict.fromkeys(socket_types))
         if extras:
             entry["t"] = extras
         pois.append(entry)

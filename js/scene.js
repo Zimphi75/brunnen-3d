@@ -103,7 +103,13 @@ export function createScene(canvas) {
     const distance = camera.position.distanceTo(controls.target);
     const near = THREE.MathUtils.clamp(distance / 150, 0.5, 60);
     if (Math.abs(near - camera.near) > near * 0.1) { camera.near = near; camera.updateProjectionMatrix(); }
-    for (const callback of frameCallbacks) callback(delta, now, distance);
+    for (const callback of frameCallbacks) {
+      try { callback(delta, now, distance); }
+      catch (error) {
+        console.error("3D-Frame-Callback entfernt:", error);
+        frameCallbacks.delete(callback);
+      }
+    }
     if (aoPass) aoPass.enabled = settings.ambientOcclusion;
     bloomPass.enabled = settings.bloom;
     renderer.info.reset();

@@ -215,9 +215,13 @@ def overpass_queries(bbox: str) -> dict[str, str]:
         "water": f'{header}(way["natural"="water"]({bbox});relation["natural"="water"]({bbox});'
                  f'way["waterway"~"^(river|stream|canal)$"]({bbox}););out geom;',
         "pois": f'{header}(node["amenity"]({bbox});node["shop"]({bbox});node["tourism"]({bbox});node["historic"]({bbox});'
+            f'node["emergency"="defibrillator"]({bbox});'
                 f'node["leisure"~"^(playground|pitch|sports_centre|swimming_pool|marina|slipway|park)$"]({bbox});'
                 f'node["public_transport"]({bbox});node["highway"="bus_stop"]({bbox});node["railway"~"^(station|halt|tram_stop)$"]({bbox});'
-                f'way["amenity"]["name"]({bbox});way["tourism"]["name"]({bbox});way["shop"]["name"]({bbox}););out tags center;',
+            f'way["amenity"]["name"]({bbox});way["tourism"]["name"]({bbox});way["shop"]["name"]({bbox});'
+            f'way["amenity"~"^(toilets|drinking_water|recycling|waste_disposal|parking|parking_space|parking_entrance|bicycle_parking|charging_station)$"]({bbox});'
+            f'relation["amenity"~"^(toilets|drinking_water|recycling|waste_disposal|parking|parking_space|charging_station)$"]({bbox});'
+            f'way["emergency"="defibrillator"]({bbox});relation["emergency"="defibrillator"]({bbox}););out tags center;',
         "routes": f'{header}relation["route"~"^(bus|train|ferry|railway|light_rail)$"]({bbox});out geom;',
         "trees": f'{header}node["natural"="tree"]({bbox});out;',
         "crossings": f'{header}(node["highway"="crossing"]({bbox});node["railway"="level_crossing"]({bbox}););out;',
