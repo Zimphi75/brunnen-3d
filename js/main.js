@@ -73,9 +73,6 @@ function animateNightToLive(ctx) {
     const previousDay = zurichParts(new Date(endDate.getTime() - 36 * 3600 * 1000));
     startDate = zurichToDate(previousDay.year, previousDay.month, previousDay.day, 4 * 60);
   }
-  Object.assign(ctx.timeState, zurichParts(startDate));
-  ctx.applyTime();
-
   const duration = 10;
   let elapsed = 0, lastUpdate = 0, removeFrame = () => {};
   let resolveTransition;
@@ -89,6 +86,9 @@ function animateNightToLive(ctx) {
     resolveTransition();
   };
   ctx.cancelTimeTransition = interrupt;
+  Object.assign(ctx.timeState, zurichParts(startDate));
+  ctx.applyTime();
+
   const onFrame = (delta) => {
     elapsed = Math.min(duration, elapsed + delta);
     if (elapsed - lastUpdate < 0.1 && elapsed < duration) return;

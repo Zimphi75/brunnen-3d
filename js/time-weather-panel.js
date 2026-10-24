@@ -155,6 +155,7 @@ export function initTimeWeatherPanel(ctx) {
   }
 
   function renderClock() {
+    if (state.mode === "live" && ctx.cancelTimeTransition) return;
     const now = new Date();
     const time = ctx.timeState;
     const modeLabels = { live: "Live", clear: "Hell & klar", simulation: "Simulation" };
