@@ -2,6 +2,35 @@
 import * as THREE from "three";
 
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const markerPointerStarts = new WeakSet();
+
+export function connectMarkerNavigation(layer, canvas) {
+  const pointers = new Map();
+  layer.addEventListener("pointerdown", (event) => {
+    const marker = event.target.closest(".poi-marker");
+    if (!marker) return;
+    const forwarded = new PointerEvent("pointerdown", event);
+    markerPointerStarts.add(forwarded);
+    pointers.set(event.pointerId, { marker, x: event.clientX, y: event.clientY, moved: false });
+    event.preventDefault();
+    canvas.dispatchEvent(forwarded);
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    const start = pointers.get(event.pointerId);
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 5) start.moved = true;
+  });
+  canvas.addEventListener("pointerup", (event) => {
+    const start = pointers.get(event.pointerId);
+    pointers.delete(event.pointerId);
+    if (start && !start.moved && event.button === 0 && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 5) start.marker.click();
+  });
+  canvas.addEventListener("pointercancel", (event) => pointers.delete(event.pointerId));
+  canvas.addEventListener("lostpointercapture", (event) => pointers.delete(event.pointerId));
+  layer.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    canvas.dispatchEvent(new WheelEvent("wheel", event));
+  }, { passive: false });
+}
 
 export function createCameraRig({ camera, controls, terrain, onFrame }) {
   let animation = null;
@@ -113,7 +142,7 @@ export function createPicker({ canvas, camera, terrain, providers, onHover, onCl
     });
   });
   canvas.addEventListener("pointerleave", () => onHover({ hit: null, ground: null }, null));
-  canvas.addEventListener("pointerdown", (event) => { down = { x: event.clientX, y: event.clientY, time: performance.now() }; });
+  canvas.addEventListener("pointerdown", (event) => { down = markerPointerStarts.has(event) ? null : { x: event.clientX, y: event.clientY, time: performance.now() }; });
   canvas.addEventListener("pointerup", (event) => {
     if (!down) return;
     const moved = Math.hypot(event.clientX - down.x, event.clientY - down.y);

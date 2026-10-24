@@ -2,6 +2,7 @@
 import * as THREE from "three";
 import { loadOptionalJson } from "./api.js";
 import { createLabelLayer } from "./labels.js";
+import { connectMarkerNavigation } from "./controls.js";
 
 export const POI_COLORS = {
   "Einkauf": "#e08a2c", "Gastronomie": "#c0392b", "Tourismus": "#8e44ad", "Freizeit und Kultur": "#16a085", "Religion": "#7f8c8d",
@@ -121,6 +122,7 @@ export async function initPois(ctx) {
   markerLayer.style.setProperty("--poi-fade-in", `${POI_DISPLAY.fadeInMs}ms`);
   markerLayer.style.setProperty("--poi-fade-out", `${POI_DISPLAY.fadeOutMs}ms`);
   $("#labels").append(markerLayer);
+  connectMarkerNavigation(markerLayer, $("#scene"));
   const groundHeights = pois.map((poi) => terrain.heightAt(poi.x, poi.z) ?? 0);
   const positions = pois.map((poi, index) => new THREE.Vector3(poi.x, groundHeights[index] + 2, poi.z));
   const resolvedHeights = new Uint8Array(pois.length);

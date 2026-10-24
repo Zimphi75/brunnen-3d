@@ -15,7 +15,7 @@ import { normalizePoi, POI_DISPLAY } from "../js/pois.js";
 import { stopPlacement, fetchOfficialStops } from "../js/transport.js";
 import { initAlmanac, renderVote, voteTitle } from "../js/almanac.js";
 import { Terrain } from "../js/terrain.js";
-import { createCameraRig } from "../js/controls.js";
+import { createCameraRig, connectMarkerNavigation, createPicker } from "../js/controls.js";
 import { buildLocationRating } from "../js/location-rating.js";
 import { fetchBuildingEnvironment } from "../js/environment.js";
 import { fetchDemographicCell } from "../js/demographics.js";
@@ -190,6 +190,35 @@ test("POI-Normalisierung: Kontaktvarianten und Adresse", () => {
   assert(poi.address === "Seestrasse 4, 6440 Brunnen" && poi.properties.outdoorSeating === "yes");
   assert(poi.properties.operator === "Gemeinde" && poi.properties.fee === "yes" && poi.properties.capacity === "4");
   assert(poi.properties.power === "22 kW" && poi.properties.socketTypes === "Typ 2");
+});
+
+test("POI-Marker: Ziehen und Mausrad gehen an die Karte, Klick bleibt am Pin", () => {
+  const canvas = document.createElement("canvas"), layer = document.createElement("div"), marker = document.createElement("button");
+  marker.className = "poi-marker";
+  layer.append(marker);
+  let starts = 0, clicks = 0, mapClicks = 0, wheelDelta = 0;
+  canvas.addEventListener("pointerdown", () => { starts++; });
+  canvas.addEventListener("wheel", (event) => { wheelDelta = event.deltaY; });
+  marker.addEventListener("click", () => { clicks++; });
+  createPicker({ canvas, providers: [], onClick: () => { mapClicks++; } });
+  connectMarkerNavigation(layer, canvas);
+  const pointer = (target, type, x, extra = {}) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 1, pointerType: "mouse", clientX: x, clientY: 20, button: 0, buttons: type === "pointerup" || type === "pointercancel" ? 0 : 1, ...extra }));
+  pointer(marker, "pointerdown", 20);
+  pointer(canvas, "pointermove", 50);
+  pointer(canvas, "pointermove", 20);
+  pointer(canvas, "pointerup", 20);
+  assert(starts === 1 && clicks === 0 && mapClicks === 0, "Ziehen darf auch nach Rückkehr zum Start weder Pin noch Gebäude auswählen");
+  pointer(marker, "pointerdown", 20);
+  pointer(canvas, "pointerup", 21);
+  assert(clicks === 1 && mapClicks === 0, "Kurzer Klick muss nur den Pin öffnen");
+  pointer(marker, "pointerdown", 20);
+  pointer(canvas, "pointercancel", 20);
+  pointer(canvas, "pointerup", 20);
+  assert(clicks === 1, "Abgebrochene Gesten dürfen keine Auswahl auslösen");
+  marker.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -120 }));
+  assert(wheelDelta === -120, "Zoom muss über einem Pin funktionieren");
+  marker.click();
+  assert(clicks === 2, "Tastaturaktivierung muss erhalten bleiben");
 });
 
 test("POI-Marker: Nähe, Hysterese und Grössen sind begrenzt", () => {
