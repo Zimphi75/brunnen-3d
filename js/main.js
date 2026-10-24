@@ -34,8 +34,12 @@ import { initSolarPotential } from "./solar-potential.js";
 import { initTimeWeatherPanel } from "./time-weather-panel.js";
 import { initNavigationHint } from "./navigation-hint.js";
 import { addGersauerPeople, addMettlenwegSign } from "./easter-egg.js";
+import { initIntro } from "./intro.js";
 
 const $ = (selector) => document.querySelector(selector);
+// Intro-Video sofort bereitstellen (läuft schon während des Ladens). Solange es spielt, pausiert die 3D-Darstellung.
+let introScene = null, introOpen = false;
+const intro = initIntro({ onOpenChange: (open) => { introOpen = open; if (introScene) introScene.suspended = open; } });
 const errors = [];
 // Zeitmarken für den Startablauf (DevTools > Performance oder performance.getEntriesByType("mark")).
 const startupMark = (name) => { try { performance.mark(`b3d:${name}`); } catch {} };
@@ -164,6 +168,8 @@ async function start() {
   progress.finish("meta", "Gelände wird geladen …");
 
   const scene3d = createScene($("#scene"), { lowPower });
+  introScene = scene3d;
+  scene3d.suspended = introOpen;
   scene3d.renderingPaused = true; // erst nach der Shader-Vorbereitung rendern (warmUpScene)
   if (lowPower) scene3d.settings.ambientOcclusion = false;
   const ctx = { meta, frame, scene3d, errors, reportError, $, lowPower };
@@ -222,6 +228,7 @@ async function start() {
   clearInterval(loadingMessageTimer);
   $("#loading").classList.add("done");
   setTimeout(() => $("#loading").remove(), 700);
+  intro.sceneReady();
   window.brunnen = ctx; // Debug- und Testzugriff
   ctx.navigationHint = initNavigationHint({ root: $("#navigation-hint"), canvas: $("#scene") });
   Promise.all([ctx.initialCameraReady, timeTransitionReady]).then(() => ctx.navigationHint.show());

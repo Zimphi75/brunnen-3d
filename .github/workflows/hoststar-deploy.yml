@@ -48,7 +48,7 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html _site/
-          cp -R css js public _site/
+          cp -R css js public intro _site/
           # Cache-Busting: Einstiegsdateien pro Commit versionieren, damit neue Versionen sofort sichtbar sind
           v="${GITHUB_SHA::8}"
           sed -i "s#href=\"css/main.css\"#href=\"css/main.css?v=$v\"#; s#src=\"js/main.js\"#src=\"js/main.js?v=$v\"#" _site/index.html

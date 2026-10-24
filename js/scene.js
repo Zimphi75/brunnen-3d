@@ -79,6 +79,7 @@ export function createScene(canvas, { lowPower = false } = {}) {
   let fps = 60;
   let frameInfo = { calls: 0, triangles: 0 };
   let renderingPaused = false;
+  let suspended = false; // z. B. während das Intro-Video läuft
 
   function resize() {
     const width = canvas.clientWidth, height = canvas.clientHeight;
@@ -116,7 +117,7 @@ export function createScene(canvas, { lowPower = false } = {}) {
     bloomPass.enabled = settings.bloom;
     // Während des Ladens nicht rendern: Sonst kompiliert jedes neu hinzugefügte Objekt seine Shader synchron
     // im nächsten Frame und blockiert den Browser. Die Shader werden stattdessen per compileAsync vorbereitet.
-    if (!renderingPaused) {
+    if (!renderingPaused && !suspended) {
       renderer.info.reset();
       composer.render(delta);
       frameInfo = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
@@ -131,6 +132,8 @@ export function createScene(canvas, { lowPower = false } = {}) {
     set panBounds(value) { panBounds = value; },
     get renderingPaused() { return renderingPaused; },
     set renderingPaused(value) { renderingPaused = Boolean(value); },
+    get suspended() { return suspended; },
+    set suspended(value) { suspended = Boolean(value); },
     onFrame(callback) { frameCallbacks.add(callback); return () => frameCallbacks.delete(callback); },
     get fps() { return fps; },
     renderInfo: () => ({ ...frameInfo, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),

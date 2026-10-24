@@ -77,6 +77,7 @@ export async function initAlmanac(ctx) {
     </div>
     <p id="wiki" class="note">Einleitung wird geladen …</p>
     <p class="note">Alle Zahlen stammen aus offenen Quellen (Details unter «Quellen»). Fassaden und Fenster der Dorfansicht sind gestalterisch und keine Messung.</p>
+    <p class="almanac-intro"><button type="button" class="btn" data-intro-open>Intro-Video ansehen (1:32)</button> <a href="intro/">Link zum Teilen</a></p>
     <section class="imprint" aria-labelledby="imprint-title">
       <h3 id="imprint-title">Impressum</h3>
       <p><strong>Brunnen 3D – Eine private 3D-Visualisierung</strong></p>

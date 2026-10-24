@@ -6,6 +6,16 @@
 <title>Brunnen 3D – Ingenbohl SZ</title>
 <meta name="description" content="Lebendiges 3D-Modell von Ingenbohl SZ aus offenen Schweizer Daten: Gebäude, Gelände, Verkehr, Energie und Abstimmungen, unter dem echten Himmel.">
 <meta name="theme-color" content="#b6d3e8">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Brunnen 3D">
+<meta property="og:locale" content="de_CH">
+<meta property="og:title" content="Brunnen 3D – Ingenbohl SZ">
+<meta property="og:description" content="Lebendiges 3D-Modell von Ingenbohl SZ aus offenen Schweizer Daten, direkt im Browser.">
+<meta property="og:url" content="https://brunnen.multikanal.ch/">
+<meta property="og:image" content="https://brunnen.multikanal.ch/public/video/intro-poster.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="612">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="./public/favicon.png">
 <link rel="preload" href="public/data/ortho.jpg" as="image" fetchpriority="high">
 <!-- Cloudflare Web Analytics -->
@@ -192,6 +202,9 @@
       <svg class="toolbar-icon toolbar-pin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/></svg>
       <select id="preset-select" aria-label="Kameraposition wählen"></select>
     </label>
+    <button class="icon-btn toolbar-button" id="btn-intro" type="button" data-intro-open data-tooltip="Intro-Video (1:32)" aria-label="Intro-Video abspielen">
+      <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8.5 5.5 3.5-5.5 3.5z"/></svg>
+    </button>
     <button class="icon-btn toolbar-button" id="btn-theme" type="button" data-tooltip="Hell-/Dunkelmodus wechseln" aria-label="Hell-/Dunkelmodus wechseln" aria-pressed="false">
       <svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v2"/><path d="M14.837 16.385a6 6 0 1 1-7.223-7.222c.624-.147.97.66.715 1.248a4 4 0 0 0 5.26 5.259c.589-.255 1.396.09 1.248.715"/><path d="M16 12a4 4 0 0 0-4-4"/><path d="m19 5-1.256 1.256"/><path d="M20 12h2"/></svg>
     </button>
@@ -350,8 +363,32 @@
       <source type="image/webp" srcset="public/images/loading/brunnen-nacht-640.webp 640w, public/images/loading/brunnen-nacht-1080.webp 1080w, public/images/loading/brunnen-nacht-1600.webp 1600w, public/images/loading/brunnen-nacht-2400.webp 2400w" sizes="(max-aspect-ratio: 4/3) 133vh, 100vw">
       <img src="public/images/loading/brunnen-nacht-1080.jpg" srcset="public/images/loading/brunnen-nacht-640.jpg 640w, public/images/loading/brunnen-nacht-1080.jpg 1080w, public/images/loading/brunnen-nacht-1600.jpg 1600w, public/images/loading/brunnen-nacht-2400.jpg 2400w" sizes="(max-aspect-ratio: 4/3) 133vh, 100vw" width="2400" height="1800" alt="" decoding="async" fetchpriority="high" onload="this.classList.add('is-loaded')">
     </picture>
-    <div class="loading-card"><span class="loading-spinner" aria-hidden="true"></span><h2>Brunnen 3D</h2><div class="bar"><div id="loading-bar"></div></div><p id="loading-text">Lade Daten …</p><p id="loading-note" class="loading-note" aria-live="polite">Die Höhenlinien bekommen noch ihre Frisur.</p></div>
+    <div class="loading-card"><span class="loading-spinner" aria-hidden="true"></span><h2>Brunnen 3D</h2><div class="bar"><div id="loading-bar"></div></div><p id="loading-text">Lade Daten …</p><p id="loading-note" class="loading-note" aria-live="polite">Die Höhenlinien bekommen noch ihre Frisur.</p><div id="intro-offer" class="intro-offer" hidden>
+        <p class="intro-offer-text">Neu hier? Während die Karte lädt:</p>
+        <button type="button" class="btn primary intro-offer-play" id="intro-offer-play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Intro ansehen <span class="intro-duration">1:32</span></button>
+        <button type="button" class="btn intro-offer-skip" id="intro-offer-skip">Nicht mehr anzeigen</button>
+      </div></div>
   </div>
+  <div id="intro-chip" class="panel intro-chip" hidden role="status">
+    <button type="button" class="intro-chip-play" id="intro-chip-play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>Intro ansehen <span class="intro-duration">1:32</span></button>
+    <button type="button" class="icon-btn intro-chip-close" id="intro-chip-close" aria-label="Hinweis schliessen">×</button>
+  </div>
+  <dialog id="intro-dialog" class="intro-dialog" aria-labelledby="intro-title">
+    <div class="intro-frame">
+      <header class="intro-head">
+        <h2 id="intro-title">Brunnen 3D – Intro</h2>
+        <button type="button" class="icon-btn" id="intro-close" aria-label="Intro schliessen">×</button>
+      </header>
+      <video id="intro-video" controls playsinline preload="none" poster="public/video/intro-poster.webp" width="1920" height="980">
+        <track kind="captions" src="public/video/intro.de.vtt" srclang="de" label="Deutsch">
+      </video>
+      <footer class="intro-actions">
+        <button type="button" class="btn" id="intro-share"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v7h14v-7"/></svg>Teilen</button>
+        <span id="intro-share-status" class="intro-share-status" aria-live="polite"></span>
+        <button type="button" class="btn" id="intro-ready" disabled>Karte wird geladen …</button>
+      </footer>
+    </div>
+  </dialog>
   <div id="error-banner" hidden role="alert"></div>
 </div>
 <script type="module" src="js/main.js"></script>
