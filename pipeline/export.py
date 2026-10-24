@@ -14,6 +14,7 @@ from .process_osm import flat, to_local_xy  # noqa: F401  (gleiche Rundung und K
 
 SWISSTOPO_TERMS = "https://www.swisstopo.admin.ch/de/nutzungsbedingungen-kostenlose-geodaten-und-geodienste"
 BFS_TERMS = "https://www.bfs.admin.ch/bfs/de/home/dienstleistungen/ogd/nutzungsbedingungen.html"
+OPENDATA_TERMS = "https://opendata.swiss/terms-of-use#terms_by"
 
 
 def local_rings(polygon, origin) -> list[list[float]]:
@@ -99,7 +100,7 @@ def sources(metadata: dict) -> list[dict]:
          "files": ["buildings.json"], "notes": "Dachfarbe = Median der Luftbildpixel auf den Dachflächen des 3D-Modells. Näherung; Schatten und Lagegenauigkeit beeinflussen sie."},
         {"id": "osm", "title": "OpenStreetMap (Strassen, Bahn, Gewässer, POI, Linien, Laternen)", "provider": "OpenStreetMap-Mitwirkende", "license": "ODbL 1.0", "terms": "https://www.openstreetmap.org/copyright",
          "url": config.OVERPASS_URL, "coverage": "Untersuchungsgebiet inkl. Puffer", "crs": "EPSG:4326 -> EPSG:2056", "vintage": "Abruf", "format": "Overpass JSON", "retrieved": today,
-         "files": ["roads.json", "water.json", "pois.json", "transport.json", "places.json", "lamps.json"],
+         "files": ["roads.json", "water.json", "pois.json", "transport.json", "places.json", "lamps.json", "crossings.json"],
          "notes": "Vollständigkeit und Aktualität sind nicht garantiert. Strassenlaternen: nur 27 OSM-Knoten; weitere Standorte sind entlang von Strassen mit lit=yes modelliert (lamps.json, Quelle 1)."},
         {"id": "trees", "title": "Vegetationshöhenmodell NFI", "provider": "WSL / BAFU (Landesforstinventar)", "license": "ODbL mit DbCL", "terms": "https://www.envidat.ch/dataset/vegetation-height-model-nfi",
          "url": f"{config.STAC_BASE}/collections/ch.bafu.landesforstinventar-vegetationshoehenmodell", "coverage": "Schweiz, jährlich 1/6 aktualisiert", "crs": "EPSG:2056", "vintage": metadata.get("trees", {}).get("source", ""),
@@ -117,6 +118,45 @@ def sources(metadata: dict) -> list[dict]:
          "notes": "Liefert Fahrplan und Echtzeitprognosen, keine gemessenen Fahrzeugpositionen."},
         {"id": "history", "title": "Zeitreise: historische Landeskarten (zur Laufzeit)", "provider": "swisstopo", "license": "Open Government Data swisstopo (Quellenangabe)", "terms": SWISSTOPO_TERMS,
          "url": "https://wms.geo.admin.ch/ (ch.swisstopo.zeitreihen)", "coverage": "Schweiz, Kartenstände ab 1844", "format": "WMS (Browser-Abruf)", "retrieved": "zur Laufzeit", "files": []},
+        {"id": "airquality", "title": "Luftqualität und Pollen (CAMS via Open-Meteo, zur Laufzeit)", "provider": "Copernicus Atmosphere Monitoring Service (CAMS) via Open-Meteo", "license": "CC BY 4.0 (Open-Meteo; nicht-kommerzielle Nutzung)", "terms": "https://open-meteo.com/en/terms",
+         "url": "https://air-quality-api.open-meteo.com/v1/air-quality", "coverage": "Ingenbohl, Modellraster ca. 11 km", "format": "JSON (Browser-Abruf)", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "European AQI, PM2.5, PM10, Ozon, UV und saisonale Pollenwerte; CAMS-Modell, nicht gebäudescharf."},
+        {"id": "bav", "title": "ÖV-Haltestellenverzeichnis (BAV via GeoAdmin, zur Laufzeit)", "provider": "Bundesamt für Verkehr (BAV) via GeoAdmin", "license": "Open Government Data BAV (Quellenangabe)", "terms": OPENDATA_TERMS,
+         "url": "https://api3.geo.admin.ch/rest/services/api/MapServer/identify (ch.bav.haltestellen-oev)", "coverage": "Schweiz", "crs": "EPSG:2056", "vintage": "Layerstand GeoAdmin", "format": "Identify (Browser-Abruf)", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Amtliche Feature-IDs, Namen, Verkehrsmittel und Betreiberkennung; OSM-Haltestellen dienen als Fallback."},
+        {"id": "hiking", "title": "Amtliche Wanderwege (swisTLM3D, zur Laufzeit)", "provider": "swisstopo", "license": "Open Government Data swisstopo (Quellenangabe)", "terms": SWISSTOPO_TERMS,
+         "url": "https://wms.geo.admin.ch/ (ch.swisstopo.swisstlm3d-wanderwege)", "coverage": "Schweiz", "crs": "EPSG:2056", "vintage": "Layerstand 2026-07-28", "format": "WMS / GeoAdmin Identify", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Kartenüberlagerung; keine durchgängige Routenplanung."},
+        {"id": "cycling", "title": "Offizielle Velorouten (ASTRA / SchweizMobil, zur Laufzeit)", "provider": "ASTRA / SchweizMobil", "license": "Open Government Data ASTRA (Quellenangabe)", "terms": OPENDATA_TERMS,
+         "url": "https://wms.geo.admin.ch/ (ch.astra.veloland)", "coverage": "Schweiz", "crs": "EPSG:2056", "vintage": "Layerstand 2026-02-25", "format": "WMS / GeoAdmin Identify", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Nationale, regionale und lokale Velorouten als Kartenüberlagerung."},
+        {"id": "closures", "title": "Wanderwegsperrungen und Umleitungen (zur Laufzeit)", "provider": "ASTRA und Kantone", "license": "Open Government Data (Quellenangabe)", "terms": OPENDATA_TERMS,
+         "url": "https://wms.geo.admin.ch/ (ch.astra.wanderland-sperrungen_umleitungen)", "coverage": "Schweiz", "crs": "EPSG:2056", "vintage": "Layerstand täglich", "format": "WMS / GeoAdmin Identify", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Eine fehlende Sperrungsmeldung ist keine Bestätigung für einen offenen Weg."},
+        {"id": "solar_potential", "title": "Solar-Dacheignung (BFE via GeoAdmin, zur Laufzeit)", "provider": "Bundesamt für Energie (BFE) via GeoAdmin", "license": "Open Government Data BFE (Quellenangabe)", "terms": "https://www.bfe.admin.ch/bfe/de/home/news-und-medien/open-government-data.html",
+         "url": "https://api3.geo.admin.ch/rest/services/api/MapServer/identify (ch.bfe.solarenergie-eignung-daecher)", "coverage": "Schweiz, Zuordnung über EGID und Dachgeometrie", "crs": "EPSG:2056", "vintage": "Layerstand 2023-02-21", "format": "GeoAdmin Identify", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Eignung, Fläche und modellierter Jahresertrag sind keine Messung, Ertragsgarantie oder Anlagenplanung."},
+        {"id": "noise", "title": "Strassen- und Bahnlärm (BAFU via GeoAdmin)", "provider": "Bundesamt für Umwelt (BAFU) via GeoAdmin", "license": "Open Government Data BAFU (Quellenangabe)", "terms": OPENDATA_TERMS,
+         "url": "https://wms.geo.admin.ch/ (ch.bafu.laerm-strassenlaerm-*, ch.bafu.laerm-bahnlaerm-*)", "coverage": "Schweiz", "crs": "EPSG:2056", "vintage": "Referenzjahr 2021", "format": "WMS / GetFeatureInfo", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Modellierte Rasterwerte, keine Messungen am Gebäude und keine rechtsverbindliche Beurteilung."},
+        {"id": "flood", "title": "Aquaprotect 100: grobe Hochwasserübersicht (BAFU via GeoAdmin)", "provider": "Bundesamt für Umwelt (BAFU) via GeoAdmin", "license": "Open Government Data BAFU (Quellenangabe)", "terms": OPENDATA_TERMS,
+         "url": "https://wms.geo.admin.ch/ (ch.bafu.aquaprotect_100)", "coverage": "Schweiz", "crs": "EPSG:2056", "vintage": "Layerstand 2008-12-18", "format": "WMS / GetFeatureInfo", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Grobe Übersicht, keine aktuelle Warnung und keine parzellenscharfe Gefahrenkarte."},
+        {"id": "radon", "title": "Radonkarte (BAG via GeoAdmin, zur Laufzeit)", "provider": "Bundesamt für Gesundheit (BAG) via GeoAdmin", "license": "Open Government Data BAG (Quellenangabe)", "terms": OPENDATA_TERMS,
+         "url": "https://api3.geo.admin.ch/rest/services/api/MapServer/identify (ch.bag.radonkarte)", "coverage": "Schweiz, Raster ca. 1 km", "crs": "EPSG:2056", "vintage": "Layerstand GeoAdmin", "format": "GeoAdmin Identify", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Modellierte Wahrscheinlichkeit zur Überschreitung von 300 Bq/m³, keine Gebäudemessung."},
+        {"id": "soil", "title": "Geochemischer Bodenatlas (BAFU / Agroscope via GeoAdmin)", "provider": "BAFU / Agroscope via GeoAdmin", "license": "Open Government Data (Quellenangabe)", "terms": OPENDATA_TERMS,
+         "url": "https://wms.geo.admin.ch/ (ch.bafu.geochemischer-bodenatlas_schweiz)", "coverage": "Schweiz, Oberboden 0–20 cm, Raster ca. 1 km", "crs": "EPSG:2056", "vintage": "Probenahme 2011–2015", "format": "WMS / GetFeatureInfo", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Arsen, Cadmium und Blei; interpolierte Rasterwerte, keine parzellenscharfe Aussage."},
+        {"id": "hires", "title": "SWISSIMAGE: scharfes Luftbild in Blicknähe (zur Laufzeit)", "provider": "swisstopo", "license": "Open Government Data swisstopo (Quellenangabe)", "terms": SWISSTOPO_TERMS,
+         "url": "https://wms.geo.admin.ch/ (ch.swisstopo.swissimage)", "coverage": "Schweiz", "crs": "EPSG:2056", "vintage": "aktuell zum Abruf", "format": "WMS-Bild, in Blicknähe bis 0.3 m", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Separat vom vorab geladenen 2-m-Luftbild; wird in Kartennähe nachgeladen."},
+        {"id": "basemap", "title": "Landeskarte farbig (swisstopo, zur Laufzeit)", "provider": "swisstopo", "license": "Open Government Data swisstopo (Quellenangabe)", "terms": SWISSTOPO_TERMS,
+         "url": "https://wms.geo.admin.ch/ (ch.swisstopo.pixelkarte-farbe)", "coverage": "Schweiz", "crs": "EPSG:2056", "vintage": "aktuell zum Abruf", "format": "WMS-Bild", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Farbige Pixelkarte als auswählbare Grundkarte."},
+        {"id": "wikipedia", "title": "Wikipedia: Ingenbohl (Kurzbeschreibung, zur Laufzeit)", "provider": "Wikipedia-Mitwirkende", "license": "CC BY-SA 4.0", "terms": "https://creativecommons.org/licenses/by-sa/4.0/",
+         "url": "https://de.wikipedia.org/wiki/Ingenbohl", "coverage": "Gemeinde Ingenbohl", "format": "REST-API-Kurzbeschreibung", "retrieved": "zur Laufzeit", "files": [],
+         "notes": "Kurzbeschreibung im Almanach; Link zur Originalseite und Lizenzhinweis werden direkt daneben angezeigt."},
     ]
 
 

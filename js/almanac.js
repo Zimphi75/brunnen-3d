@@ -95,7 +95,7 @@ export async function initAlmanac(ctx) {
       <h3>Zugebaute Leistung nach Inbetriebnahmejahr (kW)</h3>${bars(kwByYear)}
       <p class="note">Gemessen sind Standort, Leistung, Jahr, Bauart und teils Ausrichtung und Neigung. Anzahl und Lage der Module auf dem Dach sind aus der Leistung simuliert. Das Register umfasst ${fmt(ctx.meta.pv?.unmatchedPlantsInMunicipality ?? 0)} weitere Anlagen in der Gemeinde, die keinem Gebäude im 3D-Modell zugeordnet werden konnten.</p>` : "";
     return `<h3>Hauptenergieträger der Heizung (Gebäude im 3D-Modell)</h3>${bars(entries)}
-      <p class="note">Für ${fmt(records.filter((r) => r.gwr?.heatEnergy).length)} von ${fmt(records.length)} Gebäuden ist der Energieträger im GWR erfasst. Das Solarpotenzial der Dächer (BFE sonnendach.ch) ist in dieser Version nicht integriert.</p>${pvBlock}`;
+      <p class="note">Für ${fmt(records.filter((r) => r.gwr?.heatEnergy).length)} von ${fmt(records.length)} Gebäuden ist der Energieträger im GWR erfasst. Das BFE-Solarpotenzial wird im Gebäudeprofil modelliert pro Dach ausgewiesen und hier nicht zur Gemeindestatistik aggregiert.</p>${pvBlock}`;
   }
   async function votesTab() {
     body.innerHTML = '<p class="note">Lade Resultate der eidgenössischen Abstimmungen …</p>';
@@ -124,7 +124,14 @@ export async function initAlmanac(ctx) {
   }
   function sourcesTab() {
     if (!sources) return "<p>sources.json fehlt.</p>";
-    return `<dl class="src">${sources.datasets.map((d) => `<dt>${esc(d.title)}</dt><dd>${esc(d.provider)} · ${esc(d.license)} · <a href="${esc(d.terms)}" target="_blank" rel="noopener">Bedingungen</a><br><span class="note">${esc(d.coverage ?? "")}${d.notes ? ` · ${esc(d.notes)}` : ""}</span></dd>`).join("")}</dl>`;
+    return `<dl class="src">${sources.datasets.map((d) => {
+      const endpoint = String(d.url ?? "").match(/^https?:\/\/\S+/)?.[0] ?? "";
+      const reference = endpoint ? String(d.url).slice(endpoint.length).trim() : "";
+      const dataLink = endpoint ? `<a href="${esc(endpoint)}" target="_blank" rel="noopener">Datendienst</a>${reference ? ` ${esc(reference)}` : ""}` : esc(d.url ?? "");
+      const details = [d.coverage, d.vintage ? `Datenstand ${d.vintage}` : "", d.retrieved ? `Abfrage ${d.retrieved}` : "", d.notes]
+        .filter(Boolean).map(esc).join(" · ");
+      return `<dt>${esc(d.title)}</dt><dd>${esc(d.provider)} · ${esc(d.license)}<br>${dataLink} · <a href="${esc(d.terms)}" target="_blank" rel="noopener">Bedingungen</a><br><span class="note">${details}</span></dd>`;
+    }).join("")}</dl>`;
   }
 
   async function show(tab) {

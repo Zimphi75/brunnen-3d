@@ -7,6 +7,7 @@ Die maschinenlesbare Fassung mit Abrufdatum steht in `public/data/sources.json` 
 | swissBOUNDARIES3D (Gemeindegrenze) | swisstopo | `api3.geo.admin.ch` Identify, Layer `ch.swisstopo.swissboundaries3d-gemeinde-flaeche.fill` (liefert alle historischen Stände; es wird der neueste verwendet) | GeoJSON, LV95, 2 MB roh | jährlich (Stand 2026) | OGD swisstopo, Quellenangabe |
 | swissALTI3D | swisstopo | STAC `ch.swisstopo.swissalti3d` | COG, 2-m-Raster, 48 Kacheln, ca. 48 MB | 6-Jahres-Zyklus; neueste Kachel je Position | OGD swisstopo, Quellenangabe |
 | SWISSIMAGE 10 cm | swisstopo | STAC `ch.swisstopo.swissimage-dop10` (2-m-Variante) | COG, 48 Kacheln, ca. 6 MB | jeweils neueste Kachel | OGD swisstopo, Quellenangabe |
+| Landeskarte farbig | swisstopo | WMS `ch.swisstopo.pixelkarte-farbe` | Bilddienst, zur Laufzeit | aktuell | OGD swisstopo, Quellenangabe |
 | swissBUILDINGS3D 3.0 Beta | swisstopo | STAC `ch.swisstopo.swissbuildings3d_3_0` (Kacheln je Landeskarte-Blatt; Vollabdeckung mit 14 GB wird übersprungen) | FileGDB (`Building_solid`, `Floor`), 6 Kacheln, 36 MB | je Kachel 2022–2025 | OGD swisstopo, Quellenangabe |
 | GWR Kanton SZ | BFS | `https://public.madd.bfs.admin.ch/sz.zip` | CSV (tab-getrennt), 18 MB | täglich (Stand 2026-10-21) | OGD BFS, Quellenangabe (`license.pdf` im Paket) |
 | STATPOP (Einwohner) | BFS via GeoAdmin | WMS/GetFeatureInfo `ch.bfs.volkszaehlung-bevoelkerungsstatistik_einwohner` | Rasterzellen 100 × 100 m, EPSG:2056 | 1990, 2000, 2010–2024; zur Laufzeit | OGD BFS, Quellenangabe |
@@ -19,6 +20,7 @@ Die maschinenlesbare Fassung mit Abrufdatum steht in `public/data/sources.json` 
 | Abstimmungen (Gemeinderesultate) | BFS voteinfo | `ogd-static.voteinfo-app.ch/v1/ogd/` (Pipeline, keine CORS-Header) | JSON, 6 MB je Tag, kompakt in `votes.json` | je Abstimmungstag | OGD BFS, Quellenangabe |
 | Dachfarben | swisstopo SWISSIMAGE (Luftbild) | WMS `ch.swisstopo.swissimage`, 1-km-Kacheln, nur Pipeline | JPEG, abgeleiteter Median je Dach | aktuell zum Abruf | OGD swisstopo, Quellenangabe |
 | Scharfes Luftbild in Blicknähe | swisstopo SWISSIMAGE | WMS (zur Laufzeit) | Bild | aktuell | OGD swisstopo, Quellenangabe |
+| Wikipedia-Kurzbeschreibung | Wikipedia-Mitwirkende | REST API `de.wikipedia.org/api/rest_v1/page/summary/Ingenbohl` | Textauszug in «Ingenbohl in Zahlen» | zur Laufzeit | CC BY-SA 4.0; Originalseite wird verlinkt |
 | Wetter | Open-Meteo | `api.open-meteo.com` (zur Laufzeit) | JSON | aktuell | CC BY 4.0, nicht kommerziell |
 | Luftqualität und Pollen | Copernicus CAMS Europa via Open-Meteo | `air-quality-api.open-meteo.com` (zur Laufzeit, stündlich) | European AQI, PM2.5, PM10, Ozon, UV und saisonale Pollenwerte; Modellraster ca. 11 km | CAMS-Modell, Aktualisierung zweimal täglich | CC BY 4.0, nicht kommerziell; Attribution Open-Meteo und CAMS |
 | Abfahrten | opentransportdata.swiss via transport.opendata.ch | `transport.opendata.ch/v1` (zur Laufzeit, CORS offen) | JSON | Fahrplan und Echtzeitprognose | Open Data, Quellenangabe |
