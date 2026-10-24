@@ -121,20 +121,33 @@ function animateNightToLive(ctx, startGate = Promise.resolve()) {
 async function warmUpScene(ctx) {
   const { renderer, scene, camera, composer, postProcessingScenes } = ctx.scene3d;
   // Alle Shader vor dem ersten Bild parallel vorbereiten (KHR_parallel_shader_compile), statt sie im ersten Frame
-  // synchron zu kompilieren. Die Szene wird über den EffectComposer in einen Zwischenpuffer gerendert; dafür erzeugt
-  // three.js andere Shader-Varianten (ohne Tone-Mapping, linearer Farbraum) als für den Bildschirm.
+  // synchron zu kompilieren (sonst blockiert der Browser mehrere Sekunden). Die Szene wird über den EffectComposer in
+  // einen Zwischenpuffer gerendert; dafür erzeugt three.js andere Shader-Varianten (ohne Tone-Mapping, linearer
+  // Farbraum) als für den Bildschirm. Darum je mit dem Renderziel kompilieren, in das später gezeichnet wird.
   const jobs = [{ scene, target: composer.readBuffer }, ...postProcessingScenes()];
   const previousTarget = renderer.getRenderTarget();
+  const materials = [];
   try {
-    const pending = jobs.map((job) => {
+    for (const job of jobs) {
       renderer.setRenderTarget(job.target);
-      try { return renderer.compileAsync ? renderer.compileAsync(job.scene, camera) : renderer.compile(job.scene, camera); }
+      try { materials.push(...renderer.compile(job.scene, camera)); }
       finally { renderer.setRenderTarget(previousTarget); }
-    });
-    await Promise.all(pending);
+    }
   } catch (error) {
-    renderer.setRenderTarget(previousTarget);
     console.warn("Shader-Vorbereitung übersprungen:", error);
+  }
+  // Eigene Warteschleife statt compileAsync: Wird ein Material während des Wartens ersetzt und entsorgt, löscht
+  // three.js sein Programm, und compileAsync würde nie fertig. Gelöschte Programme gelten hier als erledigt,
+  // ausserdem begrenzt ein Zeitlimit das Warten.
+  const gl = renderer.getContext();
+  const pending = (material) => {
+    const program = renderer.properties.get(material)?.currentProgram;
+    return Boolean(program) && gl.isProgram(program.program) && !program.isReady();
+  };
+  const deadline = performance.now() + 15000;
+  let open = materials;
+  while ((open = open.filter(pending)).length && performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 16));
   }
   startupMark("shadersReady");
   ctx.scene3d.renderingPaused = false;
