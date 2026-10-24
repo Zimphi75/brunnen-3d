@@ -119,24 +119,19 @@ function animateNightToLive(ctx, startGate = Promise.resolve()) {
 
 // Shader vor dem Ausblenden des Ladebildschirms kompilieren: sonst stockt der erste Teil des Zeitraffers.
 async function warmUpScene(ctx) {
-  const { renderer, scene, camera, composer, postProcessingScenes } = ctx.scene3d;
-  // Alle Shader vor dem ersten Bild parallel vorbereiten (KHR_parallel_shader_compile), statt sie im ersten Frame
-  // synchron zu kompilieren. Die Szene wird über den EffectComposer in einen Zwischenpuffer gerendert; dafür erzeugt
-  // three.js andere Shader-Varianten (ohne Tone-Mapping, linearer Farbraum) als für den Bildschirm.
-  const jobs = [{ scene, target: composer.readBuffer }, ...postProcessingScenes()];
+  const { renderer, scene, camera, composer } = ctx.scene3d;
+  // Die Szene wird über den EffectComposer in einen Zwischenpuffer gerendert. Dafür erzeugt three.js andere
+  // Shader-Varianten (ohne Tone-Mapping, linearer Farbraum) als für den Bildschirm, darum mit diesem Ziel kompilieren.
   const previousTarget = renderer.getRenderTarget();
   try {
-    const pending = jobs.map((job) => {
-      renderer.setRenderTarget(job.target);
-      try { return renderer.compileAsync ? renderer.compileAsync(job.scene, camera) : renderer.compile(job.scene, camera); }
-      finally { renderer.setRenderTarget(previousTarget); }
-    });
-    await Promise.all(pending);
+    renderer.setRenderTarget(composer.readBuffer);
+    const compiled = renderer.compileAsync ? renderer.compileAsync(scene, camera) : renderer.compile(scene, camera);
+    renderer.setRenderTarget(previousTarget);
+    await compiled;
   } catch (error) {
     renderer.setRenderTarget(previousTarget);
     console.warn("Shader-Vorbereitung übersprungen:", error);
   }
-  startupMark("shadersReady");
   ctx.scene3d.renderingPaused = false;
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }

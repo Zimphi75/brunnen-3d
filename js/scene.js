@@ -59,28 +59,7 @@ export function createScene(canvas, { lowPower = false } = {}) {
   const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.5, 0.9);
   bloomPass.enabled = false;
   composer.addPass(bloomPass);
-  const outputPass = new OutputPass();
-  composer.addPass(outputPass);
-
-  /**
-   * Shader der Nachbearbeitung (AO, Bloom, Ausgabe) sind nicht Teil der Szene und würden erst beim ersten Bild
-   * synchron kompiliert (zusammen rund 4 s auf einem Mac). Für compileAsync als Vollbild-Quads in Hilfsszenen,
-   * je mit dem Renderziel, in das der Pass später zeichnet (Zwischenpuffer oder Bildschirm).
-   */
-  function postProcessingScenes() {
-    const quad = (material) => { const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material); mesh.frustumCulled = false; return mesh; };
-    const offscreen = new THREE.Scene(), screen = new THREE.Scene();
-    for (const pass of composer.passes) {
-      const materials = new Set();
-      for (const value of Object.values(pass)) {
-        if (value?.isMaterial) materials.add(value);
-        else if (Array.isArray(value)) value.forEach((item) => { if (item?.isMaterial) materials.add(item); });
-        else if (value?.material?.isMaterial) materials.add(value.material);
-      }
-      materials.forEach((material) => (pass === outputPass ? screen : offscreen).add(quad(material)));
-    }
-    return [{ scene: offscreen, target: composer.readBuffer }, { scene: screen, target: null }];
-  }
+  composer.addPass(new OutputPass());
 
   const settings = { ambientOcclusion: true, bloom: false };
   // Transparente Überlagerungen (Wasser, Grenzvorhang, Regen, Markierungen) dürfen die AO-Tiefe nicht verfälschen.
@@ -148,7 +127,7 @@ export function createScene(canvas, { lowPower = false } = {}) {
   requestAnimationFrame(frame);
 
   return {
-    renderer, scene, camera, controls, composer, settings, aoExcluded, postProcessingScenes,
+    renderer, scene, camera, controls, composer, settings, aoExcluded,
     hasAmbientOcclusion: Boolean(aoPass),
     set panBounds(value) { panBounds = value; },
     get renderingPaused() { return renderingPaused; },
