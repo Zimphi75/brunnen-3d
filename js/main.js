@@ -37,6 +37,8 @@ import { addGersauerPeople, addMettlenwegSign } from "./easter-egg.js";
 
 const $ = (selector) => document.querySelector(selector);
 const errors = [];
+// Zeitmarken für den Startablauf (DevTools > Performance oder performance.getEntriesByType("mark")).
+const startupMark = (name) => { try { performance.mark(`b3d:${name}`); } catch {} };
 const lowPower = matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4;
 const mobileStartup = matchMedia("(max-width: 760px)").matches;
 if (mobileStartup) {
@@ -183,6 +185,7 @@ async function start() {
   }).catch((error) => { reportError("Luftbild (ortho.jpg) fehlt oder ist fehlerhaft. Pipeline: python -m pipeline.process_terrain", error); progress.finish("ortho"); });
 
   await terrain.build({ nearCenter: home, nearRadius: lowPower ? 650 : 1500, onProgress: (f) => setLoading(0.15 + 0.45 * f, "Gelände wird aufgebaut …") });
+  startupMark("terrain");
   progress.finish("terrain", "Gebäude werden geladen …");
 
   const [buildingBuffer, records, codes, addresses] = await Promise.all([
@@ -199,11 +202,14 @@ async function start() {
   }
   progress.finish("buildings");
   await orthoPromise;
+  startupMark("ortho");
   Object.assign(ctx, { buildings, records: records?.buildings ?? [], codes: codes ?? {}, addresses: addresses ?? [] });
 
   await setupUi(ctx);
+  startupMark("setupUi");
   $("#loading-text").textContent = "Szene wird vorbereitet …";
   await warmUpScene(ctx);
+  startupMark("warmUp");
   const loaderHidden = new Promise((resolve) => setTimeout(resolve, 750));
   const timeTransitionReady = animateNightToLive(ctx, loaderHidden);
   if (mobileStartup) {
@@ -303,8 +309,11 @@ async function setupUi(ctx) {
     count: buildings ? (buildings.data.count - buildings.stats().hiddenDemolished).toLocaleString("de-CH") : "", apply: (v) => { if (buildings) buildings.mesh.visible = v; },
   });
   await initDataLayers(ctx);
+  startupMark("dataLayers");
   addMettlenwegSign(ctx);
+  startupMark("mettlenweg");
   await initParcels(ctx);
+  startupMark("parcels");
 
   // Darstellung (Gebäudefarben)
   const modeSelect = $("#color-mode"), legendBox = $("#color-legend");
@@ -558,6 +567,7 @@ async function setupUi(ctx) {
   ctx.providers = providers;
   ctx.clickHandlers = [];
   initDemographicLayers(ctx);
+  startupMark("demographics");
   const analysisPanel = $("#demographic-analysis");
   const analysisModeSelect = $("#analysis-mode");
   const quarterButton = analysisPanel.querySelector('[data-analysis-view="quarter"]');
@@ -947,25 +957,41 @@ async function setupUi(ctx) {
   ctx.setClearTime = setClearTime;
 
   await initPois(ctx);
+  startupMark("pois");
   await initTransport(ctx);
+  startupMark("transport");
   initWalkingAnalysis(ctx);
+  startupMark("walking");
   initOfficialRouteAnalyses(ctx);
+  startupMark("officialRoutes");
   await initLighting(ctx);
+  startupMark("lighting");
   await initPv(ctx);
+  startupMark("pv");
   initSolarPotential(ctx);
+  startupMark("solarPotential");
   await initRegister(ctx);
+  startupMark("register");
   await initSearch(ctx);
+  startupMark("search");
   initAnalysis(ctx);
+  startupMark("analysis");
   initHires(ctx);
+  startupMark("hires");
   initGround(ctx);
+  startupMark("ground");
   initAmbient(ctx);
+  startupMark("ambient");
   addGersauerPeople(ctx);
+  startupMark("gersauerPeople");
   initHistory(ctx);
+  startupMark("history");
 
   // Wetter: Vorgaben als Auswahl, Anzeige im Zeitfeld
   ctx.onWeatherChange = () => ctx.refreshWeatherPanel?.();
   ctx.onAirQualityChange = () => ctx.refreshAirQualityPanel?.();
   initWeather(ctx);
+  startupMark("weather");
   const modes = $("#weather-mode");
   modes.addEventListener("click", (event) => {
     const button = event.target.closest("button");
@@ -987,7 +1013,9 @@ async function setupUi(ctx) {
   layers.add({ id: "shadows", label: "Schattenwurf", color: "#555", visible: true, apply: (v) => sky.setShadows(v) });
   layers.add({ id: "ao", label: "Ambient Occlusion", color: "#777", visible: scene3d.hasAmbientOcclusion && !lowPower, available: scene3d.hasAmbientOcclusion, note: "Nicht verfügbar", apply: (v) => { scene3d.settings.ambientOcclusion = v; } });
   await initAlmanac(ctx);
+  startupMark("almanac");
   initMapNavigation(ctx);
+  startupMark("mapNavigation");
 
   window.addEventListener("keydown", (event) => {
     if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)) return;
