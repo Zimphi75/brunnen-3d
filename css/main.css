@@ -524,12 +524,12 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
   #brand { top: 8px; left: 8px; width: calc(100vw - 16px); padding: 3px 5px 3px 7px; display: grid; grid-template-columns: minmax(0, 1fr) 32px; align-items: center; gap: 4px; }
   #mobile-tools-toggle { display: grid; width: 32px; height: 32px; }
   .search input { height: 30px; }
-  #clock-btn, #view-panel { display: none; }
-  body.mobile-tools-open #clock-btn { display: grid; top: 54px; left: 8px; right: 8px; transform: none; width: auto; grid-template-columns: minmax(86px, 1fr) minmax(0, 1.5fr) 24px; padding: 5px 7px; gap: 6px; }
+  #clock-btn { display: grid; top: 54px; left: 8px; right: 8px; transform: translateY(-6px); width: auto; grid-template-columns: minmax(86px, 1fr) minmax(0, 1.5fr) 24px; padding: 5px 7px; gap: 6px; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .5s ease, transform .5s ease, visibility 0s linear .5s; }
   #clock-time { font-size: 16px; }
   #clock-wx { display: block; font-size: 11px; }
   .clock-chevron { width: 21px; height: 21px; }
-  body.mobile-tools-open #view-panel { top: 100px; left: 8px; right: 8px; display: grid; grid-template-columns: 30px 1px repeat(2, 30px) 1px repeat(2, 30px) 1px minmax(0, 1fr) 30px; gap: 4px; padding: 3px 4px; }
+  #view-panel { top: 100px; left: 8px; right: 8px; display: grid; grid-template-columns: 30px 1px repeat(2, 30px) 1px repeat(2, 30px) 1px minmax(0, 1fr) 30px; gap: 4px; padding: 3px 4px; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-6px); transition: opacity .5s ease, transform .5s ease, visibility 0s linear .5s; }
+  body.mobile-tools-open #clock-btn, body.mobile-tools-open #view-panel { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; }
   #view-panel .toolbar-button { width: 30px; height: 30px; }
   #view-panel .toolbar-icon { width: 19px; height: 19px; }
   #view-panel .toolbar-divider { margin: 0; height: 19px; }
