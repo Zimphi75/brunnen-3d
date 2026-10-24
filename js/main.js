@@ -116,6 +116,7 @@ async function warmUpScene(ctx) {
   const { renderer, scene, camera } = ctx.scene3d;
   try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); }
   catch (error) { console.warn("Shader-Vorbereitung übersprungen:", error); }
+  ctx.scene3d.renderingPaused = false;
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
@@ -151,6 +152,7 @@ async function start() {
   progress.finish("meta", "Gelände wird geladen …");
 
   const scene3d = createScene($("#scene"), { lowPower });
+  scene3d.renderingPaused = true; // erst nach der Shader-Vorbereitung rendern (warmUpScene)
   if (lowPower) scene3d.settings.ambientOcclusion = false;
   const ctx = { meta, frame, scene3d, errors, reportError, $, lowPower };
 

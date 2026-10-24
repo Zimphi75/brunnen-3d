@@ -6,6 +6,7 @@ import { model, MODEL_MATERIAL } from "./models.js";
 import { roadsidePosition } from "./roadmarks.js";
 
 const POOL_SIZE = 8;
+const POOL_SIZE_LOW_POWER = 4;
 const WARM = new THREE.Color(1.0, 0.78, 0.45);
 
 function glowTexture() {
@@ -64,9 +65,10 @@ export async function initLighting(ctx) {
     scene3d.aoExcluded.add(glow);
     state.parts = { headMaterial, glowMaterial };
 
-    for (let i = 0; i < POOL_SIZE; i++) {
+    // Die Lichter bleiben immer sichtbar und werden nur über die Intensität geschaltet: Die Zahl sichtbarer
+    // Lichter gehört zum Shader-Schlüssel, jede Änderung würde alle Materialien neu kompilieren (Sekunden pro Wechsel).
+    for (let i = 0; i < (ctx.lowPower ? POOL_SIZE_LOW_POWER : POOL_SIZE); i++) {
       const light = new THREE.PointLight(0xffc27a, 0, 42, 2);
-      light.visible = false;
       scene3d.scene.add(light);
       lights.push(light);
     }
@@ -86,13 +88,12 @@ export async function initLighting(ctx) {
     if (now - lastPool < 400) return;
     lastPool = now;
     const target = scene3d.controls.target;
-    const near = heads.map((p, i) => [p.distanceToSquared(target), i]).sort((a, b) => a[0] - b[0]).slice(0, POOL_SIZE);
+    const near = heads.map((p, i) => [p.distanceToSquared(target), i]).sort((a, b) => a[0] - b[0]).slice(0, lights.length);
     lights.forEach((light, k) => {
       const entry = near[k];
-      light.visible = on && night > 0.02 && Boolean(entry) && entry[0] < 260 * 260;
-      if (!entry) return;
-      light.position.copy(heads[entry[1]]);
-      light.intensity = 110 * night;
+      const lit = on && night > 0.02 && Boolean(entry) && entry[0] < 260 * 260;
+      if (entry) light.position.copy(heads[entry[1]]);
+      light.intensity = lit ? 110 * night : 0;
     });
   });
 

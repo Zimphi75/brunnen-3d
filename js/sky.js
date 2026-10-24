@@ -145,7 +145,10 @@ export function createSky({ scene, renderer, camera, latitude, longitude, shadow
     starMaterial.opacity = Math.max(0, 1 - state.cloudCover) * Math.pow(state.night, 2) * 0.9;
     stars.visible = starMaterial.opacity > 0.01;
     scene.fog.density = 0.00004 + 0.0004 * state.fogBoost;
-    sun.castShadow = state.shadows && degrees > 1.5;
+    // castShadow nur über den Ebenenschalter ändern: Jeder Wechsel kompiliert alle Shader neu (mehrere Sekunden).
+    // Unter dem Horizont bleibt der Schatten an, die Schattenkarte wird aber nicht mehr neu gerechnet.
+    sun.castShadow = state.shadows;
+    sun.shadow.autoUpdate = degrees > 1.5;
   }
 
   /** Schattenkamera folgt dem Blickpunkt; Position wird auf Texel gerastert gegen Flimmern. */

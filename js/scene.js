@@ -77,6 +77,7 @@ export function createScene(canvas, { lowPower = false } = {}) {
   let lastFrame = performance.now();
   let fps = 60;
   let frameInfo = { calls: 0, triangles: 0 };
+  let renderingPaused = false;
 
   function resize() {
     const width = canvas.clientWidth, height = canvas.clientHeight;
@@ -112,9 +113,13 @@ export function createScene(canvas, { lowPower = false } = {}) {
     }
     if (aoPass) aoPass.enabled = settings.ambientOcclusion;
     bloomPass.enabled = settings.bloom;
-    renderer.info.reset();
-    composer.render(delta);
-    frameInfo = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
+    // Während des Ladens nicht rendern: Sonst kompiliert jedes neu hinzugefügte Objekt seine Shader synchron
+    // im nächsten Frame und blockiert den Browser. Die Shader werden stattdessen per compileAsync vorbereitet.
+    if (!renderingPaused) {
+      renderer.info.reset();
+      composer.render(delta);
+      frameInfo = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
+    }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -123,6 +128,8 @@ export function createScene(canvas, { lowPower = false } = {}) {
     renderer, scene, camera, controls, composer, settings, aoExcluded,
     hasAmbientOcclusion: Boolean(aoPass),
     set panBounds(value) { panBounds = value; },
+    get renderingPaused() { return renderingPaused; },
+    set renderingPaused(value) { renderingPaused = Boolean(value); },
     onFrame(callback) { frameCallbacks.add(callback); return () => frameCallbacks.delete(callback); },
     get fps() { return fps; },
     renderInfo: () => ({ ...frameInfo, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),
