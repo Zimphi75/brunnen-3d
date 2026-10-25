@@ -149,7 +149,7 @@ Messung in der Anwendung: `await window.brunnen.performanceReport()`. Die Werte 
 
 ## Offene Punkte und technische Schulden
 
-- Fahrmodus und detaillierte, höhen-/zugangsabhängige Fuss- und Veloroutenbewertung sind nicht umgesetzt.
+- Velomodus ist als freies Fahren umgesetzt (`ride.js`); detaillierte, höhen-/zugangsabhängige Fuss- und Veloroutenbewertung ist nicht umgesetzt. Velomodus auf Smartphones (Kompass-Joystick) ist ungetestet.
 - Fuss-Erreichbarkeit ist ein Netzwerkausschnitt, keine vollständige Isochrone: mittlere Gehgeschwindigkeit statt individueller Gehprofile, Gelände-/Steigungsaufwand und dynamische Wegsperren fehlen.
 - Offizielle Wander- und Velorouten werden als GeoAdmin-WMS dargestellt; Höhenprofile, Streckenplanung und automatische Umleitung bleiben offen. Sperrungsmeldungen werden nicht als Freigaben interpretiert.
 - Solar nutzt die BFE-Eignungskarte (Datenstand 2023-02-21), verknüpft über EGID und vorhandene 3D-Dachflächen. Die Modellproduktion ist keine Prognose für ein konkretes Anlagendesign; fehlende EGID- oder Dachübereinstimmung verhindert die Dachfärbung.
