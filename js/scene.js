@@ -99,6 +99,22 @@ export function createScene(canvas, { lowPower = false } = {}) {
   const frameCallbacks = new Set();
   const frameStats = new Map();
   let panBounds = null;
+  let groundAt = null;
+  const GROUND_CLEARANCE = 3;   // Kamera mindestens so hoch über dem Gelände (m)
+  const GROUND_PROBE = 4;       // Gelände rund um die Kamera mitprüfen, damit die Nahebene nicht in Hänge schneidet
+  /** Hält Blickpunkt und Kamera über dem Gelände: kein Zoomen oder Schwenken unter den Boden. */
+  function keepAboveGround() {
+    if (!groundAt) return;
+    const t = controls.target, p = camera.position;
+    const below = groundAt(t.x, t.z);
+    if (below !== null && t.y < below) { const dy = below - t.y; t.y += dy; p.y += dy; }
+    let ground = -Infinity;
+    for (const [dx, dz] of [[0, 0], [GROUND_PROBE, 0], [-GROUND_PROBE, 0], [0, GROUND_PROBE], [0, -GROUND_PROBE]]) {
+      const h = groundAt(p.x + dx, p.z + dz);
+      if (h !== null && h > ground) ground = h;
+    }
+    if (ground > -Infinity && p.y < ground + GROUND_CLEARANCE) p.y = ground + GROUND_CLEARANCE;
+  }
   let lastFrame = performance.now();
   let fps = 60;
   let frameInfo = { calls: 0, triangles: 0 };
@@ -126,6 +142,7 @@ export function createScene(canvas, { lowPower = false } = {}) {
       const dz = Math.min(panBounds.maxZ, Math.max(panBounds.minZ, t.z)) - t.z;
       if (dx || dz) { t.x += dx; t.z += dz; camera.position.x += dx; camera.position.z += dz; }
     }
+    keepAboveGround();
     // Nahebene folgt dem Abstand zum Blickpunkt: hält die Tiefenauflösung hoch.
     const distance = camera.position.distanceTo(controls.target);
     const near = THREE.MathUtils.clamp(distance / 150, 0.5, 60);
@@ -158,6 +175,7 @@ export function createScene(canvas, { lowPower = false } = {}) {
     renderer, scene, camera, controls, composer, settings, aoExcluded, postProcessingScenes, touchPointers,
     hasAmbientOcclusion: Boolean(aoPass),
     set panBounds(value) { panBounds = value; },
+    set groundAt(fn) { groundAt = fn; },
     /** Auflösungsfaktor begrenzen (z. B. 1.25 im leichten Modus) und Puffer neu anlegen. */
     setMaxPixelRatio(max) { renderer.setPixelRatio(Math.min(window.devicePixelRatio, max)); resize(); },
     get renderingPaused() { return renderingPaused; },

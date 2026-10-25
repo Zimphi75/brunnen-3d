@@ -273,6 +273,7 @@ async function start() {
     } catch (error) { reportError(`Strassen konnten nicht eingeebnet werden: ${error.message}`, error); }
   }
   scene3d.scene.add(terrain.group);
+  scene3d.groundAt = (x, z) => terrain.heightAt(x, z);
   scene3d.panBounds = { minX: terrain.minX, maxX: terrain.minX + terrain.width, minZ: terrain.maxZ - terrain.depth, maxZ: terrain.maxZ };
   const home = frame.toLocal(...Object.values(wgs84ToLv95(46.9992, 8.6101)));
   const orthoPromise = new THREE.TextureLoader().loadAsync("public/data/ortho.jpg").then((texture) => {
