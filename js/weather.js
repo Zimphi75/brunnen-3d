@@ -133,7 +133,7 @@ export function initWeather(ctx) {
     return result;
   }
 
-  let lastUpdate = 0, intensity = 0, mode = "none";
+  let lastUpdate = 0, intensity = 0, mode = "none", lastDescribed = "";
   scene3d.onFrame((delta, now, distance) => {
     if (now - lastUpdate > 500) {
       lastUpdate = now;
@@ -144,7 +144,9 @@ export function initWeather(ctx) {
       sky.setFogBoost(on && condition.fog ? 1 : 0);
       mode = on ? (condition.snow ? "snow" : condition.rain ? "rain" : "none") : "none";
       intensity = on ? (condition.heavy ? 1 : condition.snow || condition.rain ? 0.7 : 0) : 0;
-      describe();
+      // Anzeige und Wetterpanel nur neu aufbauen, wenn sich etwas geändert hat (vorher zweimal pro Sekunde).
+      const key = JSON.stringify([source, condition, state.effect, state.preset, state.liveTime]);
+      if (key !== lastDescribed) { lastDescribed = key; describe(); }
     }
     const R = THREE.MathUtils.clamp(distance * 0.8, 70, 1600);
     const center = scene3d.controls.target;
@@ -164,16 +166,28 @@ export function initWeather(ctx) {
     drawOverlay(delta);
   });
 
+  // Das Vollbild-Overlay kostet bei jedem Bild ein Hochladen und Überblenden der ganzen Fensterfläche, auch leer.
+  // Darum nur bei Regen oder Schnee sichtbar und gezeichnet; sonst ausgeblendet und unberührt.
+  let overlayDirty = false, flashOpacity = "0";
+  function setFlash(value) { if (value !== flashOpacity) { flashOpacity = value; flash.style.opacity = value; } }
   function drawOverlay(delta) {
-    g.clearRect(0, 0, overlay.width, overlay.height);
     if (state.condition?.storm && state.flash <= 0 && Math.random() < 0.004) state.flash = 0.25;
-    if (state.flash > 0) { state.flash -= delta; flash.style.opacity = String(Math.max(0, Math.min(0.5, state.flash * 2.4))); } else flash.style.opacity = "0";
-    if (mode === "none") return;
+    if (state.flash > 0) { state.flash -= delta; setFlash(String(Math.max(0, Math.min(0.5, state.flash * 2.4)).toFixed(2))); } else setFlash("0");
+    const active = mode !== "none";
+    if (overlay.hidden === active) overlay.hidden = !active;
+    if (!active) {
+      if (overlayDirty) { g.clearRect(0, 0, overlay.width, overlay.height); overlayDirty = false; }
+      return;
+    }
+    g.clearRect(0, 0, overlay.width, overlay.height);
+    overlayDirty = true;
     const w = overlay.width, h = overlay.height, snowMode = mode === "snow";
     g.strokeStyle = `rgba(210,225,240,${0.22 + 0.25 * intensity})`;
     g.fillStyle = "rgba(255,255,255,0.8)";
     g.lineWidth = 1;
     const count = Math.floor(drops.length * (0.5 + 0.5 * intensity));
+    // Alle Tropfen bzw. Flocken als ein Pfad und ein Zeichenbefehl statt 260 einzelner.
+    g.beginPath();
     for (let i = 0; i < count; i++) {
       const d = drops[i];
       d.y += d.v * delta * (snowMode ? 0.12 : 1.1);
@@ -181,9 +195,9 @@ export function initWeather(ctx) {
       if (d.y > 1.02) { d.y = -0.02; d.x = Math.random(); }
       if (d.x < 0) d.x += 1;
       const x = d.x * w, y = d.y * h;
-      g.beginPath();
-      if (snowMode) { g.arc(x, y, 1.6 + d.v, 0, 6.3); g.fill(); } else { g.moveTo(x, y); g.lineTo(x + 2, y - 12 - d.v * 6); g.stroke(); }
+      if (snowMode) { g.moveTo(x + 1.6 + d.v, y); g.arc(x, y, 1.6 + d.v, 0, 6.3); } else { g.moveTo(x, y); g.lineTo(x + 2, y - 12 - d.v * 6); }
     }
+    if (snowMode) g.fill(); else g.stroke();
   }
 
   function describe() {
