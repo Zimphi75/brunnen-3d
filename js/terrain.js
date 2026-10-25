@@ -153,7 +153,7 @@ export class Terrain {
   }
 
   /** Erzeugt alle Kacheln asynchron (je Frame wenige), damit die Oberfläche reaktionsfähig bleibt. */
-  async build({ nearCenter, nearRadius, onProgress }) {
+  async build({ nearCenter, nearRadius, onProgress, castShadow = true }) {
     const { nx, ny } = this.dem;
     const chunksX = Math.ceil((nx - 1) / CHUNK_CELLS);
     const chunksY = Math.ceil((ny - 1) / CHUNK_CELLS);
@@ -169,7 +169,8 @@ export class Terrain {
         let step = distance < nearRadius ? 1 : distance < nearRadius * 2.4 ? 2 : 4;
         if (this.#isFlat(i0, i1, j0, j1)) step = 16; // Seefläche: wenige Dreiecke genügen
         const mesh = new THREE.Mesh(this.#chunkGeometry(i0, i1, j0, j1, step), this.material);
-        mesh.castShadow = true;
+        // Auf Handys wirft das Gelände keine Schatten: spart pro Bild einen zweiten Durchgang über alle Geländekacheln.
+        mesh.castShadow = castShadow;
         mesh.receiveShadow = true;
         mesh.matrixAutoUpdate = false;
         this.group.add(mesh);

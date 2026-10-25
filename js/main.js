@@ -210,7 +210,7 @@ async function start() {
     progress.finish("ortho");
   }).catch((error) => { reportError("Luftbild (ortho.jpg) fehlt oder ist fehlerhaft. Pipeline: python -m pipeline.process_terrain", error); progress.finish("ortho"); });
 
-  await terrain.build({ nearCenter: home, nearRadius: lowPower ? 650 : 1500, onProgress: (f) => setLoading(0.15 + 0.45 * f, "Gelände wird aufgebaut …") });
+  await terrain.build({ nearCenter: home, nearRadius: lowPower ? 650 : 1500, castShadow: !lowPower, onProgress: (f) => setLoading(0.15 + 0.45 * f, "Gelände wird aufgebaut …") });
   startupMark("terrain");
   progress.finish("terrain", "Gebäude werden geladen …");
 

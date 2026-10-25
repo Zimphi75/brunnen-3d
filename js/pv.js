@@ -303,7 +303,7 @@ export async function initPv(ctx) {
 
   let layerOn = true;
   scene3d.onFrame((_, __, distance) => {
-    group.visible = layerOn && distance < 2200;
+    group.visible = layerOn && distance < (ctx.lowPower ? 900 : 2200); // Handy: Modulfelder nur aus der Nähe
     const day = sky.state.dayFactor ?? 1;
     const intensity = 0.08 + 1.1 * day * (1 - 0.65 * (sky.state.cloudCover ?? 0));
     for (const material of materials) material.envMapIntensity = intensity;

@@ -3,8 +3,9 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
-const HIGH_DETAIL_DISTANCE = 380;
-const VISIBLE_DISTANCE = 3800;
+// Detailstufen je Gerät: Auf Handys zeichneten die Bäume bis 3.8 km über 2 Mio. Dreiecke pro Bild (und beim
+// Neigen zum Horizont noch mehr). Dort nur bis 1.6 km, Detailmodelle mit Schattenwurf bis 200 m.
+const DISTANCES = { normal: { high: 380, visible: 3800 }, lowPower: { high: 200, visible: 1600 } };
 const CONIFER_SHARE = 0.4; // Anteil der dunkelsten Baumkronen im Luftbild, die als Nadelbaum gezeichnet werden
 const CONIFER_MIN_HEIGHT = 5;
 
@@ -208,6 +209,7 @@ export function buildTrees({ trees: input, terrain, ortho, scene3d, ctx, blocked
     uniforms.uWindStrength.value = THREE.MathUtils.clamp(0.6 + wind / 14, 0.6, 2.6);
     if (now - last < 350 || !group.visible) return;
     last = now;
+    const { high: HIGH_DETAIL_DISTANCE, visible: VISIBLE_DISTANCE } = ctx?.lowPower ? DISTANCES.lowPower : DISTANCES.normal;
     const target = scene3d.controls.target;
     for (const { meshes, cx, cz } of entries) {
       const near = Math.hypot(cx - target.x, cz - target.z) - cellSize * 0.71;
