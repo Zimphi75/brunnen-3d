@@ -261,8 +261,9 @@ export function initAmbient(ctx) {
     const densityScale = ctx.lowPower ? 0.5 : 1;
     const carCount = Math.round(THREE.MathUtils.clamp(CAR_MAX * (radius / 650) ** 1.3, 7, CAR_MAX) * (1 - 0.45 * night) * densityScale);
     const pedCount = Math.round(THREE.MathUtils.clamp(PED_MAX * (radius / 650) ** 1.3, 14, PED_MAX) * (1 - 0.5 * night) * (weather?.rain || weather?.snow ? 0.6 : 1) * densityScale);
-    // aus der Ferne vergrössert, damit Autos und Personen als Punkte erkennbar bleiben (symbolisch)
-    const carBoost = THREE.MathUtils.clamp(distance / 450, 1, 2.2), pedBoost = THREE.MathUtils.clamp(distance / 150, 1, 3.4);
+    // aus der Ferne vergrössert, damit Autos und Personen als Punkte erkennbar bleiben (symbolisch).
+    // Beide wachsen gleich, so bleiben die Grössenverhältnisse in der Nähe echt; nur ganz weit weg werden Personen stärker vergrössert.
+    const carBoost = THREE.MathUtils.clamp(distance / 450, 1, 2.2), pedBoost = THREE.MathUtils.clamp(distance / 450, 1, 3.4);
     camera.updateMatrixWorld();
     frustum.setFromProjectionMatrix(projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     const reseed = state.radius === 0 || radius > state.radius * 1.35 || radius < state.radius / 1.6;
