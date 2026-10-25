@@ -244,6 +244,8 @@ export function initAmbient(ctx) {
   const position = new THREE.Vector3(), scale = new THREE.Vector3(), q = new THREE.Quaternion(), qPitch = new THREE.Quaternion(), matrix = new THREE.Matrix4();
   const camera = scene3d.camera, ground = new THREE.Vector3(), handPoint = new THREE.Vector3(), collarPoint = new THREE.Vector3(), leashDirection = new THREE.Vector3();
   let enabledByMode = true;
+  // Handys und schwache Geräte: halb so viele Autos und Personen, weniger Rechenzeit pro Bild.
+  const densityScale = ctx.lowPower ? 0.5 : 1;
 
   scene3d.onFrame((delta, now, distance) => {
     const mode = ctx.ground?.state.mode;
@@ -257,8 +259,8 @@ export function initAmbient(ctx) {
     carUniforms.uNightGlow.value = night;
     carMat.envMapIntensity = 0.1 + 1.0 * day * (1 - 0.65 * cloud);
     const weather = ctx.weather?.state.condition;
-    const carCount = Math.round(THREE.MathUtils.clamp(CAR_MAX * (radius / 650) ** 1.3, 7, CAR_MAX) * (1 - 0.45 * night));
-    const pedCount = Math.round(THREE.MathUtils.clamp(PED_MAX * (radius / 650) ** 1.3, 14, PED_MAX) * (1 - 0.5 * night) * (weather?.rain || weather?.snow ? 0.6 : 1));
+    const carCount = Math.round(THREE.MathUtils.clamp(CAR_MAX * (radius / 650) ** 1.3, 7, CAR_MAX) * (1 - 0.45 * night) * densityScale);
+    const pedCount = Math.round(THREE.MathUtils.clamp(PED_MAX * (radius / 650) ** 1.3, 14, PED_MAX) * (1 - 0.5 * night) * (weather?.rain || weather?.snow ? 0.6 : 1) * densityScale);
     // aus der Ferne vergrössert, damit Autos und Personen als Punkte erkennbar bleiben (symbolisch)
     const carBoost = THREE.MathUtils.clamp(distance / 450, 1, 2.2), pedBoost = THREE.MathUtils.clamp(distance / 150, 1, 3.4);
     camera.updateMatrixWorld();
