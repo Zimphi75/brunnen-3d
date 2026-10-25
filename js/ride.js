@@ -4,13 +4,17 @@
 // Velo an (es fährt nicht hindurch). Arcade-Physik, keine echte Simulation.
 import * as THREE from "three";
 import { createBikeModel } from "./bike-model.js";
+import { createSegmentIndex } from "./roadindex.js";
+import { roadWidth, ROAD_WIDTH } from "./roadmarks.js";
 
 const KMH = 1 / 3.6;
 const MAX_ROAD = 40 * KMH, MAX_TERRAIN = 25 * KMH, MAX_REVERSE = 5 * KMH;
 const ACCEL = 2.4, BRAKE = 6.5, ROLL = 0.18, WHEELBASE = 1.1, MAX_STEER = 0.45;
 const FRONT_REACH = 1.05, BACK_REACH = 2.55;          // Vorderrad bzw. Anhängerheck ab Velomitte (m)
 const TREE_TRUNK = 0.55, CAR_RADIUS = 2.1, PED_RADIUS = 0.8;
-const STEEP = 0.75;                                    // steiler als 75 % ist im Gelände nicht befahrbar
+const STEEP = 1.0;                                     // steiler als 100 % (45°) ist im Gelände nicht befahrbar
+const RIBBON_LIFT = 0.3;                               // Strassen und Wege liegen so hoch über dem Gelände (features.js)
+const PIVOT_RATE = 0.9;                                // Drehen im Stand bzw. beim Schieben (rad/s)
 // Kamera relativ zum Velo (x links, y oben, z vorne), wie im Modellvorschlag
 const VIEW_FRONT = { pos: new THREE.Vector3(-2.6, 1.6, 3.2), look: new THREE.Vector3(0, 0.8, -0.6) };
 const VIEW_GAME = { pos: new THREE.Vector3(0.35, 2.05, -5.6), look: new THREE.Vector3(0, 1.0, 4) };
@@ -70,6 +74,16 @@ export function initRide(ctx) {
   const lakes = () => (ctx.waterData?.areas ?? []).filter((a) => a.k === "lake").map((a) => a.rings[0]);
 
   const ground = (x, z) => terrain.heightAt(x, z) ?? 0;
+  // Gezeichnete Strassen und Wege liegen 30 cm über dem Gelände: Räder darauf, nicht darin
+  let ribbons = null;
+  const ribbonIndex = () => (ribbons ??= createSegmentIndex(ctx.roads ?? [], (r) => !r.t && r.c !== "rail" && r.c !== "aerialway"));
+  function surface(x, z) {
+    const g = ground(x, z), near = ribbonIndex().nearest(x, z, 7);
+    if (!near) return g;
+    const road = ctx.roads[near.owner];
+    const half = (["motorway", "primary", "secondary"].includes(road.c) ? roadWidth(road) : ROAD_WIDTH[road.c] ?? 3) / 2;
+    return g + RIBBON_LIFT * THREE.MathUtils.clamp((half + 0.3 - near.distance) / 0.6, 0, 1);
+  }
   const dirX = () => Math.sin(state.heading), dirZ = () => Math.cos(state.heading);
   /** Lokaler Punkt (x links, y oben, z vorne) des Velos in Weltkoordinaten. */
   function toWorld(local, out, y0 = ground(state.x, state.z)) {
@@ -118,14 +132,14 @@ export function initRide(ctx) {
   }
 
   function pose(dt, yawRate = 0) {
-    const g = ground(state.x, state.z);
+    const g = surface(state.x, state.z);
     const fx = dirX(), fz = dirZ();
-    const front = ground(state.x + fx * 0.55, state.z + fz * 0.55), back = ground(state.x - fx * 0.55, state.z - fz * 0.55);
+    const front = surface(state.x + fx * 0.55, state.z + fz * 0.55), back = surface(state.x - fx * 0.55, state.z - fz * 0.55);
     model.group.position.set(state.x, g, state.z);
     model.group.rotation.set(0, state.heading, 0);
     model.group.rotateX(-Math.atan2(front - back, 1.1));
     const tx = state.x - fx * 1.65, tz = state.z - fz * 1.65;
-    model.update(dt, { speed: state.v, steer: state.steer, yawRate, trailerDy: Math.max(-0.4, Math.min(0.4, ground(tx, tz) - g)) });
+    model.update(dt, { speed: state.v, steer: state.steer, yawRate, trailerDy: Math.max(-0.4, Math.min(0.4, surface(tx, tz) - g)) });
   }
 
   function setNote(text) { $note.textContent = text; }
@@ -181,7 +195,7 @@ export function initRide(ctx) {
   /** Kamera im Intro: Anflug, dann Kreisbahn um den Fahrer von schräg vorne bis hinter ihn. */
   function introCamera(dt) {
     state.t += dt;
-    const g = ground(state.x, state.z);
+    const g = surface(state.x, state.z);
     if (state.t < FLY_IN) {
       const k = ease(state.t / FLY_IN);
       toWorld(VIEW_FRONT.pos, camPos, g); toWorld(VIEW_FRONT.look, camLook, g);
@@ -207,7 +221,7 @@ export function initRide(ctx) {
 
   /** Spielkamera: hinter dem Velo, folgt weich; steht ein Gebäude dazwischen, rückt sie näher. */
   function chaseCamera(dt) {
-    const g = ground(state.x, state.z);
+    const g = surface(state.x, state.z);
     let back = -VIEW_GAME.pos.z;
     const fx = dirX(), fz = dirZ();
     if (ctx.buildings) {
@@ -241,7 +255,9 @@ export function initRide(ctx) {
     // Lenken: deutlich weniger Einschlag bei hohem Tempo (bei 25 km/h rund 35 Grad pro Sekunde)
     const target = ((left ? 1 : 0) - (right ? 1 : 0)) * MAX_STEER * (1 - Math.min(0.85, Math.abs(state.v) / 9));
     state.steer += (target - state.steer) * Math.min(1, dt * 6);
-    const yawRate = (state.v / WHEELBASE) * Math.tan(state.steer);
+    // Im Stand oder beim Schieben lässt sich das Velo trotzdem drehen (z. B. nach einem Halt vor einem Hindernis)
+    const pivot = ((left ? 1 : 0) - (right ? 1 : 0)) * PIVOT_RATE * Math.max(0, 1 - Math.abs(state.v) / 1.5);
+    const yawRate = (state.v / WHEELBASE) * Math.tan(state.steer) + pivot;
     const nextHeading = state.heading + yawRate * dt;
     const step = state.v * dt;
     const nx = state.x + Math.sin(nextHeading) * step, nz = state.z + Math.cos(nextHeading) * step;
@@ -252,8 +268,9 @@ export function initRide(ctx) {
     if (blocker) {
       state.v = 0;
       state.blockedFor = 1.2;
-      setNote(`Halt: ${blocker}`);
-      return 0;
+      state.heading += pivot * dt;
+      setNote(`Halt: ${blocker} · lenken oder zurück`);
+      return pivot;
     }
     state.heading = nextHeading; state.x = nx; state.z = nz;
     if (state.blockedFor > 0 && (state.blockedFor -= dt) <= 0) setNote("");
