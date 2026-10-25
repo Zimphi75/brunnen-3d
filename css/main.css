@@ -730,3 +730,21 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
   #intro-ready { flex: 1 1 100%; justify-content: center; }
 }
 #demographic-cell-info > small { color: var(--ink-2); font-size: 10.5px; line-height: 1.35; }
+
+/* Handys und schwache Geräte (Klasse .low-power, gesetzt in main.js): keine Glas-, Unschärfe- und Schatteneffekte
+   über der laufend neu gezeichneten 3D-Karte. backdrop-filter auf jeder POI-Markierung und jedem Panel muss sonst bei
+   jedem Bild neu berechnet werden und blockierte mobile Browser beim schnellen Verschieben und Zoomen. */
+.low-power .panel, .low-power .loading-card, .low-power .navigation-hint-card { backdrop-filter: none; -webkit-backdrop-filter: none; }
+.low-power .panel { background: var(--panel-solid); }
+.low-power .poi-marker::before {
+  backdrop-filter: none; -webkit-backdrop-filter: none; transition: none;
+  background: color-mix(in srgb, var(--poi-color) 78%, #ffffff);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+}
+.low-power .poi-marker.is-near::before, .low-power .poi-marker:hover::before, .low-power .poi-marker:focus-visible::before,
+.low-power .poi-marker.is-selected::before { box-shadow: 0 0 0 2px rgba(255, 255, 255, .85), 0 1px 3px rgba(0, 0, 0, .35); }
+.low-power .poi-glass-stem { box-shadow: none; }
+.low-power .poi-marker svg { filter: none; }
+.low-power .poi-marker, .low-power .poi-marker.is-visible { transition: none; }
+.low-power .plabel { text-shadow: 0 0 2px #fff, 0 0 3px #fff; }
+:root[data-theme="dark"].low-power .plabel { text-shadow: 0 0 2px #0b1220, 0 0 3px #0b1220; }

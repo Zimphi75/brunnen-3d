@@ -30,7 +30,8 @@ export async function initLighting(ctx) {
   group.name = "street-lamps";
   const lights = [];
   const heads = [];
-  const state = { bloom: true, lampsOn: true, night: 0 };
+  // Leuchteffekt (Bloom: mehrere Vollbild-Unschärfe-Durchgänge) auf Handys standardmässig aus, zuschaltbar in den Ebenen.
+  const state = { bloom: !ctx.lowPower, lampsOn: true, night: 0 };
 
   if (lamps.length) {
     const poles = new THREE.InstancedMesh(model("streetLampPole"), MODEL_MATERIAL, lamps.length);
@@ -102,6 +103,6 @@ export async function initLighting(ctx) {
     id: "lamps", label: "Strassenlaternen", color: "#f0c060", available: lamps.length > 0, note: "lamps.json fehlt",
     count: lamps.length ? `${real} OSM + ${lamps.length - real} mod.` : "", apply: (v) => { state.lampsOn = v; },
   });
-  layers.add({ id: "bloom", label: "Leuchten bei Nacht", color: "#f0c060", visible: true, apply: (v) => { state.bloom = v; } });
+  layers.add({ id: "bloom", label: "Leuchten bei Nacht", color: "#f0c060", visible: state.bloom, apply: (v) => { state.bloom = v; } });
   ctx.lighting = state;
 }

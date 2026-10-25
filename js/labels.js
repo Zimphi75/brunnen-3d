@@ -4,6 +4,7 @@ import { esc } from "./inspector.js";
 
 export function createLabelLayer({ container, camera, canvas, terrain }) {
   const pool = [];
+  const sizes = new WeakMap(); // gemessene Grösse je Beschriftungselement (nur bei Textwechsel neu gemessen)
   const projected = new THREE.Vector3();
   const layersPanel = document.querySelector("#layers-panel");
 
@@ -36,26 +37,37 @@ export function createLabelLayer({ container, camera, canvas, terrain }) {
     const placed = [];
     let used = 0;
     const panelRect = layersPanel && !layersPanel.hidden ? layersPanel.getBoundingClientRect() : null;
+    const canvasRect = panelRect ? canvas.getBoundingClientRect() : null;
     for (const c of candidates) {
       if (used >= limit) break;
       // grobe Kollisionsvermeidung zwischen Beschriftungen
       if (placed.some((p) => Math.abs(p.sx - c.sx) < 70 && Math.abs(p.sy - c.sy) < 14)) continue;
       const element = acquire(used);
-      element.hidden = false;
-      element.className = `plabel ${c.item.className ?? ""}`;
-      if (element.dataset.text !== c.item.text) { element.innerHTML = esc(c.item.text); element.dataset.text = c.item.text; }
-      element.style.transform = `translate(${c.sx.toFixed(0)}px, ${c.sy.toFixed(0)}px) translate(-50%, -100%)`;
+      // Nur geänderte Werte schreiben und Grössen zwischenspeichern: Schreiben und gleich wieder Messen
+      // (getBoundingClientRect) erzwang pro Beschriftung ein Layout der ganzen Seite.
+      const className = `plabel ${c.item.className ?? ""}`;
+      if (element.className !== className) element.className = className;
+      if (element.dataset.text !== c.item.text) {
+        element.innerHTML = esc(c.item.text);
+        element.dataset.text = c.item.text;
+        element.hidden = false;
+        sizes.set(element, { width: element.offsetWidth, height: element.offsetHeight });
+      }
+      const transform = `translate(${c.sx.toFixed(0)}px, ${c.sy.toFixed(0)}px) translate(-50%, -100%)`;
+      if (element.style.transform !== transform) element.style.transform = transform;
       if (panelRect) {
-        const labelRect = element.getBoundingClientRect();
-        if (labelRect.left < panelRect.right && labelRect.right > panelRect.left && labelRect.top < panelRect.bottom && labelRect.bottom > panelRect.top) {
-          element.hidden = true;
+        const size = sizes.get(element) ?? { width: 80, height: 16 };
+        const left = canvasRect.left + c.sx - size.width / 2, top = canvasRect.top + c.sy - size.height;
+        if (left < panelRect.right && left + size.width > panelRect.left && top < panelRect.bottom && top + size.height > panelRect.top) {
+          if (!element.hidden) element.hidden = true;
           continue;
         }
       }
+      if (element.hidden) element.hidden = false;
       placed.push(c);
       used++;
     }
-    for (let i = used; i < pool.length; i++) pool[i].hidden = true;
+    for (let i = used; i < pool.length; i++) if (!pool[i].hidden) pool[i].hidden = true;
   }
 
   return { render, clear: () => pool.forEach((el) => { el.hidden = true; }) };

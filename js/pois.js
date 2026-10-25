@@ -88,12 +88,14 @@ function candidateOverlapsPanel(point, width, height, panels) {
 }
 
 function setMarkerVisible(marker, visible, opacity = 0) {
-  marker.classList.toggle("is-visible", visible);
-  const alpha = opacity.toFixed(3);
+  // Nur bei Änderungen ins DOM schreiben: Sonst erzwingen über 500 Markierungen alle 90 ms eine neue Stilberechnung.
+  if (marker.classList.contains("is-visible") !== visible) marker.classList.toggle("is-visible", visible);
+  const alpha = opacity.toFixed(2);
   if (marker.style.getPropertyValue("--poi-opacity") !== alpha) marker.style.setProperty("--poi-opacity", alpha);
   const hidden = String(!visible);
   if (marker.getAttribute("aria-hidden") !== hidden) marker.setAttribute("aria-hidden", hidden);
-  marker.tabIndex = visible ? 0 : -1;
+  const tabIndex = visible ? 0 : -1;
+  if (marker.tabIndex !== tabIndex) marker.tabIndex = tabIndex;
 }
 
 function resolveMarkerHeight(index, pois, positions, groundHeights, resolvedHeights, verticalRay, buildings) {
@@ -155,8 +157,10 @@ export async function initPois(ctx) {
     selected = index;
     markers.forEach((marker, itemIndex) => marker.classList.toggle("is-selected", itemIndex === index));
   };
+  let blockers = [], blockersReadAt = -Infinity;
+  const updateInterval = ctx.lowPower ? POI_DISPLAY.updateIntervalMs * 1.6 : POI_DISPLAY.updateIntervalMs;
   scene3d.onFrame((_, now) => {
-    if (now - lastUpdate < POI_DISPLAY.updateIntervalMs) return;
+    if (now - lastUpdate < updateInterval) return;
     lastUpdate = now;
     if (markerLayer.hidden || !poiLayerVisible) return;
     const canvas = $("#scene"), width = canvas.clientWidth, height = canvas.clientHeight;
@@ -167,10 +171,14 @@ export async function initPois(ctx) {
       lastOcclusionCheck = now;
       occlusionCursor = (occlusionCursor + 8) % Math.max(1, pois.length);
     }
-    const inspectorPanel = $("#inspector");
-    const blockers = [...document.querySelectorAll(".panel:not([hidden])")]
-      .filter((panel) => panel !== inspectorPanel)
-      .map((panel) => panel.getBoundingClientRect());
+    // Panel-Rechtecke nur alle 400 ms lesen: Jedes Lesen erzwingt sonst ein Layout der ganzen Seite.
+    if (now - blockersReadAt > 400) {
+      blockersReadAt = now;
+      const inspectorPanel = $("#inspector");
+      blockers = [...document.querySelectorAll(".panel:not([hidden])")]
+        .filter((panel) => panel !== inspectorPanel)
+        .map((panel) => panel.getBoundingClientRect());
+    }
     const candidates = [];
     for (let step = 0; step < pois.length; step++) {
       const index = (occlusionStart + step) % pois.length;
@@ -250,8 +258,9 @@ export async function initPois(ctx) {
   }));
   let labelsOn = true;
   let last = 0;
+  const labelInterval = ctx.lowPower ? 200 : 120;
   scene3d.onFrame((_, now) => {
-    if (now - last < 120) return;
+    if (now - last < labelInterval) return;
     last = now;
     if (!labelsOn) { labels.clear(); return; }
     labels.render(placeItems, { limit: 34 });
