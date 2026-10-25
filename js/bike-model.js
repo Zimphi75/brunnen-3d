@@ -5,7 +5,7 @@ import * as THREE from "three";
 
 const mats = new Map();
 
-/** Erzeugt das Modell. `update(dt, { speed, steer, yawRate, trailerDy })` bewegt die Teile; `speed` in m/s. */
+/** Erzeugt das Modell. `update(dt, { speed, steer, yawRate, pitch, trailerDy, trailerPitch })` bewegt die Teile; `speed` in m/s. */
 export function createBikeModel() {
   // ---------- Bausteine (wie models.js: Quader, Zylinder, Ring) ----------
 
@@ -213,7 +213,7 @@ export function createBikeModel() {
   let dist = 0, pedal = 0.6, time = 0, trailerAngle = 0;
   const HITCH_TO_AXLE = 1.15;
 
-  function update(dt, { speed = 0, steer: steerAngle = 0, yawRate = 0, trailerDy = 0 } = {}) {
+  function update(dt, { speed = 0, steer: steerAngle = 0, yawRate = 0, pitch = 0, trailerDy = 0, trailerPitch = 0 } = {}) {
     time += dt;
     dist += speed * dt;
     // vorwärts treten: Kurbel dreht im Sinn der Räder; im Leerlauf und rückwärts stehen die Pedale
@@ -222,6 +222,7 @@ export function createBikeModel() {
     tWheels.forEach((w) => (w.rotation.x = dist / 0.25));
     poseLegs(pedal);
     const k = Math.min(1, Math.abs(speed) / 4);
+    bike.rotation.x = pitch;
     bike.rotation.z = -steerAngle * Math.min(1, Math.abs(speed) / 6) * 0.35 + Math.sin(time * 1.3) * 0.012 * k;
     steer.rotation.y = steerAngle;
     rider.position.y = Math.abs(Math.sin(pedal)) * 0.008 * k;
@@ -230,7 +231,7 @@ export function createBikeModel() {
     trailerAngle = THREE.MathUtils.clamp(trailerAngle, -1.1, 1.1);
     trailer.position.copy(trailerRest).applyAxisAngle(UP, trailerAngle).add(hitchBike);
     trailer.position.y = trailerDy;
-    trailer.rotation.y = trailerAngle;
+    trailer.rotation.set(trailerPitch, trailerAngle, 0, "YXZ");
     trailer.updateMatrix();
     hitchTrailer.set(-0.28, 0.3, TL / 2 + 0.02).applyMatrix4(trailer.matrix);
     setTube(drawbar, hitchBike.clone().add(tmp.set(0, 0, -0.03)), hitchTrailer);

@@ -4,7 +4,6 @@
 // Velo an (es fährt nicht hindurch). Arcade-Physik, keine echte Simulation.
 import * as THREE from "three";
 import { createBikeModel } from "./bike-model.js";
-import { createSegmentIndex } from "./roadindex.js";
 import { roadWidth, ROAD_WIDTH } from "./roadmarks.js";
 
 const KMH = 1 / 3.6;
@@ -75,15 +74,43 @@ export function initRide(ctx) {
 
   const ground = (x, z) => terrain.heightAt(x, z) ?? 0;
   // Gezeichnete Strassen und Wege liegen 30 cm über dem Gelände: Räder darauf, nicht darin
+  // Gezeichnete Strassen und Wege liegen 30 cm über dem Gelände. Massgebend ist das höchste Band an der Stelle
+  // (nicht das nächste: neben der Strasse verlaufen oft schmale Trottoir-Linien, die sonst den Belag «absenken»).
   let ribbons = null;
-  const ribbonIndex = () => (ribbons ??= createSegmentIndex(ctx.roads ?? [], (r) => !r.t && r.c !== "rail" && r.c !== "aerialway"));
-  function surface(x, z) {
-    const g = ground(x, z), near = ribbonIndex().nearest(x, z, 7);
-    if (!near) return g;
-    const road = ctx.roads[near.owner];
-    const half = (["motorway", "primary", "secondary"].includes(road.c) ? roadWidth(road) : ROAD_WIDTH[road.c] ?? 3) / 2;
-    return g + RIBBON_LIFT * THREE.MathUtils.clamp((half + 0.3 - near.distance) / 0.6, 0, 1);
+  function ribbonGrid() {
+    if (ribbons) return ribbons;
+    ribbons = new Map();
+    for (const road of ctx.roads ?? []) {
+      if (road.t || road.c === "rail" || road.c === "aerialway") continue;
+      const half = (["motorway", "primary", "secondary"].includes(road.c) ? roadWidth(road) : ROAD_WIDTH[road.c] ?? 3) / 2;
+      const p = road.p;
+      for (let i = 0; i + 3 < p.length; i += 2) {
+        const seg = [p[i], p[i + 1], p[i + 2], p[i + 3], half];
+        const x0 = Math.floor(Math.min(p[i], p[i + 2]) / 20), x1 = Math.floor(Math.max(p[i], p[i + 2]) / 20);
+        const z0 = Math.floor(Math.min(p[i + 1], p[i + 3]) / 20), z1 = Math.floor(Math.max(p[i + 1], p[i + 3]) / 20);
+        for (let gx = x0; gx <= x1; gx++) for (let gz = z0; gz <= z1; gz++) {
+          const key = `${gx}:${gz}`;
+          if (!ribbons.has(key)) ribbons.set(key, []);
+          ribbons.get(key).push(seg);
+        }
+      }
+    }
+    return ribbons;
   }
+  function ribbonLift(x, z) {
+    const grid = ribbonGrid(), gx = Math.floor(x / 20), gz = Math.floor(z / 20);
+    let best = 0;
+    for (let i = gx - 1; i <= gx + 1; i++) for (let j = gz - 1; j <= gz + 1; j++) {
+      for (const [x0, z0, x1, z1, half] of grid.get(`${i}:${j}`) ?? []) {
+        const dx = x1 - x0, dz = z1 - z0, t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / (dx * dx + dz * dz || 1)));
+        const d = Math.hypot(x - x0 - dx * t, z - z0 - dz * t);
+        const lift = THREE.MathUtils.clamp((half + 0.3 - d) / 0.6, 0, 1);
+        if (lift > best) { best = lift; if (best >= 1) return RIBBON_LIFT; }
+      }
+    }
+    return best * RIBBON_LIFT;
+  }
+  const surface = (x, z) => ground(x, z) + ribbonLift(x, z);
   const dirX = () => Math.sin(state.heading), dirZ = () => Math.cos(state.heading);
   /** Lokaler Punkt (x links, y oben, z vorne) des Velos in Weltkoordinaten. */
   function toWorld(local, out, y0 = ground(state.x, state.z)) {
@@ -112,8 +139,10 @@ export function initRide(ctx) {
     for (const ring of lakes()) if (pointInRing(px, pz, ring)) return "See";
     const ambient = ctx.ambient;
     if (ambient) {
-      for (const a of ambient.cars) if (a.line && a.x !== undefined && Math.hypot(a.x - px, a.z - pz) < CAR_RADIUS) return "Auto";
-      for (const a of ambient.peds) if (a.line && a.x !== undefined && Math.hypot(a.x - px, a.z - pz) < PED_RADIUS) return "Person";
+      // nur Autos und Personen, die gerade gezeichnet werden (inaktive behalten ihre letzte Position)
+      const frame = ambient.state.frame ?? 0, live = (a) => a.line && a.seen !== undefined && a.seen >= frame - 1;
+      for (const a of ambient.cars) if (live(a) && Math.hypot(a.x - px, a.z - pz) < CAR_RADIUS) return "Auto";
+      for (const a of ambient.peds) if (live(a) && Math.hypot(a.x - px, a.z - pz) < PED_RADIUS) return "Person";
     }
     if (terrain.grading?.roadAt(px, pz) === null || terrain.grading?.roadAt(px, pz) === undefined) {
       const rise = Math.abs(ground(px, pz) - ground(fromX, fromZ));
@@ -136,10 +165,15 @@ export function initRide(ctx) {
     const fx = dirX(), fz = dirZ();
     const front = surface(state.x + fx * 0.55, state.z + fz * 0.55), back = surface(state.x - fx * 0.55, state.z - fz * 0.55);
     model.group.position.set(state.x, g, state.z);
-    model.group.rotation.set(0, state.heading, 0);
-    model.group.rotateX(-Math.atan2(front - back, 1.1));
+    model.group.rotation.set(0, state.heading, 0);   // nur Gierung: Velo und Anhänger neigen sich je für sich
     const tx = state.x - fx * 1.65, tz = state.z - fz * 1.65;
-    model.update(dt, { speed: state.v, steer: state.steer, yawRate, trailerDy: Math.max(-0.4, Math.min(0.4, surface(tx, tz) - g)) });
+    const trailerFront = surface(tx + fx * 0.4, tz + fz * 0.4), trailerBack = surface(tx - fx * 0.4, tz - fz * 0.4);
+    model.update(dt, {
+      speed: state.v, steer: state.steer, yawRate,
+      pitch: -Math.atan2(front - back, 1.1),
+      trailerDy: THREE.MathUtils.clamp(surface(tx, tz) - g, -1.5, 1.5),
+      trailerPitch: -Math.atan2(trailerFront - trailerBack, 0.8),
+    });
   }
 
   function setNote(text) { $note.textContent = text; }

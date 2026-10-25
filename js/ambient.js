@@ -257,6 +257,7 @@ export function initAmbient(ctx) {
     enabledByMode = mode !== "aerial" && mode !== "map";
     group.visible = state.enabled && enabledByMode && distance < ACTIVE_DISTANCE;
     if (!group.visible) return;
+    state.frame = (state.frame ?? 0) + 1;
     const dt = Math.min(0.1, delta), clock = now / 1000;
     const target = scene3d.controls.target;
     const radius = THREE.MathUtils.clamp(distance * 1.2, 120, 650);
@@ -316,7 +317,7 @@ export function initAmbient(ctx) {
       if (!alive || away) { place(a, carNet, carGrid, target, radius, true); if (!a.line) continue; sample(a, temp); }
       const lane = a.line.lanes.length ? a.line.lanes[a.lane % a.line.lanes.length] : a.line.width / 4;
       const x = temp.x - temp.tz * lane, z = temp.z + temp.tx * lane;
-      a.x = x; a.z = z; a.tx = temp.tx; a.tz = temp.tz;
+      a.x = x; a.z = z; a.tx = temp.tx; a.tz = temp.tz; a.seen = state.frame;
       const y = (terrain.heightAt(x, z) ?? 0) + 0.3;
       const ahead = terrain.heightAt(x + temp.tx * 1.8, z + temp.tz * 1.8), behind = terrain.heightAt(x - temp.tx * 1.8, z - temp.tz * 1.8);
       const pitch = ahead !== null && behind !== null ? -Math.atan2(ahead - behind, 3.6) : 0;
@@ -342,7 +343,7 @@ export function initAmbient(ctx) {
       sample(a, temp);
       const away = Math.hypot(temp.x - target.x, temp.z - target.z) > radius * 1.25;
       if (!alive || away) { place(a, walkNet, walkGrid, target, radius, true); if (!a.line) continue; sample(a, temp); }
-      a.x = temp.x; a.z = temp.z; a.tx = temp.tx; a.tz = temp.tz;
+      a.x = temp.x; a.z = temp.z; a.tx = temp.tx; a.tz = temp.tz; a.seen = state.frame;
       a.phase += a.speed * dt * 4.5;
       const k = a.scale * pedBoost;
       const y = (terrain.heightAt(temp.x, temp.z) ?? 0) + 0.34;
