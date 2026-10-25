@@ -90,6 +90,7 @@ Es gibt bewusst **kein Backend**: Die Laufzeit-APIs (Open-Meteo, transport.opend
 | `geo.js` | LV95, lokale Koordinaten, WGS84 (swisstopo-Näherungsformeln) |
 | `scene.js` | Renderer, Kamera, OrbitControls (linke Taste verschiebt, Grenzen), EffectComposer (GTAO, Bloom), AO-Ausschlussliste |
 | `terrain.js` | Gelände-Kacheln, Höhenabfrage, Strahltest; Shader für simulierten Boden, historische Karte und scharfe Nahkachel |
+| `grading.js` | Strassen ins Gelände legen (Vorbild speicher.mlanalytica.com): 2-m-Strassenraster, Glättung nur im Netz (Haarnadelkurven getrennt), Abtrag/Aufschüttung mit Böschungen bis 13 m (max. ±4 m, unter der Fahrbahn ±6 m); See, Gebäude (3 m Schutzzone), Brücken und Tunnel bleiben unverändert. `terrain.heightAt` liefert auf Strassen die geglättete Fahrbahn, `terrain.rawHeightAt` das Originalgelände (Höhenprofile). Vergleich ohne Einebnung: `?grading=0` |
 | `roadmarks.js` | Mittel- und Randlinien aus Strassenklasse und -breite, Unterbruch bei Kreuzungen (über den Segmentindex mit Strassen-Besitzer) |
 | `track.js` | Gleise: Schotterbett mit Schwellentextur (UV nach Laufmeter), zwei Schienenbänder, Schienen nur unter 1.5 km Blickabstand |
 | `vehicles.js` | Modelle und Materialien für den Alltag: Autos als Querschnitts-Lofts mit Glas, Felgen, Leuchten und Klarlack-Material (Materialcode je Dreieck, Himmelsumgebung), Personen und Hunde mit Gehbewegung im Vertex-Shader |

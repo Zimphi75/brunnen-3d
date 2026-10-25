@@ -81,7 +81,7 @@ export function initAnalysis(ctx) {
       const count = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 10));
       for (let k = i === 1 ? 0 : 1; k <= count; k++) {
         const p = a.clone().lerp(b, k / count);
-        samples.push({ x: p.x, z: p.z, h: terrain.heightAt(p.x, p.z) ?? p.y });
+        samples.push({ x: p.x, z: p.z, h: terrain.rawHeightAt(p.x, p.z) ?? p.y });
       }
     }
     let horizontal = 0, surface = 0, up = 0, down = 0;

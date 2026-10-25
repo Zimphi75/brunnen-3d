@@ -127,8 +127,25 @@ export class Terrain {
     return values[cj * nx + ci] * scale;
   }
 
-  /** Höhe (lokales y) an einer lokalen Position (x, z), bilinear interpoliert. */
+  /** Eingeebnete Strassen (siehe grading.js): Strassenoberfläche und unverändertes Originalgelände. */
+  setGrading(grading) {
+    this.grading = grading;
+  }
+
+  /** Originalhöhe aus swissALTI3D (ohne Einebnung der Strassen), z. B. für Höhenprofile. */
+  rawHeightAt(x, z) {
+    return this.grading ? this.grading.rawHeightAt(x, z) : this.heightAt(x, z);
+  }
+
+  /** Höhe (lokales y) an einer lokalen Position (x, z): auf Strassen die geglättete Fahrbahn, sonst bilinear aus dem Raster. */
   heightAt(x, z) {
+    const road = this.grading?.roadAt(x, z);
+    if (road !== null && road !== undefined) return road;
+    return this.groundAt(x, z);
+  }
+
+  /** Höhe des Geländerasters (lokales y), bilinear interpoliert. */
+  groundAt(x, z) {
     const { cell, nx, ny } = this.dem;
     const fi = (x - this.minX) / cell;
     const fj = (this.maxZ - z) / cell;

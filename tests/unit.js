@@ -15,6 +15,7 @@ import { normalizePoi, POI_DISPLAY } from "../js/pois.js";
 import { stopPlacement, fetchOfficialStops } from "../js/transport.js";
 import { initAlmanac, renderVote, voteTitle } from "../js/almanac.js";
 import { Terrain } from "../js/terrain.js";
+import { gradeTerrain, gradeWidth } from "../js/grading.js";
 import { createCameraRig, connectMarkerNavigation, createPicker } from "../js/controls.js";
 import { buildLocationRating } from "../js/location-rating.js";
 import { fetchBuildingEnvironment } from "../js/environment.js";
@@ -31,6 +32,23 @@ const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 const assert = (condition, message = "Bedingung verletzt") => { if (!condition) throw new Error(message); };
 const near = (actual, expected, tolerance, label = "") => assert(Math.abs(actual - expected) <= tolerance, `${label} ${actual} != ${expected} ±${tolerance}`);
+
+test("Strassen einebnen: Fahrbahn glatt, See, Gebäude und Brücken unverändert", () => {
+  const nx = 41, ny = 41, cell = 5, scale = 0.1, values = new Uint16Array(nx * ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) values[j * nx + i] = Math.round((i < 4 ? 3 : 10 + i * cell * 0.1 + ((i + j) % 2 ? 1.5 : 0)) / scale);
+  const raw = values.slice();
+  const roads = [{ c: "minor", p: [30, 100, 190, 100] }, { c: "minor", b: 1, p: [30, 50, 190, 50] }];
+  const grading = gradeTerrain({ dem: { values, nx, ny, cell, scale }, minX: 0, maxZ: 200, roads, footprints: new Float32Array([100, 104, 110, 115]) });
+  const profile = (fn) => { const out = []; for (let x = 40; x <= 180; x += 5) out.push(fn(x, 100)); return out; };
+  const bump = (a) => Math.max(...a.slice(1, -1).map((v, k) => Math.abs(v - (a[k] + a[k + 2]) / 2)));
+  assert(bump(profile(grading.rawHeightAt)) > 1, "Testgelände sollte Buckel haben");
+  assert(bump(profile(grading.roadAt)) < 0.2, "Fahrbahn bleibt bucklig");
+  for (let j = 0; j < ny; j++) for (let i = 0; i < 4; i++) assert(values[j * nx + i] === raw[j * nx + i], "See verändert");
+  for (let j = 17; j <= 19; j++) for (let i = 20; i <= 22; i++) assert(values[j * nx + i] === raw[j * nx + i], "Gebäudegrund verändert");
+  for (let i = 6; i < 38; i++) assert(values[30 * nx + i] === raw[30 * nx + i], "Brücke eingeebnet");
+  assert(grading.roadAt(100, 150) === null, "roadAt neben der Strasse");
+  assert(gradeWidth({ c: "path" }) === null && gradeWidth({ c: "rail" }) === 4, "Breiten");
+});
 
 test("WGS84 -> LV95: Bern (swisstopo-Referenzpunkt)", () => {
   const { e, n } = wgs84ToLv95(46.9510828, 7.4386372); // Alte Sternwarte Bern

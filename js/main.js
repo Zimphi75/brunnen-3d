@@ -4,6 +4,7 @@ import { createFrame, formatLv95, wgs84ToLv95 } from "./geo.js";
 import { loadJson, loadOptionalJson, loadBinary, loadOptionalBinary, parseDem, parseBuildings, createProgress } from "./api.js";
 import { createScene } from "./scene.js";
 import { Terrain } from "./terrain.js";
+import { gradeTerrain, buildingFootprints } from "./grading.js";
 import { Buildings, COLOR_MODES, buildYear } from "./buildings.js";
 import { createCameraRig, createPicker } from "./controls.js";
 import { createLayerManager } from "./layers.js";
@@ -245,11 +246,32 @@ async function start() {
   if (lowPower) scene3d.settings.ambientOcclusion = false;
   const ctx = { meta, frame, scene3d, errors, reportError, $, lowPower };
 
+  // Strassen und Gebäude parallel zum Gelände laden: Sie werden für das Einebnen der Strassen gebraucht.
+  const roadsPromise = loadOptionalJson("roads.json");
+  const buildingsPromise = Promise.all([
+    loadOptionalBinary("buildings3d.bin"), loadOptionalJson("buildings.json"), loadOptionalJson("codes.json"), loadOptionalJson("addresses.json"),
+  ]);
   const dem = parseDem(await loadBinary("dem.bin"), meta);
   progress.finish("dem", "Gelände wird aufgebaut …");
 
   const terrain = new Terrain(dem, frame, { lowPower });
   ctx.terrain = terrain;
+  const [buildingBuffer, records, codes, addresses] = await buildingsPromise;
+  let buildingData = null;
+  if (buildingBuffer && records) {
+    try { buildingData = parseBuildings(buildingBuffer, records.buildings); } catch (error) { reportError(`Gebäudedaten fehlerhaft: ${error.message}`, error); }
+  }
+  ctx.roadsFile = await roadsPromise;
+  // Strassen ins Gelände legen; ?grading=0 zeigt zum Vergleich das unveränderte Gelände.
+  if (ctx.roadsFile && urlParams.get("grading") !== "0") {
+    setLoading(0.15, "Strassen werden ins Gelände gelegt …");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      const grading = gradeTerrain({ dem, minX: terrain.minX, maxZ: terrain.maxZ, roads: ctx.roadsFile.roads, footprints: buildingFootprints(buildingData) });
+      terrain.setGrading(grading);
+      console.info("Strassen eingeebnet", grading.stats);
+    } catch (error) { reportError(`Strassen konnten nicht eingeebnet werden: ${error.message}`, error); }
+  }
   scene3d.scene.add(terrain.group);
   scene3d.panBounds = { minX: terrain.minX, maxX: terrain.minX + terrain.width, minZ: terrain.maxZ - terrain.depth, maxZ: terrain.maxZ };
   const home = frame.toLocal(...Object.values(wgs84ToLv95(46.9992, 8.6101)));
@@ -265,16 +287,13 @@ async function start() {
   startupMark("terrain");
   progress.finish("terrain", "Gebäude werden geladen …");
 
-  const [buildingBuffer, records, codes, addresses] = await Promise.all([
-    loadOptionalBinary("buildings3d.bin"), loadOptionalJson("buildings.json"), loadOptionalJson("codes.json"), loadOptionalJson("addresses.json"),
-  ]);
   let buildings = null;
-  if (buildingBuffer && records) {
+  if (buildingData) {
     try {
-      buildings = new Buildings(parseBuildings(buildingBuffer, records.buildings), records.buildings, codes ?? {});
+      buildings = new Buildings(buildingData, records.buildings, codes ?? {});
       scene3d.scene.add(buildings.mesh);
     } catch (error) { reportError(`Gebäudedaten fehlerhaft: ${error.message}`, error); }
-  } else {
+  } else if (!buildingBuffer || !records) {
     reportError("Gebäudedaten fehlen. Pipeline: python -m pipeline.process_buildings");
   }
   progress.finish("buildings");

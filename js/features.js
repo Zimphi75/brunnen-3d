@@ -79,7 +79,7 @@ function buildRoadGroups(roads, terrain, roadIndex, bridges, crossings) {
       const widths = kind === "motorway" || kind === "primary" || kind === "secondary" ? members.map((m) => roadWidth(m.road)) : null;
       const blend = kind !== "aerialway";
       const mesh = new THREE.Mesh(buildRibbons(lines, {
-        width: style.width, widths, lift: 0.3, terrain, step: kind === "aerialway" ? 25 : 8, heightFns,
+        width: style.width, widths, lift: 0.3, terrain, step: kind === "aerialway" ? 25 : 4, heightFns,
         colors: blend ? members.map((m) => blendColors(m.road, nodes)) : null,
       }), blend ? vertexMaterial() : overlayMaterial(style.color));
       mesh.receiveShadow = true;
@@ -94,7 +94,7 @@ function buildRoadGroups(roads, terrain, roadIndex, bridges, crossings) {
       for (const [lines, meta, width] of [[dashes, dashMeta, 0.15], [edges, edgeMeta, 0.12]]) {
         if (!lines.length) continue;
         const mesh = new THREE.Mesh(buildRibbons(lines, {
-          width, lift: 0.34, terrain, step: 8, heightFns: meta.map((m) => bridges?.heightFn(m.owner) ?? null), sStarts: meta.map((m) => m.s0),
+          width, lift: 0.34, terrain, step: 4, heightFns: meta.map((m) => bridges?.heightFn(m.owner) ?? null), sStarts: meta.map((m) => m.s0),
         }), paint);
         mesh.renderOrder = 3;
         mesh.receiveShadow = true;
@@ -163,7 +163,7 @@ export async function initDataLayers(ctx) {
   const { terrain, scene3d, layers, reportError } = ctx;
   const scene = scene3d.scene;
   const [roadsFile, waterFile, treeBuffer, municipality, crossingFile] = await Promise.all([
-    loadOptionalJson("roads.json"), loadOptionalJson("water.json"), loadOptionalBinary("trees.bin"), loadOptionalJson("municipality.json"), loadOptionalJson("crossings.json"),
+    ctx.roadsFile !== undefined ? ctx.roadsFile : loadOptionalJson("roads.json"), loadOptionalJson("water.json"), loadOptionalBinary("trees.bin"), loadOptionalJson("municipality.json"), loadOptionalJson("crossings.json"),
   ]);
   ctx.municipality = municipality;
   ctx.waterData = waterFile;
