@@ -69,6 +69,8 @@ export async function initSearch(ctx) {
   }
 
   function choose(entry) {
+    // Aus dem Velomodus: Modus beenden und direkt zum gewählten Objekt fliegen
+    if (ctx.ride?.active) ctx.ride.stop({ flyBack: false });
     list.hidden = true;
     input.value = entry.label;
     let target;

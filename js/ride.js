@@ -205,7 +205,7 @@ export function initRide(ctx) {
     if (panel && modeBefore !== "clear") panel.setMode("clear");
   }
 
-  function stop() {
+  function stop({ flyBack = true } = {}) {
     if (!state.active) return;
     state.active = false;
     state.phase = "off";
@@ -223,7 +223,7 @@ export function initRide(ctx) {
     if (modeBefore && modeBefore !== "clear") ctx.timeWeatherPanel?.setMode(modeBefore);
     modeBefore = null;
     const target = new THREE.Vector3(state.x, ground(state.x, state.z), state.z);
-    ctx.rig?.flyTo({ target, distance: 260, heading: state.heading + Math.PI, tilt: THREE.MathUtils.degToRad(55), duration: 1.4 });
+    if (flyBack) ctx.rig?.flyTo({ target, distance: 260, heading: state.heading + Math.PI, tilt: THREE.MathUtils.degToRad(55), duration: 1.4 });
   }
 
   /** Kamera im Intro: Anflug, dann Kreisbahn um den Fahrer von schräg vorne bis hinter ihn. */
@@ -346,6 +346,7 @@ export function initRide(ctx) {
       return;
     }
     if (event.key === "Escape") { stop(); return; }
+    if (event.key === "/") { event.preventDefault(); document.getElementById("search-input")?.focus(); return; }
     if (event.key === " ") { event.preventDefault(); ring(); return; }
     const key = KEYS[event.key];
     if (key) { event.preventDefault(); if (state.phase === "ride") keys.add(key); }
