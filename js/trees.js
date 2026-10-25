@@ -5,7 +5,8 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 // Detailstufen je Gerät: Auf Handys zeichneten die Bäume bis 3.8 km über 2 Mio. Dreiecke pro Bild (und beim
 // Neigen zum Horizont noch mehr). Dort nur bis 1.6 km, Detailmodelle mit Schattenwurf bis 200 m.
-const DISTANCES = { normal: { high: 380, visible: 3800 }, lowPower: { high: 200, visible: 1600 } };
+const DISTANCES = { normal: { high: 380, visible: 3800, thinFrom: Infinity }, lowPower: { high: 140, visible: 1600, thinFrom: 450 } };
+const THIN_SHARE = 0.4; // Handy: ab thinFrom nur 40 % der vereinfachten Bäume zeichnen (gleichmässig ausgedünnt)
 const CONIFER_SHARE = 0.4; // Anteil der dunkelsten Baumkronen im Luftbild, die als Nadelbaum gezeichnet werden
 const CONIFER_MIN_HEIGHT = 5;
 
@@ -172,6 +173,11 @@ export function buildTrees({ trees: input, terrain, ortho, scene3d, ctx, blocked
     const meshes = [];
     for (const [species, list] of Object.entries(bySpecies)) {
       if (!list.length) continue;
+      // Reihenfolge mischen (reproduzierbar): Kürzt man später die Instanzzahl, dünnt das gleichmässig aus statt einen Streifen wegzuschneiden.
+      for (let k = list.length - 1; k > 0; k--) {
+        const j = Math.floor(hash(trees.x[list[k]] + k, trees.z[list[k]] - k) * (k + 1));
+        [list[k], list[j]] = [list[j], list[k]];
+      }
       const high = new THREE.InstancedMesh(geometries[`${species}High`], material, list.length);
       const low = new THREE.InstancedMesh(geometries[`${species}Low`], material, list.length);
       list.forEach((tree, slot) => {
@@ -209,13 +215,14 @@ export function buildTrees({ trees: input, terrain, ortho, scene3d, ctx, blocked
     uniforms.uWindStrength.value = THREE.MathUtils.clamp(0.6 + wind / 14, 0.6, 2.6);
     if (now - last < 350 || !group.visible) return;
     last = now;
-    const { high: HIGH_DETAIL_DISTANCE, visible: VISIBLE_DISTANCE } = ctx?.lowPower ? DISTANCES.lowPower : DISTANCES.normal;
+    const { high: HIGH_DETAIL_DISTANCE, visible: VISIBLE_DISTANCE, thinFrom } = ctx?.lowPower ? DISTANCES.lowPower : DISTANCES.normal;
     const target = scene3d.controls.target;
     for (const { meshes, cx, cz } of entries) {
       const near = Math.hypot(cx - target.x, cz - target.z) - cellSize * 0.71;
       for (const { high, low } of meshes) {
         high.visible = near < HIGH_DETAIL_DISTANCE;
         low.visible = !high.visible && near < VISIBLE_DISTANCE;
+        low.count = near < thinFrom ? high.count : Math.max(1, Math.ceil(high.count * THIN_SHARE));
       }
     }
   });
