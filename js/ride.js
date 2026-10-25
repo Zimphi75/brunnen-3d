@@ -52,7 +52,7 @@ export function initRide(ctx) {
   const fly = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
   const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), lookSmooth = new THREE.Vector3();
   const ray = new THREE.Ray(), v3 = new THREE.Vector3();
-  let groundBefore = null;
+  let groundBefore = null, modeBefore = null;
 
   // Bäume in einem 20-m-Raster für schnelle Abfragen
   let treeGrid = null;
@@ -148,6 +148,13 @@ export function initRide(ctx) {
     setNote("Bereit machen …");
     button?.setAttribute("aria-pressed", "true");
     document.body.classList.add("ride-mode");
+    // Pins und Beschriftungen ausblenden (auch ohne neues CSS im Browser-Cache)
+    const labels = document.getElementById("labels");
+    if (labels) labels.style.visibility = "hidden";
+    // Immer bei Tageslicht fahren: Darstellung «Hell & klar», beim Beenden zurück
+    const panel = ctx.timeWeatherPanel;
+    modeBefore = panel?.state.mode ?? null;
+    if (panel && modeBefore !== "clear") panel.setMode("clear");
   }
 
   function stop() {
@@ -163,6 +170,10 @@ export function initRide(ctx) {
     hud.hidden = true;
     button?.setAttribute("aria-pressed", "false");
     document.body.classList.remove("ride-mode");
+    const labels = document.getElementById("labels");
+    if (labels) labels.style.visibility = "";
+    if (modeBefore && modeBefore !== "clear") ctx.timeWeatherPanel?.setMode(modeBefore);
+    modeBefore = null;
     const target = new THREE.Vector3(state.x, ground(state.x, state.z), state.z);
     ctx.rig?.flyTo({ target, distance: 260, heading: state.heading + Math.PI, tilt: THREE.MathUtils.degToRad(55), duration: 1.4 });
   }
