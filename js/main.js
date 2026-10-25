@@ -45,9 +45,13 @@ const errors = [];
 const startupMark = (name) => { try { performance.mark(`b3d:${name}`); } catch {} };
 // ?lowpower=1 erzwingt den Handy-Modus auch am Computer (zum Testen der mobilen Einstellungen).
 const urlParams = new URLSearchParams(location.search);
-const lowPower = matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4 || urlParams.has("lowpower");
-// ?quality=high schaltet die automatische Umstellung auf den leichten Modus ab.
-const adaptiveQuality = urlParams.get("quality") !== "high";
+// ?quality=high erzwingt die volle Darstellung und schaltet die automatische Umstellung ab.
+const forceHighQuality = urlParams.get("quality") === "high";
+// Firefox leitet jeden WebGL-Befehl an einen eigenen Grafikprozess weiter und ist bei vielen Zeichenbefehlen und
+// backdrop-filter deutlich langsamer als Chromium-Browser; er startet deshalb im leichten Modus.
+const isFirefox = /\bFirefox\//.test(navigator.userAgent);
+const lowPower = !forceHighQuality && (matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4 || urlParams.has("lowpower") || isFirefox);
+const adaptiveQuality = !forceHighQuality;
 const mobileStartup = matchMedia("(max-width: 760px)").matches;
 if (lowPower) document.documentElement.classList.add("low-power");
 if (mobileStartup) {
@@ -182,7 +186,9 @@ function enableLightMode(ctx, reason) {
  */
 function watchFrameRate(ctx) {
   if (!adaptiveQuality || ctx.lowPower) return;
-  const WINDOW = 90, SLOW_MS = 45;
+  // Langsam ist ein Messfenster, wenn der Median über 45 ms liegt (unter ca. 22 fps) oder wenn sich harte Hänger
+  // über 120 ms häufen; Letzteres erkennt Ruckeln beim Neigen, das den Median kaum verändert.
+  const WINDOW = 90, SLOW_MS = 45, HITCH_MS = 120, MAX_HITCHES = 4;
   let samples = [], slowWindows = 0, lastFrame = 0, quietUntil = performance.now() + 2500;
   const stop = ctx.scene3d.onFrame(() => {
     const now = performance.now();
@@ -192,12 +198,13 @@ function watchFrameRate(ctx) {
     if (document.hidden || ctx.scene3d.suspended || ctx.scene3d.renderingPaused || now < quietUntil || interval > 1000) return;
     samples.push(interval);
     if (samples.length < WINDOW) return;
+    const hitches = samples.filter((value) => value > HITCH_MS).length;
     samples.sort((a, b) => a - b);
     const median = samples[samples.length >> 1];
     samples = [];
-    slowWindows = median > SLOW_MS ? slowWindows + 1 : 0;
+    slowWindows = median > SLOW_MS || hitches >= MAX_HITCHES ? slowWindows + 1 : 0;
     if (slowWindows >= 2) {
-      enableLightMode(ctx, `Bildrate ${Math.round(1000 / median)} fps`);
+      enableLightMode(ctx, `Bildrate ${Math.round(1000 / median)} fps, ${hitches} Hänger über ${HITCH_MS} ms`);
       stop();
     }
   });

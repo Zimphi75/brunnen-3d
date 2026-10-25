@@ -24,9 +24,12 @@ export function initHires(ctx) {
     const image = new Image();
     image.crossOrigin = "anonymous";
     image.decoding = "async";
+    const loaded = new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; });
     image.src = url;
-    if (image.decode) await image.decode();
-    else await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; });
+    await loaded;
+    // Vorab dekodieren ist nur eine Optimierung: Schlägt es fehl (in Firefox bei grossen Bildern möglich),
+    // wird das geladene Bild trotzdem verwendet und beim Hochladen dekodiert.
+    await image.decode?.().catch(() => {});
     return image;
   }
   const state = { enabled: true, failed: false, current: null, loading: null, layer: "ch.swisstopo.swissimage", format: "image/jpeg" };
