@@ -39,10 +39,12 @@ export function initRide(ctx) {
   hud.id = "ride-hud";
   hud.hidden = true;
   hud.innerHTML = `
-    <div class="ride-street" id="ride-street">–</div>
+    <div class="ride-info">
+      <div class="ride-street" id="ride-street">–</div>
+      <div class="ride-meta"><span id="ride-surface">Strasse</span> · max. <span class="num" id="ride-max">40</span> km/h</div>
+      <div class="ride-note" id="ride-note" aria-live="polite"></div>
+    </div>
     <div class="ride-speed"><span class="num" id="ride-kmh">0</span><span class="ride-unit">km/h</span></div>
-    <div class="ride-meta"><span id="ride-surface">Strasse</span> · max. <span class="num" id="ride-max">40</span> km/h</div>
-    <div class="ride-note" id="ride-note" aria-live="polite"></div>
     <div class="ride-touch" aria-hidden="true">
       <button type="button" data-key="left">◀</button><button type="button" data-key="up">▲</button>
       <button type="button" data-key="down">▼</button><button type="button" data-key="right">▶</button>
