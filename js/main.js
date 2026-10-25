@@ -43,7 +43,8 @@ const intro = initIntro({ onOpenChange: (open) => { introOpen = open; if (introS
 const errors = [];
 // Zeitmarken für den Startablauf (DevTools > Performance oder performance.getEntriesByType("mark")).
 const startupMark = (name) => { try { performance.mark(`b3d:${name}`); } catch {} };
-const lowPower = matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4;
+// ?lowpower=1 erzwingt den Handy-Modus auch am Computer (zum Testen der mobilen Einstellungen).
+const lowPower = matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4 || new URLSearchParams(location.search).has("lowpower");
 const mobileStartup = matchMedia("(max-width: 760px)").matches;
 if (mobileStartup) {
   document.body.classList.add("mobile-tools-open", "mobile-startup-sequence");

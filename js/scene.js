@@ -95,6 +95,7 @@ export function createScene(canvas, { lowPower = false } = {}) {
     };
   }
   const frameCallbacks = new Set();
+  const frameStats = new Map();
   let panBounds = null;
   let lastFrame = performance.now();
   let fps = 60;
@@ -128,11 +129,15 @@ export function createScene(canvas, { lowPower = false } = {}) {
     const near = THREE.MathUtils.clamp(distance / 150, 0.5, 60);
     if (Math.abs(near - camera.near) > near * 0.1) { camera.near = near; camera.updateProjectionMatrix(); }
     for (const callback of frameCallbacks) {
+      const started = performance.now();
       try { callback(delta, now, distance); }
       catch (error) {
         console.error("3D-Frame-Callback entfernt:", error);
         frameCallbacks.delete(callback);
       }
+      const spent = performance.now() - started;
+      const stat = frameStats.get(callback);
+      if (stat) { stat.total += spent; stat.calls++; if (spent > stat.max) stat.max = spent; }
     }
     if (aoPass) aoPass.enabled = settings.ambientOcclusion;
     bloomPass.enabled = settings.bloom;
@@ -155,7 +160,19 @@ export function createScene(canvas, { lowPower = false } = {}) {
     set renderingPaused(value) { renderingPaused = Boolean(value); },
     get suspended() { return suspended; },
     set suspended(value) { suspended = Boolean(value); },
-    onFrame(callback) { frameCallbacks.add(callback); return () => frameCallbacks.delete(callback); },
+    onFrame(callback) {
+      // Herkunft (Datei:Zeile) für die Leistungsmessung merken, siehe frameStats()
+      const origin = (new Error().stack ?? "").split("\n").map((line) => line.match(/\/js\/([\w-]+\.js)[^:]*:(\d+)/)).filter(Boolean)[1];
+      frameStats.set(callback, { origin: origin ? `${origin[1]}:${origin[2]}` : "?", total: 0, calls: 0, max: 0 });
+      frameCallbacks.add(callback);
+      return () => { frameCallbacks.delete(callback); frameStats.delete(callback); };
+    },
+    /** Rechenzeit je Bild-Callback (Konsole: brunnen.scene3d.frameStats()); reset=true setzt die Zähler zurück. */
+    frameStats(reset = false) {
+      const rows = [...frameStats.values()].map((stat) => ({ origin: stat.origin, avgMs: +(stat.total / Math.max(1, stat.calls)).toFixed(2), maxMs: +stat.max.toFixed(1), calls: stat.calls }));
+      if (reset) for (const stat of frameStats.values()) { stat.total = 0; stat.calls = 0; stat.max = 0; }
+      return rows.sort((a, b) => b.maxMs - a.maxMs);
+    },
     get fps() { return fps; },
     renderInfo: () => ({ ...frameInfo, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures }),
   };
