@@ -39,6 +39,7 @@ export function initRide(ctx) {
   hud.id = "ride-hud";
   hud.hidden = true;
   hud.innerHTML = `
+    <div class="ride-street" id="ride-street">–</div>
     <div class="ride-speed"><span class="num" id="ride-kmh">0</span><span class="ride-unit">km/h</span></div>
     <div class="ride-meta"><span id="ride-surface">Strasse</span> · max. <span class="num" id="ride-max">40</span> km/h</div>
     <div class="ride-note" id="ride-note" aria-live="polite"></div>
@@ -46,16 +47,16 @@ export function initRide(ctx) {
       <button type="button" data-key="left">◀</button><button type="button" data-key="up">▲</button>
       <button type="button" data-key="down">▼</button><button type="button" data-key="right">▶</button>
     </div>
-    <button type="button" class="ride-exit" id="ride-exit">Beenden <kbd>Esc</kbd></button>`;
+    <button type="button" class="ride-exit" id="ride-exit">Absteigen und Beenden <kbd>Esc</kbd></button>`;
   document.body.append(hud);
-  const $kmh = hud.querySelector("#ride-kmh"), $surface = hud.querySelector("#ride-surface"), $max = hud.querySelector("#ride-max"), $note = hud.querySelector("#ride-note");
+  const $street = hud.querySelector("#ride-street"), $kmh = hud.querySelector("#ride-kmh"), $surface = hud.querySelector("#ride-surface"), $max = hud.querySelector("#ride-max"), $note = hud.querySelector("#ride-note");
 
   const state = { active: false, phase: "off", t: 0, x: 0, z: 0, heading: 0, v: 0, steer: 0, onRoad: true, blockedFor: 0 };
   const keys = new Set();
   const fly = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
   const camPos = new THREE.Vector3(), camLook = new THREE.Vector3(), lookSmooth = new THREE.Vector3();
   const ray = new THREE.Ray(), v3 = new THREE.Vector3();
-  let groundBefore = null, modeBefore = null;
+  let groundBefore = null, modeBefore = null, streetTimer = 0;
 
   // Bäume in einem 20-m-Raster für schnelle Abfragen
   let treeGrid = null;
@@ -85,7 +86,7 @@ export function initRide(ctx) {
       const half = (["motorway", "primary", "secondary"].includes(road.c) ? roadWidth(road) : ROAD_WIDTH[road.c] ?? 3) / 2;
       const p = road.p;
       for (let i = 0; i + 3 < p.length; i += 2) {
-        const seg = [p[i], p[i + 1], p[i + 2], p[i + 3], half];
+        const seg = [p[i], p[i + 1], p[i + 2], p[i + 3], half, road];
         const x0 = Math.floor(Math.min(p[i], p[i + 2]) / 20), x1 = Math.floor(Math.max(p[i], p[i + 2]) / 20);
         const z0 = Math.floor(Math.min(p[i + 1], p[i + 3]) / 20), z1 = Math.floor(Math.max(p[i + 1], p[i + 3]) / 20);
         for (let gx = x0; gx <= x1; gx++) for (let gz = z0; gz <= z1; gz++) {
@@ -111,6 +112,23 @@ export function initRide(ctx) {
     return best * RIBBON_LIFT;
   }
   const surface = (x, z) => ground(x, z) + ribbonLift(x, z);
+  /** Name der Strasse bzw. des Wegs unter dem Velo, sonst «Abseits der Strasse». */
+  function streetName(x, z) {
+    const grid = ribbonGrid(), gx = Math.floor(x / 20), gz = Math.floor(z / 20);
+    let best = null, bestScore = Infinity;
+    for (let i = gx - 1; i <= gx + 1; i++) for (let j = gz - 1; j <= gz + 1; j++) {
+      for (const [x0, z0, x1, z1, half, road] of grid.get(`${i}:${j}`) ?? []) {
+        const dx = x1 - x0, dz = z1 - z0, t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / (dx * dx + dz * dz || 1)));
+        const d = Math.hypot(x - x0 - dx * t, z - z0 - dz * t);
+        if (d > half + 1.5) continue;
+        const score = d - half + (road.n ? 0 : 3);          // benannte Strassen bevorzugen
+        if (score < bestScore) { bestScore = score; best = road; }
+      }
+    }
+    if (!best) return "Abseits der Strasse";
+    if (best.n) return best.n;
+    return { footway: "Fussweg", cycleway: "Veloweg", steps: "Treppe", path: "Weg", pedestrian: "Fussgängerzone", track: "Feldweg", service: "Zufahrt" }[best.hw] ?? { path: "Weg", track: "Feldweg", service: "Zufahrt" }[best.c] ?? "Strasse ohne Namen";
+  }
   const dirX = () => Math.sin(state.heading), dirZ = () => Math.cos(state.heading);
   /** Lokaler Punkt (x links, y oben, z vorne) des Velos in Weltkoordinaten. */
   function toWorld(local, out, y0 = ground(state.x, state.z)) {
@@ -319,6 +337,7 @@ export function initRide(ctx) {
     else { yawRate = physics(dt); chaseCamera(dt); }
     pose(dt, yawRate);
     camera.lookAt(controls.target);
+    if ((streetTimer -= dt) <= 0) { streetTimer = 0.3; $street.textContent = streetName(state.x, state.z); }
     const kmh = Math.round(Math.abs(state.v) / KMH);
     $kmh.textContent = String(kmh);
     $surface.textContent = state.onRoad ? "Strasse" : "Gelände";
@@ -346,7 +365,6 @@ export function initRide(ctx) {
       return;
     }
     if (event.key === "Escape") { stop(); return; }
-    if (event.key === "/") { event.preventDefault(); document.getElementById("search-input")?.focus(); return; }
     if (event.key === " ") { event.preventDefault(); ring(); return; }
     const key = KEYS[event.key];
     if (key) { event.preventDefault(); if (state.phase === "ride") keys.add(key); }

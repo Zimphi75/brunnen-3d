@@ -766,4 +766,7 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
 .ride-touch { display: none; grid-template-columns: repeat(4, 52px); gap: 8px; margin-top: 4px; }
 .ride-touch button { height: 52px; font-size: 20px; border-radius: 12px; border: 1px solid var(--rule); background: var(--panel-solid); color: var(--ink); touch-action: none; }
 @media (pointer: coarse) { .ride-touch { display: grid; } }
-body.ride-mode #navigation-hint, body.ride-mode #labels { display: none !important; }
+/* Im Velomodus nur Szene und Tempoanzeige: alle Bedienelemente der App sind ausgeblendet */
+body.ride-mode #app > :not(#scene), body.ride-mode > :not(#app):not(#ride-hud):not(script):not(style) { display: none !important; }
+body.ride-mode #scene { pointer-events: none; }
+.ride-street { font-family: var(--f-display); font-size: 17px; font-weight: 600; text-align: center; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
