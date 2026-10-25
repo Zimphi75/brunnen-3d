@@ -45,12 +45,48 @@ export function initRide(ctx) {
       <div class="ride-note" id="ride-note" aria-live="polite"></div>
     </div>
     <div class="ride-speed"><span class="num" id="ride-kmh">0</span><span class="ride-unit">km/h</span></div>
-    <div class="ride-touch" aria-hidden="true">
-      <button type="button" data-key="left">◀</button><button type="button" data-key="up">▲</button>
-      <button type="button" data-key="down">▼</button><button type="button" data-key="right">▶</button>
-    </div>
     <button type="button" class="ride-exit" id="ride-exit">Absteigen und Beenden <kbd>Esc</kbd></button>`;
   document.body.append(hud);
+  // Smartphone: Kompass-Joystick am unteren Rand (vor, zurück, links, rechts), mit kurzer Anleitung beim Start
+  const touch = matchMedia("(pointer: coarse)").matches;
+  const stick = document.createElement("div");
+  stick.id = "ride-stick";
+  stick.hidden = true;
+  stick.setAttribute("aria-hidden", "true");
+  stick.innerHTML = `
+    <div class="ride-stick-help">Daumen auf den Kompass legen und ziehen</div>
+    <div class="ride-stick-pad">
+      <svg viewBox="0 0 160 160" aria-hidden="true">
+        <circle cx="80" cy="80" r="76" class="ring"/><circle cx="80" cy="80" r="52" class="inner"/>
+        <g class="ticks">${Array.from({ length: 24 }, (_, i) => `<line x1="80" y1="6" x2="80" y2="${i % 6 === 0 ? 16 : 11}" transform="rotate(${i * 15} 80 80)"/>`).join("")}</g>
+        <path class="arrow" d="M80 24l10 13H70z"/><path class="arrow" d="M80 136l10-13H70z"/>
+        <path class="arrow" d="M24 80l13-10v20z"/><path class="arrow" d="M136 80l-13-10v20z"/>
+      </svg>
+      <span class="ride-stick-label up">Vor</span><span class="ride-stick-label down">Zurück</span>
+      <span class="ride-stick-label left">Links</span><span class="ride-stick-label right">Rechts</span>
+      <div class="ride-stick-knob"></div>
+    </div>`;
+  document.body.append(stick);
+  const pad = stick.querySelector(".ride-stick-pad"), knob = stick.querySelector(".ride-stick-knob");
+  const joy = { x: 0, y: 0, id: null };   // x: rechts +, y: vor +, je -1..1
+  function moveStick(event) {
+    const r = pad.getBoundingClientRect(), radius = r.width / 2;
+    let dx = (event.clientX - r.left - radius) / (radius * 0.72), dy = (event.clientY - r.top - radius) / (radius * 0.72);
+    const len = Math.hypot(dx, dy); if (len > 1) { dx /= len; dy /= len; }
+    joy.x = Math.abs(dx) < 0.12 ? 0 : dx; joy.y = Math.abs(dy) < 0.12 ? 0 : -dy;
+    knob.style.transform = `translate(${dx * radius * 0.72}px, ${dy * radius * 0.72}px)`;
+  }
+  function releaseStick() { joy.x = 0; joy.y = 0; joy.id = null; knob.style.transform = ""; stick.classList.remove("is-active"); }
+  pad.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    if (state.phase !== "ride") return;
+    joy.id = event.pointerId; pad.setPointerCapture(event.pointerId);
+    stick.classList.add("is-active", "is-learned");
+    moveStick(event);
+  });
+  pad.addEventListener("pointermove", (event) => { if (event.pointerId === joy.id) moveStick(event); });
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) pad.addEventListener(type, (event) => { if (event.pointerId === joy.id) releaseStick(); });
+  let helpTimer = 0;
   const $street = hud.querySelector("#ride-street"), $kmh = hud.querySelector("#ride-kmh"), $surface = hud.querySelector("#ride-surface"), $max = hud.querySelector("#ride-max"), $note = hud.querySelector("#ride-note");
 
   const state = { active: false, phase: "off", t: 0, x: 0, z: 0, heading: 0, v: 0, steer: 0, onRoad: true, blockedFor: 0 };
@@ -212,6 +248,9 @@ export function initRide(ctx) {
     fly.pos.copy(camera.position); fly.look.copy(controls.target);
     state.phase = "intro"; state.t = 0;
     hud.hidden = false;
+    stick.hidden = !touch;
+    stick.classList.remove("is-ready", "is-learned", "is-active");
+    hud.classList.toggle("is-touch", touch);
     hud.classList.add("is-intro");
     setNote("Bereit machen …");
     button?.setAttribute("aria-pressed", "true");
@@ -236,6 +275,9 @@ export function initRide(ctx) {
     controls.minDistance = 15;
     scene3d.groundAt = groundBefore;
     hud.hidden = true;
+    stick.hidden = true;
+    releaseStick();
+    clearTimeout(helpTimer);
     button?.setAttribute("aria-pressed", "false");
     document.body.classList.remove("ride-mode");
     const labels = document.getElementById("labels");
@@ -268,7 +310,11 @@ export function initRide(ctx) {
     if (k >= 1) {
       state.phase = "ride";
       hud.classList.remove("is-intro");
-      setNote("Pfeiltasten oder WASD · Leertaste klingelt");
+      if (touch) {
+        stick.classList.add("is-ready");
+        clearTimeout(helpTimer);
+        helpTimer = setTimeout(() => stick.classList.add("is-learned"), 5000);   // Anleitung ausblenden, Kompass halbtransparent
+      } else setNote("Pfeiltasten oder WASD · Leertaste klingelt");
       camPos.copy(camera.position); lookSmooth.copy(controls.target);
     }
   }
@@ -293,11 +339,14 @@ export function initRide(ctx) {
   }
 
   function physics(dt) {
-    const up = keys.has("up"), down = keys.has("down"), left = keys.has("left"), right = keys.has("right");
+    // Eingabe: Tastatur (voll) oder Kompass-Joystick (stufenlos)
+    const throttle = keys.has("up") ? 1 : keys.has("down") ? -1 : joy.y;
+    const steerIn = (keys.has("left") ? 1 : 0) - (keys.has("right") ? 1 : 0) || -joy.x;
+    const up = throttle > 0, down = throttle < 0;
     state.onRoad = terrain.grading ? terrain.grading.roadAt(state.x, state.z) !== null : true;
     const limit = state.onRoad ? MAX_ROAD : MAX_TERRAIN;
-    if (up) state.v += (state.v < 0 ? BRAKE : ACCEL * (1 - Math.max(0, state.v) / (limit * 1.15))) * dt;
-    else if (down) state.v -= (state.v > 0.2 ? BRAKE : 1.5) * dt;
+    if (up) state.v += (state.v < 0 ? BRAKE : ACCEL * throttle * (1 - Math.max(0, state.v) / (limit * 1.15))) * dt;
+    else if (down) state.v -= (state.v > 0.2 ? BRAKE : 1.5) * -throttle * dt;
     else state.v -= Math.sign(state.v) * Math.min(Math.abs(state.v), ROLL * dt + Math.abs(state.v) * 0.04 * dt);
     // Steigung bremst bergauf und zieht bergab
     const fx = dirX(), fz = dirZ();
@@ -307,10 +356,10 @@ export function initRide(ctx) {
     if (state.v > limit) state.v = Math.max(limit, state.v - BRAKE * dt);
     state.v = Math.max(-MAX_REVERSE, state.v);
     // Lenken: deutlich weniger Einschlag bei hohem Tempo (bei 25 km/h rund 35 Grad pro Sekunde)
-    const target = ((left ? 1 : 0) - (right ? 1 : 0)) * MAX_STEER * (1 - Math.min(0.85, Math.abs(state.v) / 9));
+    const target = steerIn * MAX_STEER * (1 - Math.min(0.85, Math.abs(state.v) / 9));
     state.steer += (target - state.steer) * Math.min(1, dt * 6);
     // Im Stand oder beim Schieben lässt sich das Velo trotzdem drehen (z. B. nach einem Halt vor einem Hindernis)
-    const pivot = ((left ? 1 : 0) - (right ? 1 : 0)) * PIVOT_RATE * Math.max(0, 1 - Math.abs(state.v) / 1.5);
+    const pivot = steerIn * PIVOT_RATE * Math.max(0, 1 - Math.abs(state.v) / 1.5);
     const yawRate = (state.v / WHEELBASE) * Math.tan(state.steer) + pivot;
     const nextHeading = state.heading + yawRate * dt;
     const step = state.v * dt;
@@ -373,11 +422,6 @@ export function initRide(ctx) {
   });
   window.addEventListener("keyup", (event) => { const key = KEYS[event.key]; if (key) keys.delete(key); });
   window.addEventListener("blur", () => keys.clear());
-  for (const b of hud.querySelectorAll("[data-key]")) {
-    const on = (e) => { e.preventDefault(); if (state.phase === "ride") keys.add(b.dataset.key); };
-    const off = () => keys.delete(b.dataset.key);
-    b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointerleave", off); b.addEventListener("pointercancel", off);
-  }
   hud.querySelector("#ride-exit").addEventListener("click", stop);
   button?.addEventListener("click", () => (state.active ? stop() : start()));
 

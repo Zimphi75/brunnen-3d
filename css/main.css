@@ -765,10 +765,36 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
 .ride-note:empty { display: none; }
 .ride-exit { font: inherit; font-size: 13px; color: var(--ink-2); background: transparent; border: 1px solid var(--rule); border-radius: var(--r-ctl); padding: 6px 10px; cursor: pointer; white-space: nowrap; }
 .ride-exit kbd { font-family: var(--f-data); font-size: 11px; margin-left: 4px; }
-.ride-touch { display: none; order: 9; flex-basis: 100%; justify-content: center; grid-template-columns: repeat(4, 52px); gap: 8px; }
-.ride-touch button { height: 52px; font-size: 20px; border-radius: 12px; border: 1px solid var(--rule); background: var(--panel-solid); color: var(--ink); touch-action: none; }
-@media (pointer: coarse) { .ride-touch { display: grid; } }
+/* Smartphone: Fahranzeige oben, Kompass-Joystick unten */
+#ride-hud.is-touch { top: calc(10px + env(safe-area-inset-top, 0px)); bottom: auto; gap: 4px 14px; padding: 6px 8px 6px 14px; }
+#ride-hud.is-touch .ride-speed .num { font-size: 28px; }
+#ride-hud.is-touch .ride-exit { padding: 8px 10px; }
+#ride-hud.is-touch .ride-exit kbd { display: none; }
+#ride-stick { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 30;
+  display: grid; justify-items: center; gap: 10px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.ride-stick-help { font-size: 14px; font-weight: 600; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 999px;
+  padding: 7px 14px; box-shadow: var(--shadow); transition: opacity .6s ease; text-align: center; width: max-content; max-width: calc(100vw - 48px); }
+.ride-stick-pad { position: relative; width: 168px; height: 168px; border-radius: 50%; touch-action: none; opacity: .95; transition: opacity .6s ease, transform .2s ease; }
+.ride-stick-pad svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ride-stick-pad .ring { fill: var(--panel); stroke: var(--rule); stroke-width: 2; }
+.ride-stick-pad .inner { fill: none; stroke: var(--rule); stroke-width: 1.5; stroke-dasharray: 3 5; }
+.ride-stick-pad .ticks line { stroke: var(--ink-3); stroke-width: 1.5; }
+.ride-stick-pad .arrow { fill: var(--accent); }
+.ride-stick-label { position: absolute; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); pointer-events: none; }
+.ride-stick-label.up { top: 38px; left: 50%; transform: translateX(-50%); }
+.ride-stick-label.down { bottom: 38px; left: 50%; transform: translateX(-50%); }
+.ride-stick-label.left { right: calc(100% + 8px); top: 50%; transform: translateY(-50%); }
+.ride-stick-label.right { left: calc(100% + 8px); top: 50%; transform: translateY(-50%); }
+.ride-stick-knob { position: absolute; left: calc(50% - 21px); top: calc(50% - 21px); width: 42px; height: 42px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 4px 14px rgba(0, 0, 0, .3), inset 0 0 0 3px rgba(255, 255, 255, .55); pointer-events: none; }
+#ride-stick:not(.is-ready) .ride-stick-pad { opacity: .5; }
+#ride-stick.is-learned .ride-stick-help { opacity: 0; pointer-events: none; }
+#ride-stick.is-learned .ride-stick-pad { opacity: .42; }
+#ride-stick.is-learned.is-active .ride-stick-pad { opacity: .8; }
+#ride-stick.is-learned .ride-stick-label { opacity: 0; transition: opacity .6s ease; }
+@media (prefers-reduced-motion: reduce) { .ride-stick-help, .ride-stick-pad { transition: none; } }
 /* Im Velomodus nur Szene und Tempoanzeige: alle Bedienelemente der App sind ausgeblendet */
-body.ride-mode #app > :not(#scene), body.ride-mode > :not(#app):not(#ride-hud):not(script):not(style) { display: none !important; }
+body.ride-mode #app > :not(#scene), body.ride-mode > :not(#app):not(#ride-hud):not(#ride-stick):not(script):not(style) { display: none !important; }
 body.ride-mode #scene { pointer-events: none; }
 .ride-street { font-family: var(--f-display); font-size: 16px; font-weight: 600; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ride-stick-label.left, .ride-stick-label.right { background: var(--panel); border: 1px solid var(--rule); border-radius: 999px; padding: 3px 8px; color: var(--ink); }
