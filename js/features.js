@@ -211,6 +211,7 @@ export async function initDataLayers(ctx) {
   });
 
   const treeLayer = treeBuffer ? safe("Bäume", () => buildTrees({ trees: parseTrees(treeBuffer), terrain, ortho: ctx.orthoTexture, scene3d, ctx, blocked: createBlocker(ctx.roads, waterFile) })) : null;
+  ctx.treeData = treeLayer?.trees ?? null; // Standorte der gezeichneten Bäume (Velomodus: Hindernisse)
   layers.add({
     id: "trees", label: "Bäume", color: "#3f7a3a", available: Boolean(treeLayer), note: "trees.bin fehlt (Pipeline: process_trees)",
     count: treeLayer ? treeLayer.count.toLocaleString("de-CH") : "",

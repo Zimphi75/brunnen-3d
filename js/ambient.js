@@ -244,6 +244,13 @@ export function initAmbient(ctx) {
   const position = new THREE.Vector3(), scale = new THREE.Vector3(), q = new THREE.Quaternion(), qPitch = new THREE.Quaternion(), matrix = new THREE.Matrix4();
   const camera = scene3d.camera, ground = new THREE.Vector3(), handPoint = new THREE.Vector3(), collarPoint = new THREE.Vector3(), leashDirection = new THREE.Vector3();
   let enabledByMode = true;
+  /** Velomodus: Autos und Personen halten an, wenn das Velo (mit Anhänger) direkt vor ihnen steht. */
+  const waitsForPlayer = (a, reach, half) => {
+    const player = ctx.player?.();
+    if (!player || a.x === undefined) return false;
+    const dx = player.x - a.x, dz = player.z - a.z, along = dx * a.tx + dz * a.tz;
+    return along > -1 && along < reach + 2.5 && Math.abs(dx * a.tz - dz * a.tx) < half;
+  };
 
   scene3d.onFrame((delta, now, distance) => {
     const mode = ctx.ground?.state.mode;
@@ -303,12 +310,13 @@ export function initAmbient(ctx) {
     for (let i = 0; i < carCount; i++) {
       const a = cars[i];
       if (!a.line) continue;
-      const alive = advance(a, a.speed * dt, carNet, Math.random, { turn: 0.35, bounce: false });
+      const alive = waitsForPlayer(a, 9, 2.4) ? true : advance(a, a.speed * dt, carNet, Math.random, { turn: 0.35, bounce: false });
       sample(a, temp);
       const away = Math.hypot(temp.x - target.x, temp.z - target.z) > radius * 1.25;
       if (!alive || away) { place(a, carNet, carGrid, target, radius, true); if (!a.line) continue; sample(a, temp); }
       const lane = a.line.lanes.length ? a.line.lanes[a.lane % a.line.lanes.length] : a.line.width / 4;
       const x = temp.x - temp.tz * lane, z = temp.z + temp.tx * lane;
+      a.x = x; a.z = z; a.tx = temp.tx; a.tz = temp.tz;
       const y = (terrain.heightAt(x, z) ?? 0) + 0.3;
       const ahead = terrain.heightAt(x + temp.tx * 1.8, z + temp.tz * 1.8), behind = terrain.heightAt(x - temp.tx * 1.8, z - temp.tz * 1.8);
       const pitch = ahead !== null && behind !== null ? -Math.atan2(ahead - behind, 3.6) : 0;
@@ -330,10 +338,11 @@ export function initAmbient(ctx) {
     for (let i = 0; i < pedCount; i++) {
       const a = peds[i];
       if (!a.line) continue;
-      const alive = advance(a, a.speed * dt, walkNet, Math.random, { turn: 0.3, bounce: true });
+      const alive = waitsForPlayer(a, 2.5, 1.2) ? true : advance(a, a.speed * dt, walkNet, Math.random, { turn: 0.3, bounce: true });
       sample(a, temp);
       const away = Math.hypot(temp.x - target.x, temp.z - target.z) > radius * 1.25;
       if (!alive || away) { place(a, walkNet, walkGrid, target, radius, true); if (!a.line) continue; sample(a, temp); }
+      a.x = temp.x; a.z = temp.z; a.tx = temp.tx; a.tz = temp.tz;
       a.phase += a.speed * dt * 4.5;
       const k = a.scale * pedBoost;
       const y = (terrain.heightAt(temp.x, temp.z) ?? 0) + 0.34;

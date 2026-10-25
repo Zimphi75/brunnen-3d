@@ -5,6 +5,7 @@ import { loadJson, loadOptionalJson, loadBinary, loadOptionalBinary, parseDem, p
 import { createScene } from "./scene.js";
 import { Terrain } from "./terrain.js";
 import { gradeTerrain, buildingFootprints } from "./grading.js";
+import { initRide } from "./ride.js";
 import { Buildings, COLOR_MODES, buildYear } from "./buildings.js";
 import { createCameraRig, createPicker } from "./controls.js";
 import { createLayerManager } from "./layers.js";
@@ -1096,6 +1097,7 @@ async function setupUi(ctx) {
   initGround(ctx);
   startupMark("ground");
   initAmbient(ctx);
+  ctx.ride = initRide(ctx); // Velomodus (Taste V)
   startupMark("ambient");
   addGersauerPeople(ctx);
   startupMark("gersauerPeople");
@@ -1134,6 +1136,7 @@ async function setupUi(ctx) {
 
   window.addEventListener("keydown", (event) => {
     if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)) return;
+    if (ctx.ride?.active) return;
     if (event.key === "q" || event.key === "Q") rig.rotate(-20);
     else if (event.key === "e" || event.key === "E") rig.rotate(20);
     else if (event.key === "t" || event.key === "T") rig.topDown();

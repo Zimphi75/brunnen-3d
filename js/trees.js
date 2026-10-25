@@ -226,5 +226,5 @@ export function buildTrees({ trees: input, terrain, ortho, scene3d, ctx, blocked
       }
     }
   });
-  return { group, count: trees.count, removed, conifers: coniferCount, threshold };
+  return { group, count: trees.count, removed, conifers: coniferCount, threshold, trees };
 }
