@@ -44,7 +44,10 @@ const errors = [];
 // Zeitmarken für den Startablauf (DevTools > Performance oder performance.getEntriesByType("mark")).
 const startupMark = (name) => { try { performance.mark(`b3d:${name}`); } catch {} };
 // ?lowpower=1 erzwingt den Handy-Modus auch am Computer (zum Testen der mobilen Einstellungen).
-const lowPower = matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4 || new URLSearchParams(location.search).has("lowpower");
+const urlParams = new URLSearchParams(location.search);
+const lowPower = matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4 || urlParams.has("lowpower");
+// ?quality=high schaltet die automatische Umstellung auf den leichten Modus ab.
+const adaptiveQuality = urlParams.get("quality") !== "high";
 const mobileStartup = matchMedia("(max-width: 760px)").matches;
 if (lowPower) document.documentElement.classList.add("low-power");
 if (mobileStartup) {
@@ -156,6 +159,50 @@ async function warmUpScene(ctx) {
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
+/**
+ * Leichter Darstellungsmodus zur Laufzeit: gleiche Einstellungen wie auf Handys, soweit sie sich ohne Neuaufbau
+ * umschalten lassen (Auflösung, Effekte, Baum- und Modulweiten, Geländeschatten, Fahrzeuge, POI-Aktualisierung).
+ */
+function enableLightMode(ctx, reason) {
+  if (ctx.lowPower) return false;
+  ctx.lowPower = true;
+  document.documentElement.classList.add("low-power");
+  ctx.scene3d.setMaxPixelRatio(1.25);
+  ctx.scene3d.settings.ambientOcclusion = false;
+  if (ctx.layers.isVisible("ao")) ctx.layers.setVisible("ao", false);
+  if (ctx.layers.isVisible("bloom")) ctx.layers.setVisible("bloom", false);
+  ctx.terrain.group.traverse((object) => { if (object.isMesh) object.castShadow = false; });
+  console.info(`Brunnen 3D: leichter Darstellungsmodus aktiviert (${reason}).`);
+  return true;
+}
+
+/**
+ * Bildrate beobachten und bei dauerhaft zu langsamer Darstellung auf den leichten Modus wechseln.
+ * Grund: Manche Browser (z. B. Firefox) und Geräte schaffen die volle Darstellung nicht, ohne als Handy erkannt zu werden.
+ */
+function watchFrameRate(ctx) {
+  if (!adaptiveQuality || ctx.lowPower) return;
+  const WINDOW = 90, SLOW_MS = 45;
+  let samples = [], slowWindows = 0, lastFrame = 0, quietUntil = performance.now() + 2500;
+  const stop = ctx.scene3d.onFrame(() => {
+    const now = performance.now();
+    const interval = now - lastFrame;
+    lastFrame = now;
+    // Nur messen, wenn sichtbar gerendert wird; Pausen (verborgener Tab, Intro-Video, Ladeschritte) überspringen.
+    if (document.hidden || ctx.scene3d.suspended || ctx.scene3d.renderingPaused || now < quietUntil || interval > 1000) return;
+    samples.push(interval);
+    if (samples.length < WINDOW) return;
+    samples.sort((a, b) => a - b);
+    const median = samples[samples.length >> 1];
+    samples = [];
+    slowWindows = median > SLOW_MS ? slowWindows + 1 : 0;
+    if (slowWindows >= 2) {
+      enableLightMode(ctx, `Bildrate ${Math.round(1000 / median)} fps`);
+      stop();
+    }
+  });
+}
+
 function reportError(message, error) {
   console.error(message, error ?? "");
   errors.push(message);
@@ -252,6 +299,8 @@ async function start() {
   window.brunnen = ctx; // Debug- und Testzugriff
   ctx.navigationHint = initNavigationHint({ root: $("#navigation-hint"), canvas: $("#scene") });
   Promise.all([ctx.initialCameraReady, timeTransitionReady]).then(() => ctx.navigationHint.show());
+  ctx.enableLightMode = (reason = "manuell") => enableLightMode(ctx, reason);
+  void timeTransitionReady.then(() => watchFrameRate(ctx));
 }
 
 async function setupUi(ctx) {

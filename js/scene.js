@@ -156,6 +156,8 @@ export function createScene(canvas, { lowPower = false } = {}) {
     renderer, scene, camera, controls, composer, settings, aoExcluded, postProcessingScenes,
     hasAmbientOcclusion: Boolean(aoPass),
     set panBounds(value) { panBounds = value; },
+    /** Auflösungsfaktor begrenzen (z. B. 1.25 im leichten Modus) und Puffer neu anlegen. */
+    setMaxPixelRatio(max) { renderer.setPixelRatio(Math.min(window.devicePixelRatio, max)); resize(); },
     get renderingPaused() { return renderingPaused; },
     set renderingPaused(value) { renderingPaused = Boolean(value); },
     get suspended() { return suspended; },

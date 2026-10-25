@@ -158,8 +158,8 @@ export async function initPois(ctx) {
     markers.forEach((marker, itemIndex) => marker.classList.toggle("is-selected", itemIndex === index));
   };
   let blockers = [], blockersReadAt = -Infinity;
-  const updateInterval = ctx.lowPower ? POI_DISPLAY.updateIntervalMs * 1.6 : POI_DISPLAY.updateIntervalMs;
   scene3d.onFrame((_, now) => {
+    const updateInterval = ctx.lowPower ? POI_DISPLAY.updateIntervalMs * 1.6 : POI_DISPLAY.updateIntervalMs;
     if (now - lastUpdate < updateInterval) return;
     lastUpdate = now;
     if (markerLayer.hidden || !poiLayerVisible) return;
@@ -258,9 +258,8 @@ export async function initPois(ctx) {
   }));
   let labelsOn = true;
   let last = 0;
-  const labelInterval = ctx.lowPower ? 200 : 120;
   scene3d.onFrame((_, now) => {
-    if (now - last < labelInterval) return;
+    if (now - last < (ctx.lowPower ? 200 : 120)) return;
     last = now;
     if (!labelsOn) { labels.clear(); return; }
     labels.render(placeItems, { limit: 34 });
