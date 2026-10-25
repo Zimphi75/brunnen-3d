@@ -197,7 +197,7 @@ async function start() {
   const dem = parseDem(await loadBinary("dem.bin"), meta);
   progress.finish("dem", "Gelände wird aufgebaut …");
 
-  const terrain = new Terrain(dem, frame);
+  const terrain = new Terrain(dem, frame, { lowPower });
   ctx.terrain = terrain;
   scene3d.scene.add(terrain.group);
   scene3d.panBounds = { minX: terrain.minX, maxX: terrain.minX + terrain.width, minZ: terrain.maxZ - terrain.depth, maxZ: terrain.maxZ };

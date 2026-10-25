@@ -27,7 +27,13 @@ float vnoise( vec2 p ) {
   vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
   return mix( mix( h21( i ), h21( i + vec2( 1.0, 0.0 ) ), f.x ), mix( h21( i + vec2( 0.0, 1.0 ) ), h21( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
 }
-float fbm( vec2 p ) { float a = 0.5, s = 0.0; for ( int i = 0; i < 4; i++ ) { s += a * vnoise( p ); p = p * 2.03 + vec2( 17.1, 9.2 ); a *= 0.5; } return s; }
+// Handy (TERRAIN_LOW_POWER): 2 statt 4 Rauschoktaven und ein Rauschwert weniger je Bildpunkt; der Boden wirkt etwas ruhiger.
+#ifdef TERRAIN_LOW_POWER
+#define FBM_OCTAVES 2
+#else
+#define FBM_OCTAVES 4
+#endif
+float fbm( vec2 p ) { float a = 0.5, s = 0.0; for ( int i = 0; i < FBM_OCTAVES; i++ ) { s += a * vnoise( p ); p = p * 2.03 + vec2( 17.1, 9.2 ); a *= 0.5; } return s * ( FBM_OCTAVES == 2 ? 1.25 : 1.0 ); }
 vec3 simGround( vec3 aerial, vec2 xz, float dist, float nY ) {
   float lum = dot( aerial, vec3( 0.2126, 0.7152, 0.0722 ) );
   float greenRatio = aerial.g / max( 1e-4, aerial.r + aerial.b );
@@ -48,7 +54,12 @@ vec3 simGround( vec3 aerial, vec2 xz, float dist, float nY ) {
   vec3 other = mix( evened, pave, 0.78 ) * ( 0.93 + 0.14 * vnoise( xz * 9.0 ) * fine + 0.1 * ( n4 - 0.5 ) * fine );
   vec3 col = mix( other, ground, veg );
   float rock = smoothstep( 0.66, 0.45, nY ) * ( 1.0 - 0.6 * veg );
-  vec3 rockColor = mix( vec3( 0.10, 0.095, 0.085 ), vec3( 0.19, 0.175, 0.155 ), fbm( xz * 0.45 ) ) * ( 0.8 + 0.4 * n4 * fine );
+#ifdef TERRAIN_LOW_POWER
+  float rockNoise = n1;
+#else
+  float rockNoise = fbm( xz * 0.45 );
+#endif
+  vec3 rockColor = mix( vec3( 0.10, 0.095, 0.085 ), vec3( 0.19, 0.175, 0.155 ), rockNoise ) * ( 0.8 + 0.4 * n4 * fine );
   return mix( col, rockColor, rock * 0.85 );
 }
 vec3 neutralGround( vec2 xz, float height, vec3 normal ) {
@@ -63,12 +74,14 @@ vec3 neutralGround( vec2 xz, float height, vec3 normal ) {
 `;
 
 export class Terrain {
-  constructor(dem, frame) {
+  constructor(dem, frame, { lowPower = false } = {}) {
     this.dem = dem;
+    this.lowPower = lowPower;
     this.frame = frame;
     this.group = new THREE.Group();
     this.group.name = "terrain";
     this.material = new THREE.MeshStandardMaterial({ color: 0xc9d1c2, roughness: 0.95, metalness: 0 });
+    if (lowPower) this.material.defines = { ...(this.material.defines ?? {}), TERRAIN_LOW_POWER: "" };
     this.#installShader();
     this.chunks = [];
     this.width = (dem.nx - 1) * dem.cell;
