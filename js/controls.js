@@ -151,3 +151,51 @@ export function createPicker({ canvas, camera, terrain, providers, onHover, onCl
     if (moved < 5 && quick && event.button === 0) onClick(pickAt(event), event);
   });
 }
+
+/**
+ * Macht die Touch-Steuerung robust gegen «Geisterfinger» (vor allem iOS Safari).
+ * OrbitControls bindet nur den ersten Finger an die Karte (setPointerCapture). Endet ein weiterer Finger über einem
+ * Pin, Panel oder einer anderen Ebene, erhält die Karte kein pointerup und zählt den Finger weiter mit. Danach gelten
+ * echte Zwei-Finger-Gesten als drei Finger und werden ignoriert: Die Karte lässt sich nicht mehr verschieben.
+ * Abhilfe: jeden Finger an die Karte binden, verlorene Enden nachreichen und nach dem Loslassen aller Finger aufräumen.
+ */
+export function hardenTouchPointers(canvas) {
+  const active = new Map(); // pointerId -> letztes Ereignis
+  const release = (pointerId) => {
+    const last = active.get(pointerId);
+    if (!last) return;
+    active.delete(pointerId);
+    // pointercancel statt pointerup: beendet die Geste, löst aber keinen Klick auf Pins oder Gebäude aus.
+    canvas.dispatchEvent(new PointerEvent("pointercancel", {
+      pointerId, pointerType: last.pointerType, isPrimary: last.isPrimary, clientX: last.clientX, clientY: last.clientY, bubbles: true,
+    }));
+  };
+  const releaseAll = () => { for (const pointerId of [...active.keys()]) release(pointerId); };
+
+  canvas.addEventListener("pointerdown", (event) => {
+    active.set(event.pointerId, event);
+    try { if (!canvas.hasPointerCapture(event.pointerId)) canvas.setPointerCapture(event.pointerId); } catch { /* Zeiger nicht mehr aktiv */ }
+  });
+  canvas.addEventListener("pointermove", (event) => { if (active.has(event.pointerId)) active.set(event.pointerId, event); });
+  for (const type of ["pointerup", "pointercancel"]) canvas.addEventListener(type, (event) => active.delete(event.pointerId));
+  // Ende ausserhalb der Karte (Bindung verloren oder nie gesetzt): an die Karte weiterreichen.
+  for (const type of ["pointerup", "pointercancel"]) {
+    window.addEventListener(type, (event) => { if (event.target !== canvas && active.has(event.pointerId)) release(event.pointerId); }, true);
+  }
+  // Rettungsanker: Liegt kein Finger mehr auf dem Bildschirm, alle noch offenen Zeiger beenden (kurz verzögert,
+  // damit reguläre pointerup-Ereignisse und Klicks auf Pins zuerst ankommen).
+  let touchGeneration = 0;
+  window.addEventListener("touchstart", () => { touchGeneration++; }, true);
+  const afterLastTouch = (event) => {
+    if (event.touches.length !== 0) return;
+    const generation = touchGeneration;
+    setTimeout(() => { if (generation === touchGeneration) releaseAll(); }, 120); // inzwischen neu berührt? Dann nichts tun.
+  };
+  window.addEventListener("touchend", afterLastTouch, true);
+  window.addEventListener("touchcancel", afterLastTouch, true);
+  window.addEventListener("blur", releaseAll);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) releaseAll(); });
+  // Safari: Pinch über der Karte oder einem Pin soll die Karte zoomen, nicht die ganze Seite.
+  document.addEventListener("gesturestart", (event) => { if (event.target.closest?.("#scene, .poi-marker-layer")) event.preventDefault(); });
+  return { releaseAll, activePointers: () => [...active.keys()] };
+}

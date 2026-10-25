@@ -1,6 +1,7 @@
 // Renderer, Kamera, Navigation und Nachbearbeitung (Ambient Occlusion, Bloom).
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { hardenTouchPointers } from "./controls.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
@@ -41,6 +42,7 @@ export function createScene(canvas, { lowPower = false } = {}) {
   controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
   controls.keyPanSpeed = 22;
   controls.listenToKeyEvents(canvas);
+  const touchPointers = hardenTouchPointers(canvas); // nach OrbitControls registrieren
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
   const composer = new EffectComposer(renderer);
@@ -153,7 +155,7 @@ export function createScene(canvas, { lowPower = false } = {}) {
   requestAnimationFrame(frame);
 
   return {
-    renderer, scene, camera, controls, composer, settings, aoExcluded, postProcessingScenes,
+    renderer, scene, camera, controls, composer, settings, aoExcluded, postProcessingScenes, touchPointers,
     hasAmbientOcclusion: Boolean(aoPass),
     set panBounds(value) { panBounds = value; },
     /** Auflösungsfaktor begrenzen (z. B. 1.25 im leichten Modus) und Puffer neu anlegen. */

@@ -748,3 +748,5 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
 .low-power .poi-marker, .low-power .poi-marker.is-visible { transition: none; }
 .low-power .plabel { text-shadow: 0 0 2px #fff, 0 0 3px #fff; }
 :root[data-theme="dark"].low-power .plabel { text-shadow: 0 0 2px #0b1220, 0 0 3px #0b1220; }
+/* Gesten, die auf einem Pin beginnen, gehören der Karte (kein Scrollen oder Zoomen der Seite durch den Browser). */
+.poi-marker { touch-action: none; }
