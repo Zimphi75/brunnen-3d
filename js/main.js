@@ -47,10 +47,7 @@ const startupMark = (name) => { try { performance.mark(`b3d:${name}`); } catch {
 const urlParams = new URLSearchParams(location.search);
 // ?quality=high erzwingt die volle Darstellung und schaltet die automatische Umstellung ab.
 const forceHighQuality = urlParams.get("quality") === "high";
-// Firefox leitet jeden WebGL-Befehl an einen eigenen Grafikprozess weiter und ist bei vielen Zeichenbefehlen und
-// backdrop-filter deutlich langsamer als Chromium-Browser; er startet deshalb im leichten Modus.
-const isFirefox = /\bFirefox\//.test(navigator.userAgent);
-const lowPower = !forceHighQuality && (matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4 || urlParams.has("lowpower") || isFirefox);
+const lowPower = !forceHighQuality && (matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency ?? 8) <= 4 || urlParams.has("lowpower"));
 const adaptiveQuality = !forceHighQuality;
 const mobileStartup = matchMedia("(max-width: 760px)").matches;
 if (lowPower) document.documentElement.classList.add("low-power");

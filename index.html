@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Die Import-Map muss vor jedem Modul-Skript stehen: Firefox ignoriert sie sonst, findet «three» nicht und die App startet nie. -->
+<script type="importmap">
+{ "imports": {
+  "three": "./public/vendor/three/build/three.module.js",
+  "three/addons/": "./public/vendor/three/examples/jsm/"
+} }
+</script>
 <title>Brunnen 3D – Ingenbohl SZ</title>
 <meta name="description" content="Lebendiges 3D-Modell von Ingenbohl SZ aus offenen Schweizer Daten: Gebäude, Gelände, Verkehr, Energie und Abstimmungen, unter dem echten Himmel.">
 <meta name="theme-color" content="#b6d3e8">
@@ -18,15 +25,9 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="./public/favicon.png">
 <link rel="preload" href="public/data/ortho.jpg" as="image" fetchpriority="high">
-<!-- Cloudflare Web Analytics -->
-<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"b5cc752aca91460fa5290d005191474f"}'></script>
 <link rel="stylesheet" href="css/main.css">
-<script type="importmap">
-{ "imports": {
-  "three": "./public/vendor/three/build/three.module.js",
-  "three/addons/": "./public/vendor/three/examples/jsm/"
-} }
-</script>
+<!-- Cloudflare Web Analytics (klassisches Skript mit defer, wie von Cloudflare vorgesehen; kein Modul vor der Import-Map) -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"b5cc752aca91460fa5290d005191474f"}'></script>
 </head>
 <body class="mobile-tools-open mobile-startup-sequence">
 <div id="app">
