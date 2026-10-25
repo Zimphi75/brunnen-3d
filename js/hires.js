@@ -80,6 +80,8 @@ export function initHires(ctx) {
       lastTarget.copy(target);
       lastPosition.copy(position);
     }
+    // Absicherung: Endet eine Geste ohne «end»-Ereignis (z. B. abgebrochene Berührung), gilt sie nach 3 s Ruhe als beendet.
+    if (interacting && now - lastMove > 3000) interacting = false;
     const settled = !interacting && now - lastMove > SETTLE_MS;
     if (!state.enabled || state.failed || state.loading || !settled || ctx.cancelTimeTransition || now - last < 700 || distance > FULL_DISTANCE + FADE_DISTANCE) return;
     last = now;
@@ -93,7 +95,9 @@ export function initHires(ctx) {
     const requested = state.layer;
     state.loading = load(key).then(async (texture) => {
       // Während des Ladens wieder bewegt? Mit dem Hochladen warten, bis die Kamera erneut ruht.
-      while (interacting || performance.now() - lastMove < SETTLE_MS) await new Promise((resolve) => setTimeout(resolve, 100));
+      while ((interacting && performance.now() - lastMove < 3000) || performance.now() - lastMove < SETTLE_MS) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
       if (requested === state.layer) apply(key, texture);
     }).catch((error) => {
       state.failed = true;
