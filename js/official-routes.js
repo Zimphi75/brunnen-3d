@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { rasterGridGeometry } from "./demographics.js";
 import {
-  constructionUrl, parseConstructionSites, sitesInExtent, drawConstructionSites, nearestConstructionSite,
+  constructionUrl, parseConstructionSites, sitesInExtent, buildConstructionRibbons, buildRibbons, clipLines, renderLegend, nearestConstructionSite,
   renderConstructionInfo, renderConstructionLegend,
 } from "./construction.js";
 
@@ -39,6 +39,34 @@ const ROUTE_ANALYSES = Object.freeze({
     description: "Modellierte Lärmbelastung am Tag, kein Messwert am Gebäude.",
   },
 });
+
+const VELO_COLOR = "#d6246e";
+// Vektordarstellung statt WMS-Bild: scharf bei jedem Zoom, auf Wegbreite.
+const VECTOR_MODES = Object.freeze({
+  hiking: {
+    width: 4,
+    item: (a) => {
+      const alpine = a.hikingtype === "Alpinwanderweg";
+      return { color: alpine ? "#1d5fbf" : "#f2c230", title: alpine ? "Alpinwanderweg" : "Wanderweg", rows: [["Quelle", "swisstopo swissTLM3D"]] };
+    },
+    legend: () => [{ label: "Wanderweg und Bergwanderweg", color: "#f2c230" }, { label: "Alpinwanderweg", color: "#1d5fbf" }],
+  },
+  cycling: {
+    width: 6,
+    item: (a) => ({
+      color: VELO_COLOR,
+      title: `Veloroute ${a.chmobil_route_number}`, rows: [["Name", a.chmobil_title]],
+    }),
+    legend: () => [{ label: "Veloland-Route (Anklicken für Name)", color: VELO_COLOR }],
+  },
+});
+
+export function officialMapUrl(layer, east, north) {
+  const params = new URLSearchParams({ lang: "de", center: `${Math.round(east)},${Math.round(north)}`, z: "10", bgLayer: "ch.swisstopo.pixelkarte-farbe", layers: layer });
+  return `https://map.geo.admin.ch/#/map?${params}`;
+}
+
+const CONSTRUCTION_MAP_URL = "https://www.sz.ch/behoerden/verwaltung/baudepartement/tiefbauamt/baustellen.html/8756-8758-8802-9276-9290-10050";
 
 export function officialRouteMapUrl(source, extent, width, height) {
   const params = new URLSearchParams({
@@ -155,6 +183,33 @@ export function initOfficialRouteAnalyses(ctx) {
   const mapPromises = new Map();
   let activeMode = null, requestId = 0;
   let sitesPromise = null, sites = [];
+  let closuresPromise = null, wayClosures = [];
+  const vectorGroups = new Map(), vectorPromises = new Map(), vectorItems = new Map();
+  const links = document.createElement("p");
+  links.className = "official-links";
+  links.hidden = true;
+  walkingResults.after(links);
+
+  function showLinks(id) {
+    links.replaceChildren();
+    const entries = [];
+    if (id === "hiking" || id === "cycling" || id === "closures") {
+      entries.push(["In der amtlichen Karte öffnen", () => {
+        const target = scene3d.controls.target, { e, n } = frame.toLV95(target.x, target.z);
+        return officialMapUrl(ROUTE_ANALYSES[id].layer, e, n);
+      }]);
+    }
+    if (id === "closures") entries.push(["Baustellenkarte Kanton Schwyz", () => CONSTRUCTION_MAP_URL]);
+    for (const [label, href] of entries) {
+      const link = document.createElement("a");
+      link.textContent = label; link.href = href(); link.target = "_blank"; link.rel = "noopener noreferrer";
+      link.style.cssText = "display:block;margin-top:6px";
+      // Ansicht kann sich seit der Aktivierung verändert haben.
+      link.addEventListener("click", () => { link.href = href(); });
+      links.append(link);
+    }
+    links.hidden = !entries.length;
+  }
 
   for (const source of Object.values(ROUTE_ANALYSES)) {
     const material = new THREE.MeshBasicMaterial({
@@ -170,13 +225,8 @@ export function initOfficialRouteAnalyses(ctx) {
     meshes.set(source.id, mesh);
   }
 
-  const constructionMesh = new THREE.Mesh(grid.geometry, new THREE.MeshBasicMaterial({
-    transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
-    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
-  }));
+  const constructionMesh = new THREE.Group();
   constructionMesh.name = "construction-sites";
-  constructionMesh.frustumCulled = false;
-  constructionMesh.renderOrder = 9;
   constructionMesh.visible = false;
   group.add(constructionMesh);
 
@@ -187,15 +237,7 @@ export function initOfficialRouteAnalyses(ctx) {
         return response.text();
       }).then((text) => {
         sites = sitesInExtent(parseConstructionSites(text), grid.extent);
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.min(2048, Math.max(256, grid.columns * 10));
-        canvas.height = Math.max(128, Math.round(canvas.width * grid.extent.height / grid.extent.width));
-        drawConstructionSites(canvas, sites, grid.extent);
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = scene3d.renderer.capabilities.getMaxAnisotropy();
-        constructionMesh.material.map = texture;
-        constructionMesh.material.needsUpdate = true;
+        constructionMesh.add(buildConstructionRibbons(sites, terrain, frame));
         return sites;
       }).catch((error) => {
         sitesPromise = null;
@@ -203,6 +245,84 @@ export function initOfficialRouteAnalyses(ctx) {
       });
     }
     return sitesPromise;
+  }
+
+  function loadWayClosures() {
+    if (!closuresPromise) {
+      const { minE, minN, maxE, maxN } = grid.extent;
+      const params = new URLSearchParams({
+        geometryType: "esriGeometryEnvelope", geometry: `${minE},${minN},${maxE},${maxN}`, layers: `all:${ROUTE_ANALYSES.closures.layer}`,
+        sr: "2056", tolerance: "0", returnGeometry: "true", lang: "de", limit: "200",
+      });
+      closuresPromise = fetch(`${IDENTIFY_URL}?${params}`).then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }).then((data) => {
+        wayClosures = (data.results ?? []).map((result) => ({
+          title: result.attributes.title_de, abstract: result.attributes.abstract_de, duration: result.attributes.duration_de,
+          reason: result.attributes.reason_de, provider: result.attributes.content_provider_de,
+          detour: result.attributes.sperrungen_type === "detour", lines: clipLines(result.geometry?.paths ?? [], grid.extent),
+        })).filter((item) => item.lines.length);
+        constructionMesh.add(buildRibbons(wayClosures.map((item) => ({ lines: item.lines, color: item.detour ? "#2f7fd8" : "#b3121b" })), terrain, frame));
+        return wayClosures;
+      }).catch((error) => {
+        closuresPromise = null;
+        throw error;
+      });
+    }
+    return closuresPromise;
+  }
+
+  function renderWayClosureInfo(container, item) {
+    container.replaceChildren();
+    const heading = document.createElement("strong");
+    heading.textContent = item.title || "Sperrhinweis";
+    const list = document.createElement("dl");
+    for (const [label, value] of [["Art", item.detour ? "Umleitung" : "Gesperrter Wegabschnitt"], ["Grund", item.reason], ["Dauer", item.duration], ["Hinweis", item.abstract]].filter(([, v]) => v)) {
+      const term = document.createElement("dt"), detail = document.createElement("dd");
+      term.textContent = label; detail.textContent = value; list.append(term, detail);
+    }
+    const note = document.createElement("p");
+    note.textContent = `Quelle: ${item.provider || "ASTRA und Kantone"} · Wanderland Schweiz.`;
+    container.append(heading, list, note);
+  }
+
+  function loadVector(id) {
+    if (!vectorPromises.has(id)) {
+      const mode = VECTOR_MODES[id], { minE, minN, maxE, maxN } = grid.extent;
+      const params = new URLSearchParams({
+        geometryType: "esriGeometryEnvelope", geometry: `${minE},${minN},${maxE},${maxN}`, layers: `all:${ROUTE_ANALYSES[id].layer}`,
+        sr: "2056", tolerance: "0", returnGeometry: "true", lang: "de", limit: "200",
+      });
+      vectorPromises.set(id, fetch(`${IDENTIFY_URL}?${params}`).then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      }).then((data) => {
+        const items = (data.results ?? []).map((result) => ({ ...mode.item(result.attributes), lines: clipLines(result.geometry?.paths ?? [], grid.extent) })).filter((item) => item.lines.length);
+        const ribbons = buildRibbons(items.map((item) => ({ lines: item.lines, color: item.color, width: mode.width })), terrain, frame);
+        ribbons.visible = false;
+        group.add(ribbons);
+        vectorGroups.set(id, ribbons);
+        vectorItems.set(id, items);
+        return items;
+      }).catch((error) => {
+        vectorPromises.delete(id);
+        throw error;
+      }));
+    }
+    return vectorPromises.get(id);
+  }
+
+  function renderVectorInfo(container, item) {
+    container.replaceChildren();
+    const heading = document.createElement("strong");
+    heading.textContent = item.title;
+    const list = document.createElement("dl");
+    for (const [label, value] of item.rows ?? []) {
+      const term = document.createElement("dt"), detail = document.createElement("dd");
+      term.textContent = label; detail.textContent = value; list.append(term, detail);
+    }
+    container.append(heading, list);
   }
 
   function loadTexture(source) {
@@ -230,21 +350,23 @@ export function initOfficialRouteAnalyses(ctx) {
     const request = ++requestId;
     for (const [key, mesh] of meshes) mesh.visible = key === id && textures.has(key);
     constructionMesh.visible = false;
+    for (const [key, ribbons] of vectorGroups) ribbons.visible = key === id;
     panel.hidden = false;
     modeSelect.value = id;
     title.textContent = source.title;
     description.textContent = `${source.description} Quelle: ${source.source} · Stand ${source.updated}.`;
     legend.hidden = false;
     legendLabel.textContent = "Legende";
-    legendImage.hidden = false;
+    legendImage.hidden = id === "closures" || id in VECTOR_MODES;
     legendImage.alt = `Legende: ${source.title}`;
-    legendImage.src = legendUrl(source);
+    if (!legendImage.hidden) legendImage.src = legendUrl(source);
     viewControls.hidden = true;
     timeControls.hidden = true;
     categoryFilter.hidden = true;
     walkingResults.hidden = false;
     cellInfo.hidden = true;
     walkingResults.replaceChildren();
+    showLinks(id);
     const status = document.createElement("p");
     status.className = "walking-results-summary";
     status.textContent = source.id === "closures"
@@ -254,21 +376,37 @@ export function initOfficialRouteAnalyses(ctx) {
     if (source.id === "closures") {
       const heading = document.createElement("p");
       heading.className = "walking-results-summary";
-      heading.textContent = "Baustellen Kantonsstrassen (Kanton Schwyz)";
+      heading.textContent = "Sperrungen und Baustellen";
       walkingResults.append(heading);
-      renderConstructionLegend(walkingResults);
-      void loadConstruction().then((loaded) => {
+      renderConstructionLegend(walkingResults, [{ label: "Gesperrter Wanderweg", color: "#b3121b" }, { label: "Umleitung", color: "#2f7fd8" }]);
+      void Promise.allSettled([loadWayClosures(), loadConstruction()]).then(([ways, works]) => {
         if (activeMode !== id) return;
         constructionMesh.visible = true;
-        heading.textContent = loaded.length
-          ? `Baustellen Kantonsstrassen (Kanton Schwyz): ${loaded.length} im Kartenausschnitt`
-          : "Baustellen Kantonsstrassen (Kanton Schwyz): aktuell keine im Kartenausschnitt gemeldet";
-      }).catch(() => {
-        if (activeMode !== id) return;
-        heading.textContent = "Baustellen des Kantons sind momentan nicht erreichbar.";
+        if (ways.status === "rejected" || works.status === "rejected") {
+          heading.textContent = "Nicht alle Meldungen sind momentan erreichbar.";
+          return;
+        }
+        const count = ways.value.length + works.value.length;
+        heading.textContent = count ? `${count} Meldungen im Kartenausschnitt` : "Aktuell keine Meldungen im Kartenausschnitt";
       });
     }
-    void loadTexture(source).then((texture) => {
+    if (id in VECTOR_MODES) {
+      const mode = VECTOR_MODES[id];
+      const heading = document.createElement("p");
+      heading.className = "walking-results-summary";
+      heading.textContent = "Wird geladen …";
+      walkingResults.append(heading);
+      void loadVector(id).then((items) => {
+        if (activeMode !== id) return;
+        vectorGroups.get(id).visible = true;
+        heading.textContent = items.length ? `${items.length} Abschnitte im Kartenausschnitt` : "Keine Abschnitte im Kartenausschnitt";
+        renderLegend(walkingResults, mode.legend(items));
+      }).catch(() => {
+        if (activeMode !== id) return;
+        heading.textContent = "Diese Kartenquelle ist momentan nicht erreichbar.";
+      });
+    }
+    if (id !== "closures" && !(id in VECTOR_MODES)) void loadTexture(source).then((texture) => {
       if (activeMode !== id || request !== requestId) return;
       const mesh = meshes.get(id);
       mesh.material.map = texture;
@@ -286,6 +424,8 @@ export function initOfficialRouteAnalyses(ctx) {
     requestId++;
     meshes.forEach((mesh) => { mesh.visible = false; });
     constructionMesh.visible = false;
+    vectorGroups.forEach((ribbons) => { ribbons.visible = false; });
+    links.hidden = true;
     if (!ctx.demographics?.activeLayer() && !ctx.walking?.active) panel.hidden = true;
   }
 
@@ -297,6 +437,18 @@ export function initOfficialRouteAnalyses(ctx) {
     if (site) {
       requestId++;
       renderConstructionInfo(walkingResults, site);
+      return true;
+    }
+    const way = activeMode === "closures" ? nearestConstructionSite(wayClosures, e, n) : null;
+    if (way) {
+      requestId++;
+      renderWayClosureInfo(walkingResults, way);
+      return true;
+    }
+    const route = vectorItems.has(activeMode) ? nearestConstructionSite(vectorItems.get(activeMode), e, n, 20) : null;
+    if (route) {
+      requestId++;
+      renderVectorInfo(walkingResults, route);
       return true;
     }
     const request = ++requestId;
