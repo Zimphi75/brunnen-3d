@@ -954,7 +954,9 @@ async function setupUi(ctx) {
     canvas, camera, terrain, providers,
     onHover({ hit, ground }) {
       buildings?.hover(hit?.kind === "building" ? hit.index : -1);
-      canvas.style.cursor = hit ? "pointer" : "";
+      const lv95 = !hit && ground ? frame.toLV95(ground.x, ground.z) : null;
+      const onRoute = lv95 && ctx.officialRoutes?.hitAt(lv95.e, lv95.n);
+      canvas.style.cursor = hit || onRoute ? "pointer" : "";
       const point = hit?.point ?? ground;
       if (point) {
         const { e, n } = frame.toLV95(point.x, point.z);

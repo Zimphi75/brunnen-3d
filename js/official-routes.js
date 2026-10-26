@@ -186,7 +186,16 @@ export function initOfficialRouteAnalyses(ctx) {
   let closuresPromise = null, wayClosures = [];
   const vectorGroups = new Map(), vectorPromises = new Map(), vectorItems = new Map();
   const overlayOn = { closures: false, hiking: false, cycling: false };
-  const overlayShown = (key) => activeMode === key || overlayOn[key];
+  const overlayShown = (key) => !ctx.ride?.active && (activeMode === key || overlayOn[key]);
+
+  // Im Velomodus liegt die Kamera unter den B\u00e4ndern und sie verdecken Fahrer und Strasse.
+  let wasRiding = false;
+  scene3d.onFrame(() => {
+    const riding = Boolean(ctx.ride?.active);
+    if (riding === wasRiding) return;
+    wasRiding = riding;
+    syncOverlays();
+  });
 
   function syncOverlays() {
     constructionMesh.visible = overlayShown("closures");
@@ -456,20 +465,25 @@ export function initOfficialRouteAnalyses(ctx) {
   document.addEventListener("keydown", (event) => { if (event.key === "Escape") hideRouteDialog(); });
 
   // Klick auf eine Linie einer eingeschalteten Ebene (ohne Analysemodus): Angaben und Link in die amtliche Karte.
-  function openRouteDialog(e, n) {
+  function findRoute(e, n) {
     let hit = null;
     const officialLink = (layer) => ["In der amtlichen Karte öffnen", officialMapUrl(layer, e, n)];
-    if (overlayOn.closures) {
+    if (overlayShown("closures")) {
       const site = nearestConstructionSite(sites, e, n);
       const way = site ? null : nearestConstructionSite(wayClosures, e, n);
       if (site) hit = { render: () => renderConstructionInfo(routeDialogBody, site), links: [["Baustellenkarte Kanton Schwyz", CONSTRUCTION_MAP_URL]] };
       else if (way) hit = { render: () => renderWayClosureInfo(routeDialogBody, way), links: [officialLink(ROUTE_ANALYSES.closures.layer)] };
     }
     for (const key of ["hiking", "cycling"]) {
-      if (hit || !overlayOn[key]) continue;
+      if (hit || !overlayShown(key)) continue;
       const route = nearestConstructionSite(vectorItems.get(key) ?? [], e, n, 20);
       if (route) hit = { render: () => renderVectorInfo(routeDialogBody, route), links: [officialLink(ROUTE_ANALYSES[key].layer)] };
     }
+    return hit;
+  }
+
+  function openRouteDialog(e, n) {
+    const hit = findRoute(e, n);
     if (!hit) { hideRouteDialog(); return false; }
     hit.render();
     routeDialogActions.replaceChildren(...hit.links.map(([label, href]) => {
@@ -534,6 +548,6 @@ export function initOfficialRouteAnalyses(ctx) {
     });
   }
 
-  ctx.officialRoutes = { activate, deactivate, get active() { return activeMode; } };
+  ctx.officialRoutes = { activate, deactivate, hitAt: (e, n) => Boolean(findRoute(e, n)), get active() { return activeMode; } };
   return ctx.officialRoutes;
 }
