@@ -216,6 +216,9 @@ export function initOfficialRouteAnalyses(ctx) {
       }]);
     }
     if (id === "closures") entries.push(["Baustellenkarte Kanton Schwyz", () => CONSTRUCTION_MAP_URL]);
+    if (id === "flood") {
+      entries.push(["Gefahrenkarten Kanton Schwyz (WebGIS)", () => "https://map.geo.sz.ch/"], ["Mehr zu Aquaprotect (BAFU)", () => "https://www.bafu.admin.ch/de/aquaprotect"]);
+    }
     for (const [label, href] of entries) {
       const link = document.createElement("a");
       link.textContent = label; link.href = href(); link.target = "_blank"; link.rel = "noopener noreferrer";
@@ -373,7 +376,7 @@ export function initOfficialRouteAnalyses(ctx) {
     description.textContent = `${source.description} Quelle: ${source.source} · Stand ${source.updated}.`;
     legend.hidden = false;
     legendLabel.textContent = "Legende";
-    legendImage.hidden = id === "closures" || id in VECTOR_MODES;
+    legendImage.hidden = id === "closures" || id === "flood" || id in VECTOR_MODES;
     legendImage.alt = `Legende: ${source.title}`;
     if (!legendImage.hidden) legendImage.src = legendUrl(source);
     viewControls.hidden = true;
@@ -387,8 +390,16 @@ export function initOfficialRouteAnalyses(ctx) {
     status.className = "walking-results-summary";
     status.textContent = source.id === "closures"
       ? "Wegabschnitte und Baustellen auf der Karte anklicken. Eine fehlende Meldung bestätigt keine Begehbarkeit."
+      : source.id === "flood"
+      ? "Fläche oder Schraffur bedeutet: bei einem seltenen Hochwasser möglicherweise überschwemmt. Ohne Markierung ist eine Gefahr nicht ausgeschlossen. Bestehende Schutzbauten sind nicht berücksichtigt."
       : "Wegabschnitte auf der Karte anklicken, um die verfügbaren Angaben zu sehen.";
     walkingResults.append(status);
+    if (source.id === "flood") {
+      renderLegend(walkingResults, [
+        { label: "Fläche: bei Hochwasser (alle 100 Jahre) möglicherweise überschwemmt", color: "#0066ff" },
+        { label: "Schraffur: gleiche Aussage, im Nahbereich bewusst grob dargestellt", color: "repeating-linear-gradient(135deg, #0066ff 0 2px, #cfe0ff 2px 5px)" },
+      ]);
+    }
     if (source.id === "closures") {
       const heading = document.createElement("p");
       heading.className = "walking-results-summary";

@@ -194,7 +194,7 @@ export function renderLegend(container, entries, footnote) {
   for (const level of entries) {
     const item = document.createElement("li");
     const swatch = document.createElement("i");
-    swatch.style.cssText = `display:inline-block;width:22px;height:6px;border-radius:3px;margin-right:8px;vertical-align:middle;background:${level.color}`;
+    swatch.style.cssText = `display:inline-block;width:22px;height:10px;border-radius:3px;margin-right:8px;vertical-align:middle;background:${level.color}`;
     item.append(swatch, level.label);
     list.append(item);
   }
