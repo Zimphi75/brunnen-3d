@@ -44,10 +44,16 @@ export function createScene(canvas, { lowPower = false } = {}) {
   controls.listenToKeyEvents(canvas);
   // Trackpad-Pinch kommt als Wheel-Event mit ctrlKey und sehr kleinen Deltas; ohne Verst\u00e4rkung zoomt es kaum.
   canvas.addEventListener("wheel", (event) => { controls.zoomSpeed = event.ctrlKey ? 14 : 1; }, { capture: true });
+  // Finger-Pinch (Handy, Tablet) rechnet OrbitControls direkt über den Fingerabstand; dort muss zoomSpeed 1 sein,
+  // sonst wirkt eine vorher gesetzte Trackpad-Verstärkung (14) als Exponent: 10 % Spreizen = etwa 4-fach Zoom.
+  canvas.addEventListener("pointerdown", (event) => { if (event.pointerType === "touch") controls.zoomSpeed = 1; }, { capture: true });
   // Safari liefert Pinch nur als gesture-Events; in Wheel-Deltas umrechnen.
   let gestureScale = 1;
   canvas.addEventListener("gesturestart", (event) => { gestureScale = event.scale; });
   canvas.addEventListener("gesturechange", (event) => {
+    // iOS Safari sendet gesture-Events auch beim Finger-Pinch; den verarbeitet OrbitControls bereits über die Touch-Zeiger.
+    // Nur Trackpad-Pinch (Safari am Mac, keine Finger auf der Karte) in Wheel-Ereignisse umrechnen, sonst doppelter Zoom.
+    if (touchPointers.activePointers().length > 0) { gestureScale = event.scale; return; }
     const deltaY = (gestureScale - event.scale) * 1000;
     gestureScale = event.scale;
     canvas.dispatchEvent(new WheelEvent("wheel", { deltaY, ctrlKey: true, clientX: event.clientX, clientY: event.clientY, bubbles: true, cancelable: true }));
