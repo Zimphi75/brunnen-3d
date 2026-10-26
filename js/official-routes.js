@@ -355,6 +355,7 @@ export function initOfficialRouteAnalyses(ctx) {
     if (!source) return false;
     activeMode = id;
     const request = ++requestId;
+    hideRouteDialog();
     for (const [key, mesh] of meshes) mesh.visible = key === id && textures.has(key);
     syncOverlays();
     panel.hidden = false;
@@ -434,8 +435,59 @@ export function initOfficialRouteAnalyses(ctx) {
     if (!ctx.demographics?.activeLayer() && !ctx.walking?.active) panel.hidden = true;
   }
 
+  const routeDialog = document.createElement("div");
+  routeDialog.className = "route-dialog";
+  routeDialog.hidden = true;
+  routeDialog.setAttribute("role", "dialog");
+  routeDialog.setAttribute("aria-label", "Angaben zur gewählten Linie");
+  const routeDialogBody = document.createElement("div");
+  routeDialogBody.className = "route-dialog-body";
+  const routeDialogActions = document.createElement("div");
+  routeDialogActions.className = "route-dialog-actions";
+  const routeDialogClose = document.createElement("button");
+  routeDialogClose.type = "button";
+  routeDialogClose.className = "icon-btn route-dialog-close";
+  routeDialogClose.setAttribute("aria-label", "Schliessen");
+  routeDialogClose.textContent = "×";
+  routeDialog.append(routeDialogBody, routeDialogClose, routeDialogActions);
+  document.body.append(routeDialog);
+  const hideRouteDialog = () => { routeDialog.hidden = true; };
+  routeDialogClose.addEventListener("click", hideRouteDialog);
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") hideRouteDialog(); });
+
+  // Klick auf eine Linie einer eingeschalteten Ebene (ohne Analysemodus): Angaben und Link in die amtliche Karte.
+  function openRouteDialog(e, n) {
+    let hit = null;
+    const officialLink = (layer) => ["In der amtlichen Karte öffnen", officialMapUrl(layer, e, n)];
+    if (overlayOn.closures) {
+      const site = nearestConstructionSite(sites, e, n);
+      const way = site ? null : nearestConstructionSite(wayClosures, e, n);
+      if (site) hit = { render: () => renderConstructionInfo(routeDialogBody, site), links: [["Baustellenkarte Kanton Schwyz", CONSTRUCTION_MAP_URL]] };
+      else if (way) hit = { render: () => renderWayClosureInfo(routeDialogBody, way), links: [officialLink(ROUTE_ANALYSES.closures.layer)] };
+    }
+    for (const key of ["hiking", "cycling"]) {
+      if (hit || !overlayOn[key]) continue;
+      const route = nearestConstructionSite(vectorItems.get(key) ?? [], e, n, 20);
+      if (route) hit = { render: () => renderVectorInfo(routeDialogBody, route), links: [officialLink(ROUTE_ANALYSES[key].layer)] };
+    }
+    if (!hit) { hideRouteDialog(); return false; }
+    hit.render();
+    routeDialogActions.replaceChildren(...hit.links.map(([label, href]) => {
+      const link = document.createElement("a");
+      link.className = "btn primary";
+      link.textContent = label; link.href = href; link.target = "_blank"; link.rel = "noopener noreferrer";
+      return link;
+    }));
+    routeDialog.hidden = false;
+    return true;
+  }
+
   ctx.clickHandlers.unshift(({ ground }) => {
-    if (!activeMode || !ground) return false;
+    if (!ground) return false;
+    if (!activeMode) {
+      const point = frame.toLV95(ground.x, ground.z);
+      return openRouteDialog(point.e, point.n);
+    }
     const source = ROUTE_ANALYSES[activeMode];
     const { e, n } = frame.toLV95(ground.x, ground.z);
     const site = activeMode === "closures" ? nearestConstructionSite(sites, e, n) : null;
@@ -475,7 +527,7 @@ export function initOfficialRouteAnalyses(ctx) {
       apply: (visible) => {
         overlayOn[key] = visible;
         syncOverlays();
-        if (!visible) return;
+        if (!visible) { hideRouteDialog(); return; }
         const loading = key === "closures" ? Promise.allSettled([loadWayClosures(), loadConstruction()]) : loadVector(key);
         void Promise.resolve(loading).then(syncOverlays).catch(() => {});
       },

@@ -798,3 +798,14 @@ body.ride-mode #app > :not(#scene), body.ride-mode > :not(#app):not(#ride-hud):n
 body.ride-mode #scene { pointer-events: none; }
 .ride-street { font-family: var(--f-display); font-size: 16px; font-weight: 600; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ride-stick-label.left, .ride-stick-label.right { background: var(--panel); border: 1px solid var(--rule); border-radius: 999px; padding: 3px 8px; color: var(--ink); }
+.route-dialog { position: fixed; left: 50%; bottom: 28px; z-index: 41; display: grid; grid-template-columns: minmax(0, 1fr) 28px; gap: 10px; width: min(420px, calc(100vw - 28px)); max-height: 60vh; overflow: auto; padding: 14px 16px; transform: translateX(-50%); border: 1px solid var(--rule); border-radius: 12px; background: var(--panel-solid); box-shadow: var(--shadow); color: var(--ink); font-size: 12.5px; line-height: 1.45; }
+.route-dialog[hidden] { display: none; }
+.route-dialog-body { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.route-dialog-body strong { font-size: 14px; }
+.route-dialog-body dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; margin: 0; }
+.route-dialog-body dt { color: var(--ink-3); }
+.route-dialog-body dd { margin: 0; }
+.route-dialog-body p { margin: 0; color: var(--ink-3); font-size: 11px; }
+.route-dialog-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.route-dialog-actions .btn { text-decoration: none; }
+.route-dialog-close { grid-row: 1; grid-column: 2; width: 28px; height: 28px; }
