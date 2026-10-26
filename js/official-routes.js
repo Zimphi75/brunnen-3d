@@ -1,5 +1,9 @@
 import * as THREE from "three";
 import { rasterGridGeometry } from "./demographics.js";
+import {
+  constructionUrl, parseConstructionSites, sitesInExtent, drawConstructionSites, nearestConstructionSite,
+  renderConstructionInfo, renderConstructionLegend,
+} from "./construction.js";
 
 const WMS_URL = "https://wms.geo.admin.ch/";
 const IDENTIFY_URL = "https://api3.geo.admin.ch/rest/services/api/MapServer/identify";
@@ -15,9 +19,9 @@ const ROUTE_ANALYSES = Object.freeze({
     description: "Nationale, regionale und lokale Velorouten aus dem offiziellen Veloland-Datensatz.",
   },
   closures: {
-    id: "closures", title: "Weg-Sperrungen", layer: "ch.astra.wanderland-sperrungen_umleitungen",
-    source: "ASTRA und Kantone · Wanderweg-Sperrungen", updated: "täglich",
-    description: "Gemeldete Sperrungen und Umleitungen. Keine Meldung ist keine Bestätigung für einen offenen Weg.",
+    id: "closures", title: "Sperrungen und Baustellen", layer: "ch.astra.wanderland-sperrungen_umleitungen",
+    source: "ASTRA und Kantone (Wanderweg-Sperrungen), Tiefbauamt Kanton Schwyz (Baustellen Kantonsstrassen)", updated: "täglich",
+    description: "Gemeldete Wegsperrungen, Umleitungen und Baustellen auf Kantonsstrassen. Keine Meldung ist keine Bestätigung für einen offenen Weg oder eine freie Strasse.",
   },
   flood: {
     id: "flood", title: "Hochwasser · grobe Übersicht", layer: "ch.bafu.aquaprotect_100", query: "wms",
@@ -150,6 +154,7 @@ export function initOfficialRouteAnalyses(ctx) {
   const textures = new Map();
   const mapPromises = new Map();
   let activeMode = null, requestId = 0;
+  let sitesPromise = null, sites = [];
 
   for (const source of Object.values(ROUTE_ANALYSES)) {
     const material = new THREE.MeshBasicMaterial({
@@ -163,6 +168,41 @@ export function initOfficialRouteAnalyses(ctx) {
     mesh.visible = false;
     group.add(mesh);
     meshes.set(source.id, mesh);
+  }
+
+  const constructionMesh = new THREE.Mesh(grid.geometry, new THREE.MeshBasicMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+  }));
+  constructionMesh.name = "construction-sites";
+  constructionMesh.frustumCulled = false;
+  constructionMesh.renderOrder = 9;
+  constructionMesh.visible = false;
+  group.add(constructionMesh);
+
+  function loadConstruction() {
+    if (!sitesPromise) {
+      sitesPromise = fetch(constructionUrl()).then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      }).then((text) => {
+        sites = sitesInExtent(parseConstructionSites(text), grid.extent);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.min(2048, Math.max(256, grid.columns * 10));
+        canvas.height = Math.max(128, Math.round(canvas.width * grid.extent.height / grid.extent.width));
+        drawConstructionSites(canvas, sites, grid.extent);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = scene3d.renderer.capabilities.getMaxAnisotropy();
+        constructionMesh.material.map = texture;
+        constructionMesh.material.needsUpdate = true;
+        return sites;
+      }).catch((error) => {
+        sitesPromise = null;
+        throw error;
+      });
+    }
+    return sitesPromise;
   }
 
   function loadTexture(source) {
@@ -189,6 +229,7 @@ export function initOfficialRouteAnalyses(ctx) {
     activeMode = id;
     const request = ++requestId;
     for (const [key, mesh] of meshes) mesh.visible = key === id && textures.has(key);
+    constructionMesh.visible = false;
     panel.hidden = false;
     modeSelect.value = id;
     title.textContent = source.title;
@@ -207,9 +248,26 @@ export function initOfficialRouteAnalyses(ctx) {
     const status = document.createElement("p");
     status.className = "walking-results-summary";
     status.textContent = source.id === "closures"
-      ? "Wegabschnitte auf der Karte anklicken. Eine fehlende Meldung bestätigt keine Begehbarkeit."
+      ? "Wegabschnitte und Baustellen auf der Karte anklicken. Eine fehlende Meldung bestätigt keine Begehbarkeit."
       : "Wegabschnitte auf der Karte anklicken, um die verfügbaren Angaben zu sehen.";
     walkingResults.append(status);
+    if (source.id === "closures") {
+      const heading = document.createElement("p");
+      heading.className = "walking-results-summary";
+      heading.textContent = "Baustellen Kantonsstrassen (Kanton Schwyz)";
+      walkingResults.append(heading);
+      renderConstructionLegend(walkingResults);
+      void loadConstruction().then((loaded) => {
+        if (activeMode !== id) return;
+        constructionMesh.visible = true;
+        heading.textContent = loaded.length
+          ? `Baustellen Kantonsstrassen (Kanton Schwyz): ${loaded.length} im Kartenausschnitt`
+          : "Baustellen Kantonsstrassen (Kanton Schwyz): aktuell keine im Kartenausschnitt gemeldet";
+      }).catch(() => {
+        if (activeMode !== id) return;
+        heading.textContent = "Baustellen des Kantons sind momentan nicht erreichbar.";
+      });
+    }
     void loadTexture(source).then((texture) => {
       if (activeMode !== id || request !== requestId) return;
       const mesh = meshes.get(id);
@@ -227,6 +285,7 @@ export function initOfficialRouteAnalyses(ctx) {
     activeMode = null;
     requestId++;
     meshes.forEach((mesh) => { mesh.visible = false; });
+    constructionMesh.visible = false;
     if (!ctx.demographics?.activeLayer() && !ctx.walking?.active) panel.hidden = true;
   }
 
@@ -234,6 +293,12 @@ export function initOfficialRouteAnalyses(ctx) {
     if (!activeMode || !ground) return false;
     const source = ROUTE_ANALYSES[activeMode];
     const { e, n } = frame.toLV95(ground.x, ground.z);
+    const site = activeMode === "closures" ? nearestConstructionSite(sites, e, n) : null;
+    if (site) {
+      requestId++;
+      renderConstructionInfo(walkingResults, site);
+      return true;
+    }
     const request = ++requestId;
     renderFeatureInfo(walkingResults, source, null);
     void queryFeature(source, e, n).then((feature) => {

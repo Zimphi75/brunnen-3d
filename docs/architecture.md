@@ -111,6 +111,7 @@ Es gibt bewusst **kein Backend**: Die Laufzeit-APIs (Open-Meteo, transport.opend
 | `routing.js` | Lokaler Fussweggraph aus `roads.json`, nächster Wegknoten, kürzeste Route und erreichbare Wegsegmente; Gehzeit mit 75 m/min geschätzt |
 | `walking.js` | 5/10/15-Minuten-Wegenetz, Ergebnisliste aus OSM-POIs und Haltestellen, Kategorienfilter und hervorgehobene Zielroute |
 | `official-routes.js` | Gemeinsame GeoAdmin-WMS/FeatureInfo-Ansichten für Wanderwege, Veloland, Sperrungen, Lärm und Aquaprotect |
+| `construction.js` | Baustellen Kantonsstrassen (Kanton Schwyz, WFS A083a): Parser, Canvas-Zeichnung und Detailansicht, eingebunden im Modus «Sperrungen und Baustellen» |
 | `solar-potential.js` | BFE-Dachpotenzial nach EGID, Modellwerte und Dachflächenzuordnung zur bestehenden 3D-Geometrie |
 | `sky.js` | Sonnenstand (SunCalc-Algorithmus), Himmel, Sterne, Licht, Schatten, Zeitzone Zürich |
 | `weather.js` | Open-Meteo, Vorgaben, Wettereffekte (Overlay und Partikel) |

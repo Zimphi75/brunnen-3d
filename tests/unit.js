@@ -25,6 +25,7 @@ import { automaticTimeSpeed, buildingVisibleAtYear } from "../js/history.js";
 import { moonIllumination, moonPhaseName } from "../js/time-weather-panel.js";
 import { buildWalkingGraph, closestWalkNode, shortestWalkRoutes, walkingRouteTo, walkingSegmentsWithin } from "../js/routing.js";
 import { officialRouteMapUrl, renderFeatureInfo } from "../js/official-routes.js";
+import { parseConstructionSites, nearestConstructionSite, constructionStatus } from "../js/construction.js";
 import { fetchSolarPotential } from "../js/solar-potential.js";
 
 const results = [];
@@ -152,6 +153,20 @@ test("Offizielle Wegkarten: transparente Geländeüberlagerung in LV95", () => {
   assert(url.searchParams.get("LAYERS") === "ch.astra.veloland");
   assert(url.searchParams.get("CRS") === "EPSG:2056" && url.searchParams.get("BBOX") === "100,200,900,600");
   assert(url.searchParams.get("TRANSPARENT") === "true" && url.searchParams.get("FORMAT") === "image/png");
+});
+
+test("Baustellen Kanton Schwyz: WFS-GML wird geparst und nächstgelegen zugeordnet", () => {
+  const xml = `<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0" xmlns:ms="http://mapserver.gis.umn.edu/mapserver" xmlns:gml="http://www.opengis.net/gml/3.2">
+    <wfs:member><ms:ch.sz.a083a.baustellen.erweitert>
+      <ms:geom><gml:LineString><gml:posList srsDimension="2">2688000 1205000 2688100 1205000</gml:posList></gml:LineString></ms:geom>
+      <ms:lokalname>Teststrasse</ms:lokalname><ms:baubeginn>2020-01-01</ms:baubeginn><ms:bauende>2099-01-01</ms:bauende>
+      <ms:behinderungsbemerkung>mittel: Einspurig&lt;br&gt;</ms:behinderungsbemerkung>
+      <ms:link>&lt;a href="https://evil.example/x.pdf"&gt;Beilage&lt;/a&gt;</ms:link>
+    </ms:ch.sz.a083a.baustellen.erweitert></wfs:member></wfs:FeatureCollection>`;
+  const sites = parseConstructionSites(xml);
+  assert(sites.length === 1 && sites[0].level === "mittel" && sites[0].impact === "mittel: Einspurig" && sites[0].link === null);
+  assert(nearestConstructionSite(sites, 2688050, 1205010) === sites[0] && nearestConstructionSite(sites, 2688050, 1205100) === null);
+  assert(constructionStatus(sites[0], "2026-10-26") === "laufend" && constructionStatus(sites[0], "2019-01-01") === "geplant");
 });
 
 test("Aquaprotect: leere Gefahrenattribute ergeben keine punktgenaue Risikobehauptung", () => {

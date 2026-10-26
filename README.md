@@ -112,6 +112,8 @@ Alle Datensätze mit Herkunft, Lizenz, Stand und Abdeckung stehen in [docs/data-
 | Abfahrten | transport.opendata.ch / opentransportdata.swiss | Open Data, Quellenangabe |
 | Photovoltaikanlagen | BFE, Elektrizitätsproduktionsanlagen | Open Government Data, Quellenangabe |
 | Abstimmungsresultate | BFS voteinfo | Open Government Data, Quellenangabe |
+| Wanderwegsperrungen und Umleitungen | ASTRA und Kantone, GeoAdmin WMS | Open Government Data, Quellenangabe |
+| Baustellen Kantonsstrassen (A083a) | Tiefbauamt Kanton Schwyz, WFS `ch.sz.a083a.baustellen.erweitert` | Quellenangabe |
 | Dachfarben | SWISSIMAGE-Luftbild (Median je Dach, abgeleitet) | Open Government Data swisstopo |
 
 Bei einer Veröffentlichung müssen die Quellenangaben sichtbar bleiben (Inspector und diese Dokumentation). Für die kommerzielle Nutzung von Open-Meteo ist ein API-Schlüssel nötig.
@@ -148,7 +150,7 @@ Die Zahlen stehen auch im Almanach («Datenqualität») und stammen aus `public/
 - **Zeitreise**: Gezeigt wird der heute registrierte Gebäudebestand nach Baujahr/Bauperiode, keine Rekonstruktion früherer Gebäude. Abgebrochene und umgebaute Altgebäude sind nicht enthalten; undatierte Gebäude bleiben ausgeblendet. Der Boden ist neutral, die Kamera bleibt unbewegt.
 - **ÖV**: Gemessene Fahrzeugpositionen sind über die offene API nicht verfügbar. Die Fahrplansimulation interpoliert Fahrplanzeiten entlang der OSM-Liniengeometrie.
 - **Fussrouting**: Wegstrecken folgen dem vorbereiteten OSM-Wegenetz innerhalb des 300-m-Gemeindepuffers. Gehzeiten verwenden eine mittlere Geschwindigkeit von 75 m/min (Treppen mit Zuschlag); Steigung, individuelle Gehgeschwindigkeit und aktuelle Wegsperrungen sind nicht vollständig modelliert. Es ist keine Navigationsgarantie.
-- **Offizielle Wegkarten**: Wanderwege, Veloland und gemeldete Sperrungen kommen aus GeoAdmin. Fehlende Sperrmeldungen sind keine Bestätigung, dass Wege offen sind; Umleitungen werden nicht automatisch geplant.
+- **Offizielle Wegkarten**: Wanderwege und Veloland kommen aus GeoAdmin. Im Modus «Sperrungen und Baustellen» kommen gemeldete Wegsperrungen aus GeoAdmin und Baustellen auf Kantonsstrassen (länger als 5 Tage, täglich aktualisiert) per WFS vom Kanton Schwyz; Gemeindestrassen sind nicht enthalten. Fehlende Meldungen sind keine Bestätigung, dass Wege oder Strassen frei sind; Umleitungen werden nicht automatisch geplant.
 - **Solarpotenzial**: BFE-Dacheignungsdaten (Layerstand 2023-02-21) liefern Modellfläche und modellierten Jahresertrag, keine Messung oder Garantie für eine konkrete Anlage. Dachflächen werden nur bei EGID- und Geometriezuordnung in 3D eingefärbt. Bestehende Anlagen stammen weiterhin separat aus dem BFE-Anlagenregister.
 - **Hochwasser und Lärm**: Aquaprotect ist eine grobe Übersicht von 2008, keine aktuelle Warnung und nicht parzellenscharf. Lärmwerte sind BAFU-Modellraster mit Referenzjahr 2021, keine Gebäudemessungen.
 - **Abstimmungen**: Einzelne Abstimmungstage fehlen, wenn die Quelle sie nicht liefert (derzeit 2025-05-18 und 2023-03-12). Die Quelle sendet keine CORS-Header; darum zieht die Pipeline die Daten (`votes.json`).

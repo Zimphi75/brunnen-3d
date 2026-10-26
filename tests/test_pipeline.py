@@ -282,7 +282,7 @@ def test_roads_inside_extent():
 def test_every_dataset_documents_license_and_origin():
     datasets = json.loads((DATA / "sources.json").read_text())["datasets"]
     ids = {dataset["id"] for dataset in datasets}
-    expected_runtime_sources = {"airquality", "bav", "hiking", "cycling", "closures", "solar_potential", "noise", "flood", "radon", "soil", "hires", "basemap", "wikipedia"}
+    expected_runtime_sources = {"airquality", "bav", "hiking", "cycling", "closures", "construction_sz", "solar_potential", "noise", "flood", "radon", "soil", "hires", "basemap", "wikipedia"}
     assert expected_runtime_sources <= ids, f"Quellenkatalog unvollständig: {sorted(expected_runtime_sources - ids)}"
     assert len(ids) == len(datasets), "Quellen-IDs müssen eindeutig sein"
     for dataset in datasets:

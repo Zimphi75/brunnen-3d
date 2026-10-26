@@ -69,7 +69,7 @@ Der zusätzliche Hoststar-Upload wird erst mit `HOSTSTAR_SFTP_ENABLED=true` ausg
 - **Caching**: `public/vendor/` und Bilder mit `Cache-Control: public, max-age=31536000, immutable`; `public/data/*.json|bin` mit Revalidierung (`no-cache` plus `ETag`/`Last-Modified`) oder Hash im Dateinamen.
 - **HTTPS** ist für WebGL nicht Pflicht, für Produktion aber üblich.
 - **CORS** ist nicht nötig, solange alles von derselben Herkunft kommt. Die Laufzeit-APIs (Open-Meteo, transport.opendata.ch, wms.geo.admin.ch) erlauben Browserzugriffe.
-- **Content-Security-Policy** (Vorschlag): `default-src 'self'; connect-src 'self' https://api.open-meteo.com https://transport.opendata.ch; img-src 'self' data: blob: https://wms.geo.admin.ch; style-src 'self' 'unsafe-inline'`
+- **Content-Security-Policy** (Vorschlag): `default-src 'self'; connect-src 'self' https://api.open-meteo.com https://transport.opendata.ch https://map.geo.sz.ch; img-src 'self' data: blob: https://wms.geo.admin.ch; style-src 'self' 'unsafe-inline'`
 - **Lizenzen**: Quellenangaben müssen erhalten bleiben (siehe README). Open-Meteo erfordert für kommerzielle Nutzung einen API-Schlüssel.
 
 ## Beispiel nginx
