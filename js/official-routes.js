@@ -160,7 +160,7 @@ export function renderFeatureInfo(container, source, feature) {
 }
 
 export function initOfficialRouteAnalyses(ctx) {
-  const { scene3d, terrain, frame, meta, inspector } = ctx;
+  const { scene3d, terrain, frame, meta, inspector, layers } = ctx;
   const grid = rasterGridGeometry(terrain, frame, meta.dem.extent);
   const group = new THREE.Group();
   group.name = "official-route-analyses";
@@ -185,6 +185,13 @@ export function initOfficialRouteAnalyses(ctx) {
   let sitesPromise = null, sites = [];
   let closuresPromise = null, wayClosures = [];
   const vectorGroups = new Map(), vectorPromises = new Map(), vectorItems = new Map();
+  const overlayOn = { closures: false, hiking: false, cycling: false };
+  const overlayShown = (key) => activeMode === key || overlayOn[key];
+
+  function syncOverlays() {
+    constructionMesh.visible = overlayShown("closures");
+    for (const [key, ribbons] of vectorGroups) ribbons.visible = overlayShown(key);
+  }
   const links = document.createElement("p");
   links.className = "official-links";
   links.hidden = true;
@@ -349,8 +356,7 @@ export function initOfficialRouteAnalyses(ctx) {
     activeMode = id;
     const request = ++requestId;
     for (const [key, mesh] of meshes) mesh.visible = key === id && textures.has(key);
-    constructionMesh.visible = false;
-    for (const [key, ribbons] of vectorGroups) ribbons.visible = key === id;
+    syncOverlays();
     panel.hidden = false;
     modeSelect.value = id;
     title.textContent = source.title;
@@ -381,7 +387,7 @@ export function initOfficialRouteAnalyses(ctx) {
       renderConstructionLegend(walkingResults, [{ label: "Gesperrter Wanderweg", color: "#b3121b" }, { label: "Umleitung", color: "#2f7fd8" }]);
       void Promise.allSettled([loadWayClosures(), loadConstruction()]).then(([ways, works]) => {
         if (activeMode !== id) return;
-        constructionMesh.visible = true;
+        syncOverlays();
         if (ways.status === "rejected" || works.status === "rejected") {
           heading.textContent = "Nicht alle Meldungen sind momentan erreichbar.";
           return;
@@ -398,7 +404,7 @@ export function initOfficialRouteAnalyses(ctx) {
       walkingResults.append(heading);
       void loadVector(id).then((items) => {
         if (activeMode !== id) return;
-        vectorGroups.get(id).visible = true;
+        syncOverlays();
         heading.textContent = items.length ? `${items.length} Abschnitte im Kartenausschnitt` : "Keine Abschnitte im Kartenausschnitt";
         renderLegend(walkingResults, mode.legend(items));
       }).catch(() => {
@@ -423,8 +429,7 @@ export function initOfficialRouteAnalyses(ctx) {
     activeMode = null;
     requestId++;
     meshes.forEach((mesh) => { mesh.visible = false; });
-    constructionMesh.visible = false;
-    vectorGroups.forEach((ribbons) => { ribbons.visible = false; });
+    syncOverlays();
     links.hidden = true;
     if (!ctx.demographics?.activeLayer() && !ctx.walking?.active) panel.hidden = true;
   }
@@ -462,6 +467,20 @@ export function initOfficialRouteAnalyses(ctx) {
     });
     return true;
   });
+
+  // Ebenen im Ebenenmenü: gleiche Bänder ohne Analysepanel.
+  for (const [key, label, color] of [["closures", "Sperrungen und Baustellen", "#d62828"], ["hiking", "Wanderwege (amtlich)", "#f2c230"], ["cycling", "Velorouten", "#d6246e"]]) {
+    layers.add({
+      id: `route-${key}`, label, color, visible: false, note: "Kartenquelle nicht verfügbar",
+      apply: (visible) => {
+        overlayOn[key] = visible;
+        syncOverlays();
+        if (!visible) return;
+        const loading = key === "closures" ? Promise.allSettled([loadWayClosures(), loadConstruction()]) : loadVector(key);
+        void Promise.resolve(loading).then(syncOverlays).catch(() => {});
+      },
+    });
+  }
 
   ctx.officialRoutes = { activate, deactivate, get active() { return activeMode; } };
   return ctx.officialRoutes;

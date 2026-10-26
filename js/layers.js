@@ -3,7 +3,7 @@
 const LAYER_GROUPS = [
   { id: "base", label: "Karte, Gebäude & Grundstücke", open: true, layers: ["terrain", "buildings", "boundary", "parcels", "planning-use", "planning-overlays"] },
   { id: "register", label: "Register", open: true, layers: ["register"] },
-  { id: "mobility", label: "Mobilität & Verkehr", layers: ["roads", "paths", "rail", "transport-lines", "stops"] },
+  { id: "mobility", label: "Mobilität & Verkehr", layers: ["roads", "paths", "rail", "transport-lines", "stops", "route-closures", "route-hiking", "route-cycling"] },
   { id: "places", label: "Orte & Natur", layers: ["pois", "labels", "water", "trees"] },
   { id: "demographics", label: "Bevölkerung & Arbeit", layers: ["demography-population", "demography-employment"] },
   { id: "energy", label: "Energie", layers: ["pv"] },
@@ -31,6 +31,9 @@ const LAYER_SOURCES = {
   "transport-lines": "OpenStreetMap-Mitwirkende; Fahrplandaten von transport.opendata.ch",
   stops: "OpenStreetMap-Mitwirkende; Fahrplandaten von transport.opendata.ch",
   pois: "OpenStreetMap-Mitwirkende (ODbL 1.0)",
+  "route-closures": "Tiefbauamt Kanton Schwyz (Baustellen Kantonsstrassen, A083a); ASTRA und Kantone (Wanderweg-Sperrungen) via GeoAdmin; täglich aktualisiert",
+  "route-hiking": "swisstopo swissTLM3D, Wanderwege via GeoAdmin",
+  "route-cycling": "ASTRA und SchweizMobil, Veloland Schweiz via GeoAdmin",
   labels: "OpenStreetMap-Mitwirkende (ODbL 1.0)",
   water: "OpenStreetMap-Mitwirkende (ODbL 1.0)",
   trees: "WSL/BAFU Vegetationshöhenmodell NFI (2025), ergänzt mit OSM-Einzelbäumen",

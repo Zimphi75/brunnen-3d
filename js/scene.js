@@ -42,6 +42,16 @@ export function createScene(canvas, { lowPower = false } = {}) {
   controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
   controls.keyPanSpeed = 22;
   controls.listenToKeyEvents(canvas);
+  // Trackpad-Pinch kommt als Wheel-Event mit ctrlKey und sehr kleinen Deltas; ohne Verst\u00e4rkung zoomt es kaum.
+  canvas.addEventListener("wheel", (event) => { controls.zoomSpeed = event.ctrlKey ? 14 : 1; }, { capture: true });
+  // Safari liefert Pinch nur als gesture-Events; in Wheel-Deltas umrechnen.
+  let gestureScale = 1;
+  canvas.addEventListener("gesturestart", (event) => { gestureScale = event.scale; });
+  canvas.addEventListener("gesturechange", (event) => {
+    const deltaY = (gestureScale - event.scale) * 1000;
+    gestureScale = event.scale;
+    canvas.dispatchEvent(new WheelEvent("wheel", { deltaY, ctrlKey: true, clientX: event.clientX, clientY: event.clientY, bubbles: true, cancelable: true }));
+  });
   const touchPointers = hardenTouchPointers(canvas); // nach OrbitControls registrieren
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
