@@ -7,3 +7,4 @@ __pycache__/
 public/data/*
 public/vendor/
 !public/data/.gitkeep
+live-check/

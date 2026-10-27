@@ -102,3 +102,12 @@ Ein Backend (FastAPI oder Node) mit Caching ist nur nötig für geschützte APIs
 - **Sofort aktualisieren:** Actions → «Build and deploy website» → *Run workflow* mit Häkchen bei «refresh».
 - **Abstimmungen:** Neue Abstimmungssonntage werden automatisch erkannt (alle Sonntage seit dem neuesten bekannten Termin werden abgefragt); Abstimmungen der letzten 14 Tage werden bei jedem Lauf neu geladen.
 - **Schlägt ein Lauf fehl** (z. B. Quelle nicht erreichbar), bleibt die zuletzt veröffentlichte Version online; GitHub meldet den Fehler per Mail.
+
+## Live-Prüfung
+
+Workflow `.github/workflows/live-check.yml` prüft die veröffentlichte Seite nach jedem erfolgreichen Deploy, jeden Montag und auf Knopfdruck:
+
+- `scripts/live_smoke.mjs`: startet die App in Chromium, Firefox und WebKit (Safari-Engine) und wartet auf «Brunnen 3D bereit». Unbehandelte Fehler oder kein Start innerhalb von 150 s gelten als Fehler. Screenshot und `smoke.json` liegen als Artefakt bereit.
+- `scripts/live_check.py`: prüft Mindestmengen (Gebäude, PV-Anlagen, Abstimmungen, Grundstücke, POI), das Alter der veränderlichen Quellen (höchstens 40 Tage) und die Live-Schnittstellen (Open-Meteo, transport.opendata.ch, GeoAdmin, Wikipedia).
+
+Schlägt eine Prüfung fehl, verschickt GitHub ein Mail. Die Ergebnisse stehen in der Zusammenfassung des Laufs.
