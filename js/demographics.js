@@ -262,6 +262,8 @@ export function initDemographicLayers(ctx) {
     legendTitle.textContent = source.name === "STATPOP" ? "Einwohner" : "Arbeitsplätze";
     legendDescription.textContent = source.name === "STATPOP" ? "Einwohner in der 100-m-Zelle, keine Gebäudezahl" : "Arbeitsplätze in der 100-m-Zelle";
     void yearFor(source).then((year) => {
+      // Neuerer Jahrgang bei GeoAdmin: einmalig in der Kachel nachführen (gleiches Jahr → kein erneutes update).
+      if (layers.get(source.id)?.count !== year) layers.update(source.id, { count: year });
       if (activeLayer !== source.id || legendImage.dataset.layer === `${source.id}:${year}`) return;
       legendImage.dataset.layer = `${source.id}:${year}`;
       legendImage.alt = `Farblegende: ${source.name === "STATPOP" ? "Einwohner" : "Arbeitsplätze"} ${year}`;
@@ -302,7 +304,8 @@ export function initDemographicLayers(ctx) {
     overlays.set(source.id, mesh);
     const layer = layers.add({
       id: source.id, label: source.label, color: `#${source.color.toString(16).padStart(6, "0")}`,
-      count: "neuester Jahrgang", visible: false, apply: (visible) => activate(source, visible),
+      // Kurzer Jahrgang statt Text: Ein langer Zusatz drängt den Namen («Einwohner», «Arbeitsplätze») aus der Kachel.
+      count: source.year, visible: false, apply: (visible) => activate(source, visible),
       note: "GeoAdmin-WMS nicht verfügbar",
     });
   }
