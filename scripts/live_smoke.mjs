@@ -16,7 +16,14 @@ async function check(name) {
   const result = { browser: name, ok: false, readyMs: null, info: "", pageErrors: [], consoleErrors: [], failedRequests: [] };
   let browser;
   try {
-    browser = await engines[name].launch(name === "chromium" ? { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] } : {});
+    // Testrechner haben keine Grafikkarte: Software-WebGL erzwingen. Firefox läuft dafür sichtbar in einem virtuellen
+    // Bildschirm (xvfb, HEADED=1), weil es im Headless-Modus unter Linux kein WebGL-Fallback hat.
+    const options = {
+      chromium: { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
+      firefox: { firefoxUserPrefs: { "webgl.force-enabled": true, "webgl.disabled": false, "webgl.enable-webgl2": true } },
+      webkit: {},
+    }[name];
+    browser = await engines[name].launch({ ...options, headless: process.env.HEADED !== "1" });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     // Intro-Angebot unterdrücken, damit es den Start nicht überdeckt.
     await page.addInitScript(() => { try { localStorage.setItem("brunnen3d-intro", "seen"); } catch {} });

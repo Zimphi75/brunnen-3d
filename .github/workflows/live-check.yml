@@ -67,7 +67,11 @@ jobs:
         run: sleep 90
       - name: App starten
         run: |
-          node scripts/live_smoke.mjs "$SITE_URL" ${{ matrix.browser }} | tee smoke.txt
+          if [ "${{ matrix.browser }}" = firefox ]; then
+            HEADED=1 xvfb-run -a node scripts/live_smoke.mjs "$SITE_URL" firefox | tee smoke.txt
+          else
+            node scripts/live_smoke.mjs "$SITE_URL" ${{ matrix.browser }} | tee smoke.txt
+          fi
           status=${PIPESTATUS[0]}
           { echo "## Start in ${{ matrix.browser }}"; echo '```'; cat smoke.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
