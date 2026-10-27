@@ -49,6 +49,11 @@ for (const name of wanted) {
   const result = await check(name);
   console.log(`${result.ok ? "OK  " : "FEHLER"} ${name}: ${result.readyMs ? `${(result.readyMs / 1000).toFixed(1)} s` : "-"} ${result.info}`);
   for (const e of result.pageErrors) console.log(`   Fehler: ${e}`);
+  // In GitHub Actions als Annotation ausgeben: so ist der Grund auch ohne Log-Download lesbar.
+  if (!result.ok && process.env.GITHUB_ACTIONS) {
+    const detail = [result.info, ...result.pageErrors, ...result.consoleErrors.slice(0, 3)].filter(Boolean).join(" | ").replace(/\r?\n/g, " ");
+    console.log(`::error title=Live-Prüfung ${name}::${detail}`);
+  }
   results.push(result);
 }
 writeFileSync(`${outDir}/smoke.json`, JSON.stringify({ url, checked: new Date().toISOString(), results }, null, 2));

@@ -45,7 +45,9 @@ jobs:
   browser:
     name: Start im Browser (${{ matrix.browser }})
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 fest: Unter ubuntu-latest (seit Okt. 2026 Ubuntu 26) lassen sich die WebKit-Abhängigkeiten
+    # dieser Playwright-Version nicht installieren.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
