@@ -560,6 +560,8 @@ body.map-details-open #demographic-analysis { bottom: min(46vh, 460px); }
 #loading .loading-card { position: relative; z-index: 2; }
 @media (max-aspect-ratio: 3/4) { #loading { place-items: end center; padding-bottom: max(32px, env(safe-area-inset-bottom)); } .loading-bg img { object-position: 24% 50%; transform-origin: 24% 50%; } }
 #loading.done { opacity: 0; pointer-events: none; }
+#loading .no-webgl .loading-spinner, #loading .no-webgl .bar { display: none; }
+#loading .no-webgl .no-webgl-intro { display: inline-flex; margin-top: 12px; text-decoration: none; }
 .loading-card { width: min(400px, calc(100vw - 32px)); padding: 28px 26px; text-align: center; background: rgba(247, 249, 246, .9); border: 1px solid rgba(23, 33, 28, .12); border-radius: var(--r-panel); box-shadow: var(--shadow); backdrop-filter: blur(12px); }
 .loading-spinner { display: block; width: 30px; height: 30px; margin: 0 auto 12px; border: 3px solid rgba(23, 33, 28, .12); border-top-color: var(--accent); border-radius: 50%; animation: loading-spin 1s linear infinite; }
 @keyframes loading-spin { to { transform: rotate(360deg); } }

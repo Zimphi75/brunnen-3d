@@ -231,7 +231,33 @@ const PRESETS = [
   { id: "kloster", label: "Kloster Ingenbohl", wgs: [46.9991, 8.6161], distance: 520, heading: 330, tilt: 58 },
 ];
 
+// Ohne WebGL (alte Geräte, abgeschaltete Grafikbeschleunigung, gesperrte Firmen- oder Datenschutz-Browser) kann die
+// 3D-Ansicht nicht starten. Statt eines endlosen Ladebalkens erklären wir das und verweisen auf das Intro-Video.
+function hasWebGL() {
+  try {
+    const canvas = document.createElement("canvas");
+    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+  } catch { return false; }
+}
+
+function showNoWebGL() {
+  clearInterval(loadingMessageTimer);
+  const card = document.querySelector("#loading .loading-card");
+  card.classList.add("no-webgl");
+  $("#intro-offer").hidden = true;
+  $("#loading-text").textContent = "Dein Browser oder Gerät kann hier keine 3D-Grafik anzeigen.";
+  $("#loading-note").textContent = "Tipp: Hardware- bzw. Grafikbeschleunigung in den Browser-Einstellungen einschalten oder einen anderen Browser versuchen.";
+  if (!card.querySelector(".no-webgl-intro")) {
+    const link = document.createElement("a");
+    link.className = "btn primary no-webgl-intro";
+    link.href = "intro/";
+    link.textContent = "Intro-Video ansehen";
+    card.append(link);
+  }
+}
+
 async function start() {
+  if (!hasWebGL()) { showNoWebGL(); return; }
   const started = performance.now();
   startLoadingMessages();
   const progress = createProgress(setLoading).add("meta", 0.5).add("dem", 1).add("terrain", 2).add("ortho", 2).add("buildings", 2);
@@ -1159,6 +1185,7 @@ async function setupUi(ctx) {
 }
 
 start().catch((error) => {
+  if (/WebGL/i.test(error?.message ?? "")) { showNoWebGL(); console.warn(error); return; }
   clearInterval(loadingMessageTimer);
   document.body.classList.remove("mobile-tools-open", "mobile-startup-sequence");
   $("#mobile-tools-toggle").setAttribute("aria-expanded", "false");
