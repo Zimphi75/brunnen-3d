@@ -117,6 +117,22 @@ export function rasterGridGeometry(terrain, frame, bounds) {
   return { geometry, extent: { minE, minN, maxE, maxN, width, height }, columns, rows };
 }
 
+/**
+ * Neuester verfügbarer Jahrgang einer Ebene, ermittelt über GeoAdmin identify in einem Siedlungsgebiet
+ * (liefert Zellen aller Jahrgänge mit i_year). So zeigt die Karte neue STATPOP/STATENT-Jahrgänge ohne Code-Änderung;
+ * schlägt die Abfrage fehl, gilt der eingetragene Jahrgang (source.year).
+ */
+async function latestYear(source, [east, north], fetcher = fetch) {
+  const envelope = `${east - 300},${north - 300},${east + 300},${north + 300}`;
+  const params = new URLSearchParams({
+    geometry: envelope, geometryType: "esriGeometryEnvelope", layers: `all:${source.layer}`, sr: "2056", lang: "de", tolerance: "0",
+    mapExtent: envelope, imageDisplay: "200,200,96", returnGeometry: "false", limit: "200",
+  });
+  const result = await getJson(`${IDENTIFY_URL}?${params}`, fetcher);
+  const years = (result?.results ?? []).map((item) => Number(item.attributes?.i_year)).filter(Number.isFinite);
+  return years.length ? String(Math.max(...years, Number(source.year))) : source.year;
+}
+
 function mapUrl(source, extent, columns, rows) {
   const params = new URLSearchParams({
     SERVICE: "WMS", VERSION: "1.3.0", REQUEST: "GetMap", LAYERS: source.layer, STYLES: "default", CRS: "EPSG:2056",
@@ -202,6 +218,14 @@ export function initDemographicLayers(ctx) {
   const walkingCategoryFilter = document.querySelector("#walking-category-filter");
   const walkingResults = document.querySelector("#walking-analysis-results");
   let activeLayer = null, selection = null, clickRequest = 0;
+  // Bezugspunkt für die Jahrgangsabfrage: Gebäude mit den meisten Wohnungen in der Gemeinde (sicher Siedlungsgebiet).
+  const settlement = [...(ctx.records ?? [])].filter((record) => record.inMunicipality && Array.isArray(record.center))
+    .sort((a, b) => (b.gwr?.dwellings ?? 0) - (a.gwr?.dwellings ?? 0))[0]?.center;
+  const years = new Map();
+  const yearFor = (source) => {
+    if (!years.has(source.id)) years.set(source.id, settlement ? latestYear(source, settlement).catch(() => source.year) : Promise.resolve(source.year));
+    return years.get(source.id);
+  };
 
   function clearSelection() {
     if (!selection) return;
@@ -237,12 +261,16 @@ export function initDemographicLayers(ctx) {
     walkingResults.hidden = true;
     legendTitle.textContent = source.name === "STATPOP" ? "Einwohner" : "Arbeitsplätze";
     legendDescription.textContent = source.name === "STATPOP" ? "Einwohner in der 100-m-Zelle, keine Gebäudezahl" : "Arbeitsplätze in der 100-m-Zelle";
-    if (legendImage.dataset.layer !== source.id) {
-      legendImage.dataset.layer = source.id;
-      legendImage.alt = `Farblegende: ${source.name === "STATPOP" ? "Einwohner" : "Arbeitsplätze"}`;
-      legendImage.src = legendUrl(source);
-    }
-    const promise = mapPromises.get(source.id) ?? new THREE.TextureLoader().loadAsync(mapUrl(source, grid.extent, grid.columns, grid.rows));
+    void yearFor(source).then((year) => {
+      if (activeLayer !== source.id || legendImage.dataset.layer === `${source.id}:${year}`) return;
+      legendImage.dataset.layer = `${source.id}:${year}`;
+      legendImage.alt = `Farblegende: ${source.name === "STATPOP" ? "Einwohner" : "Arbeitsplätze"} ${year}`;
+      legendImage.src = legendUrl({ ...source, year });
+    });
+    // Kein layers.update() hier: Das würde activate() erneut auslösen.
+    const promise = mapPromises.get(source.id) ?? yearFor(source).then((year) => {
+      return new THREE.TextureLoader().loadAsync(mapUrl({ ...source, year }, grid.extent, grid.columns, grid.rows));
+    });
     mapPromises.set(source.id, promise);
     void promise.then((texture) => {
       texture.colorSpace = THREE.SRGBColorSpace;
@@ -274,7 +302,7 @@ export function initDemographicLayers(ctx) {
     overlays.set(source.id, mesh);
     const layer = layers.add({
       id: source.id, label: source.label, color: `#${source.color.toString(16).padStart(6, "0")}`,
-      count: source.year, visible: false, apply: (visible) => activate(source, visible),
+      count: "neuester Jahrgang", visible: false, apply: (visible) => activate(source, visible),
       note: "GeoAdmin-WMS nicht verfügbar",
     });
   }

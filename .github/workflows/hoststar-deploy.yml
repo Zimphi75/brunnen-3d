@@ -3,7 +3,16 @@ name: Build and deploy website
 on:
   push:
     branches: [main]
+  # Monatlich neu bauen, damit veränderliche Quelldaten (GWR, PV-Register, OSM, Grundstücke, Abstimmungen)
+  # ohne Code-Änderung aktuell bleiben. 1. des Monats, 03:17 UTC.
+  schedule:
+    - cron: "17 3 1 * *"
   workflow_dispatch:
+    inputs:
+      refresh:
+        description: "Veränderliche Quelldaten jetzt neu laden (GWR, PV, OSM, Grundstücke, Abstimmungen)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,11 +35,42 @@ jobs:
           cache: pip
           cache-dependency-path: pipeline/requirements.txt
 
-      - name: Cache source downloads
+      # Zwei Zwischenspeicher: Grosse, selten neue Daten (Gelände, Gebäude, Luftbild, Vegetation) bleiben gespeichert.
+      # Veränderliche Daten werden einmal pro Monat frisch geladen (Monat im Schlüssel) oder sofort per manuellem
+      # Lauf mit «refresh». Vorher hielt ein einziger Speicher alle Downloads unbegrenzt fest.
+      - name: Determine cache keys
+        id: keys
+        run: |
+          echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.refresh }}" = "true" ]; then
+            echo "fresh=-run${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache static source downloads
         uses: actions/cache@v4
         with:
-          path: pipeline/cache
-          key: pipeline-${{ runner.os }}-${{ hashFiles('pipeline/config.py', 'pipeline/download.py') }}
+          path: |
+            pipeline/cache/terrain
+            pipeline/cache/buildings
+            pipeline/cache/ortho
+            pipeline/cache/ortho_hires
+            pipeline/cache/vegetation
+            pipeline/cache/stac
+            pipeline/cache/boundary_raw.json
+          key: pipeline-static-${{ runner.os }}-${{ hashFiles('pipeline/config.py', 'pipeline/download.py') }}
+
+      - name: Cache changing source downloads (monthly)
+        uses: actions/cache@v4
+        with:
+          path: |
+            pipeline/cache/gwr
+            pipeline/cache/pv
+            pipeline/cache/osm
+            pipeline/cache/parcels
+            pipeline/cache/votes
+          key: pipeline-changing-${{ runner.os }}-${{ steps.keys.outputs.month }}${{ steps.keys.outputs.fresh }}-${{ hashFiles('pipeline/config.py', 'pipeline/download.py') }}
 
       - name: Install pipeline dependencies
         run: python -m pip install -r pipeline/requirements.txt

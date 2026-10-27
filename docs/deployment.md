@@ -92,3 +92,13 @@ server {
 ## Spätere Erweiterungen
 
 Ein Backend (FastAPI oder Node) mit Caching ist nur nötig für geschützte APIs (z. B. ÖV-Echtzeitpositionen mit Token) oder serverseitige Analysen (Routing, Isochronen). PostgreSQL/PostGIS bietet sich für Parzellen und Statistiken an.
+
+## Aktualität der Daten
+
+- **Live beim Aufruf:** Wetter und Luftqualität (Open-Meteo), Abfahrten (transport.opendata.ch), scharfes Luftbild und Landeskarte (swisstopo-WMS), Zellwerte Einwohner/Arbeitsplätze, Haltestellen, Solar-Dacheignung, Lärm, Radon, Bodenatlas, Hochwasser, Wanderwege, Veloland, Sperrungen (GeoAdmin), Baustellen (Kanton Schwyz), Wikipedia-Einleitung. Die Einwohner-/Arbeitsplatzkarte ermittelt ihren neuesten Jahrgang selbst.
+- **Aus der Pipeline:** Der Workflow läuft bei jedem Push auf `main` und zusätzlich am 1. jedes Monats (03:17 UTC). Zwei Zwischenspeicher:
+  - *statisch* (Gelände, Gebäude, Luftbild, Vegetation): bleibt, bis sich `pipeline/config.py` oder `pipeline/download.py` ändert;
+  - *veränderlich* (GWR, PV-Register, OSM, Grundstücke/Nutzungsplanung, Abstimmungen): wird jeden Monat neu geladen.
+- **Sofort aktualisieren:** Actions → «Build and deploy website» → *Run workflow* mit Häkchen bei «refresh».
+- **Abstimmungen:** Neue Abstimmungssonntage werden automatisch erkannt (alle Sonntage seit dem neuesten bekannten Termin werden abgefragt); Abstimmungen der letzten 14 Tage werden bei jedem Lauf neu geladen.
+- **Schlägt ein Lauf fehl** (z. B. Quelle nicht erreichbar), bleibt die zuletzt veröffentlichte Version online; GitHub meldet den Fehler per Mail.

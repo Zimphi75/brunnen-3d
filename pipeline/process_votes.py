@@ -21,9 +21,32 @@ DATES = [
 CANTON_SZ = "5"
 
 
+def recent(date: str, days: int = 14) -> bool:
+    """Abstimmung liegt höchstens `days` Tage zurück (oder in der Zukunft): Resultate können sich noch ändern."""
+    return (datetime.date.today() - datetime.datetime.strptime(date, "%Y%m%d").date()).days <= days
+
+
+def candidate_dates() -> list[str]:
+    """Bekannte Termine plus alle Sonntage seit dem neuesten bekannten Termin bis heute.
+
+    Eidgenössische Abstimmungen finden immer an einem Sonntag statt. Die Datei der Quelle ist über das Datum
+    adressiert; nicht existierende Sonntage liefern einen Fehler und werden übersprungen. So erscheinen neue
+    Abstimmungstage automatisch, ohne die Liste von Hand zu ergänzen.
+    """
+    newest = max(datetime.datetime.strptime(date, "%Y%m%d").date() for date in DATES)
+    day, today, extra = newest + datetime.timedelta(days=7), datetime.date.today(), []
+    while day <= today:
+        extra.append(day.strftime("%Y%m%d"))
+        day += datetime.timedelta(days=7)
+    return sorted(set(DATES) | set(extra), reverse=True)
+
+
 def fetch(date: str):
     dest = config.CACHE_DIR / "votes" / f"{date}.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
+    # Frische Abstimmungen erneut laden: Eine am Abstimmungstag zwischengespeicherte Datei kann unvollständig sein.
+    if dest.exists() and recent(date):
+        dest.unlink()
     if not dest.exists():
         # curl nutzt die System-Zertifikate; die Kette der Quelle ist für Pythons certifi unvollständig.
         result = subprocess.run(
@@ -39,7 +62,7 @@ def fetch(date: str):
 def main() -> None:
     bfs = str(config.MUNICIPALITY_BFS)
     rows = []
-    for date in DATES:
+    for date in candidate_dates():
         data = fetch(date)
         if not data:
             print(f"  {date}: nicht verfügbar")
