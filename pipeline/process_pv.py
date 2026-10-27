@@ -107,7 +107,7 @@ def main() -> None:
             "cat": category, "match": how, "parts": rows,
         })
 
-    today = datetime.date.today().isoformat()
+    today = datetime.datetime.fromtimestamp(zip_path.stat().st_mtime, datetime.timezone.utc).date().isoformat()  # Abruf beim BFE
     payload = {
         "retrieved": today, "source": "BFE, Elektrizitätsproduktionsanlagen (Photovoltaik)",
         "orientations": {"1": "Norden", "2": "Nordost", "3": "Osten", "4": "Südost", "5": "Süden", "6": "Südwest", "7": "Westen", "8": "Nordwest", "9": "Zenit (flach)"},

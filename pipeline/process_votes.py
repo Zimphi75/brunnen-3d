@@ -11,6 +11,7 @@ import json
 import subprocess
 
 from . import config
+from .common import download_date
 
 BASE = "https://ogd-static.voteinfo-app.ch/v1/ogd/sd-t-17-02-{date}-eidgAbstimmung.json"
 # Eidgenössische Abstimmungstage (Bundeskanzlei); nicht abrufbare Tage werden übersprungen.
@@ -83,7 +84,7 @@ def main() -> None:
             })
         print(f"  {date}: ok")
     payload = {
-        "bfs": int(bfs), "retrieved": datetime.date.today().isoformat(),
+        "bfs": int(bfs), "retrieved": download_date("votes"),
         "source": "BFS voteinfo (Open Data), ogd-static.voteinfo-app.ch", "votes": rows,
     }
     (config.OUT_DIR / "votes.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1))

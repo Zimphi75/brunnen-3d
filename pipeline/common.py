@@ -67,3 +67,23 @@ def update_metadata(section: str, values: dict) -> None:
 
 def extent_dict(extent: Extent) -> dict:
     return asdict(extent)
+
+
+def download_date(*names: str) -> str:
+    """Datum des neuesten zwischengespeicherten Downloads unter pipeline/cache/<name> (Datei oder Ordner).
+
+    Massgebend ist das Änderungsdatum der Datei, also der tatsächliche Abruf bei der Quelle, nicht der Build-Tag.
+    Ohne zwischengespeicherte Datei: heute.
+    """
+    import datetime as _datetime
+    from . import config as _config
+    newest = None
+    for name in names:
+        path = _config.CACHE_DIR / name
+        files = [path] if path.is_file() else (list(path.rglob("*")) if path.is_dir() else [])
+        for file in files:
+            if file.is_file():
+                newest = max(newest or 0.0, file.stat().st_mtime)
+    if newest is None:
+        return _datetime.date.today().isoformat()
+    return _datetime.datetime.fromtimestamp(newest, _datetime.timezone.utc).date().isoformat()

@@ -9,7 +9,7 @@ from datetime import date
 import pandas as pd
 
 from . import config, download
-from .common import read_metadata, update_metadata
+from .common import download_date, read_metadata, update_metadata
 from .process_osm import flat, to_local_xy  # noqa: F401  (gleiche Rundung und Konvention)
 
 SWISSTOPO_TERMS = "https://www.swisstopo.admin.ch/de/nutzungsbedingungen-kostenlose-geodaten-und-geodienste"
@@ -187,7 +187,15 @@ def export_manifest() -> None:
 
 def export_sources() -> None:
     metadata = read_metadata()
-    payload = {"generated": date.today().isoformat(), "datasets": sources(metadata)}
+    datasets = sources(metadata)
+    # «Abfrage» = tatsächlicher Download bei der Quelle (Cache-Datei), nicht der Build-Tag. Vorher stand hier
+    # immer das Build-Datum, auch wenn die Daten aus einem älteren Zwischenspeicher stammten.
+    cached = {"boundary": ["boundary_raw.json"], "terrain": ["terrain"], "ortho": ["ortho"], "buildings": ["buildings"],
+              "gwr": ["gwr"], "osm": ["osm"], "trees": ["vegetation"], "pv": ["pv"], "votes": ["votes"]}
+    for dataset in datasets:
+        if dataset.get("id") in cached:
+            dataset["retrieved"] = download_date(*cached[dataset["id"]])
+    payload = {"generated": date.today().isoformat(), "datasets": datasets}
     (config.OUT_DIR / "sources.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1))
     print(f"sources.json: {len(payload['datasets'])} Datensätze")
 
