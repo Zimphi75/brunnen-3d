@@ -172,11 +172,27 @@ export function createBikeModel() {
   const hitchCup = box(0.05, 0.05, 0.06, 0x111214); rig.add(hitchCup);
   // Fahne
   const pole = tube([-TW / 2 + 0.02, TB + TH, -TL / 2 + 0.05], [-TW / 2 + 0.02, 1.75, -TL / 2 + 0.05], 0.006, 0xe6e6e6); trailer.add(pole);
-  const flagGeo = new THREE.BufferGeometry();
-  const flagPos = new Float32Array([0, 0, 0, 0, -0.2, 0, 0.28, -0.1, 0]);
-  flagGeo.setAttribute("position", new THREE.BufferAttribute(flagPos, 3)); flagGeo.computeVertexNormals();
-  const flag = new THREE.Mesh(flagGeo, mat(0xff6a13, { side: THREE.DoubleSide, flatShading: false, emissive: 0x7a2a00 }));
-  flag.position.set(-TW / 2 + 0.02, 1.75, -TL / 2 + 0.05); trailer.add(flag);
+  // Rechteckige Fahne mit Logo (Bote der Urschweiz); Vorder- und Rückseite teilen die Form, die Rückseite
+  // hat gespiegelte Texturkoordinaten, damit das Logo von beiden Seiten lesbar ist.
+  const FLAG_L = 0.42, FLAG_H = 0.13, FLAG_SEG = 14;
+  const flagGeo = new THREE.PlaneGeometry(FLAG_L, FLAG_H, FLAG_SEG, 1);
+  flagGeo.translate(FLAG_L / 2, -FLAG_H / 2, 0);
+  const flagPos = flagGeo.attributes.position.array;
+  const flagRest = Float32Array.from(flagPos);               // x = Abstand vom Mast, y = Höhe
+  const flagBackGeo = new THREE.BufferGeometry();
+  flagBackGeo.setIndex(flagGeo.index);
+  flagBackGeo.setAttribute("position", flagGeo.attributes.position);
+  const uvBack = Float32Array.from(flagGeo.attributes.uv.array);
+  for (let i = 0; i < uvBack.length; i += 2) uvBack[i] = 1 - uvBack[i];
+  flagBackGeo.setAttribute("uv", new THREE.BufferAttribute(uvBack, 2));
+  flagBackGeo.setAttribute("normal", flagGeo.attributes.normal);
+  const flagTex = new THREE.TextureLoader().load("public/images/flag-bdu.png");
+  flagTex.colorSpace = THREE.SRGBColorSpace; flagTex.anisotropy = 4;
+  const flagMat = (side) => new THREE.MeshStandardMaterial({ map: flagTex, side, roughness: 0.85, metalness: 0, emissive: 0xffffff, emissiveMap: flagTex, emissiveIntensity: 0.12 });
+  const flag = new THREE.Group(); flag.position.set(-TW / 2 + 0.02, 1.75, -TL / 2 + 0.05); trailer.add(flag);
+  for (const [geo, side] of [[flagGeo, THREE.FrontSide], [flagBackGeo, THREE.BackSide]]) {
+    const m = new THREE.Mesh(geo, flagMat(side)); m.castShadow = true; flag.add(m);
+  }
 
   // ---------- Hund: Australian Shepherd, braun mit weiss (red tri) ----------
   const FUR = 0x6b3a1f, FUR_DARK = 0x4e2914, WHITE = 0xf3efe6, COPPER = 0xb8662e, NOSE = 0x161210;
@@ -240,10 +256,15 @@ export function createBikeModel() {
     dogHead.rotation.y = Math.sin(time * 0.45) * 0.95 + Math.sin(time * 1.7) * 0.08;
     dogHead.rotation.x = Math.sin(time * 3.1) * 0.03 * k;
     dog.position.y = TB + 0.05 + DOG_SCALE * Math.abs(Math.sin(time * 6)) * 0.006 * k;
-    // Fahne flattert, stärker mit Tempo
-    const f = 0.04 + 0.05 * Math.min(1.5, Math.abs(speed) / 4);
-    flagPos[6] = 0.28 * Math.cos(Math.sin(time * 7) * f * 3); flagPos[8] = -0.28 * Math.sin(Math.sin(time * 7) * f * 3) - 0.06 * k;
-    flag.geometry.attributes.position.needsUpdate = true;
+    // Fahne weht nach hinten und flattert, stärker mit Tempo (Welle läuft vom Mast zum freien Ende)
+    flag.rotation.y = 0.55 + 0.85 * k + Math.sin(time * 1.9) * 0.12 * (1 - 0.5 * k);
+    const amp = 0.012 + 0.03 * Math.min(1.5, Math.abs(speed) / 4);
+    for (let i = 0; i < flagPos.length; i += 3) {
+      const s = flagRest[i] / FLAG_L;
+      flagPos[i + 2] = Math.sin(time * 9 - s * 7) * amp * s - 0.01 * s * s;
+    }
+    flagGeo.attributes.position.needsUpdate = true;
+    flagGeo.computeVertexNormals();
   }
   update(0);
   return { group: rig, update, reset() { trailerAngle = 0; } };
