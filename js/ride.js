@@ -67,6 +67,53 @@ export function initRide(ctx) {
       <div class="ride-stick-knob"></div>
     </div>`;
   document.body.append(stick);
+  // Computer: grosse Tastenanleitung über dem ganzen Bildschirm, vom Start bis zum ersten Lenk- oder Tretbefehl
+  const keyCap = (key, glyph, label) => `<kbd class="ride-key" data-key="${key}"><span class="g">${glyph}</span><span class="l">${label}</span></kbd>`;
+  const cluster = ([u, d, l, r], glyphs) => `
+    <div class="ride-keys-cluster">
+      <span></span>${keyCap(u, glyphs[0], "Vor")}<span></span>
+      ${keyCap(l, glyphs[2], "Links")}${keyCap(d, glyphs[1], "Zurück")}${keyCap(r, glyphs[3], "Rechts")}
+    </div>`;
+  const guide = document.createElement("div");
+  guide.id = "ride-keys";
+  guide.hidden = true;
+  guide.innerHTML = `
+    <div class="ride-keys-card" role="dialog" aria-modal="false" aria-labelledby="ride-keys-title">
+      <h2 id="ride-keys-title">So fährst du Velo</h2>
+      <div class="ride-keys-sets">
+        <div class="ride-keys-set">${cluster(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"], ["↑", "↓", "←", "→"])}<p>Pfeiltasten</p></div>
+        <div class="ride-keys-or">oder</div>
+        <div class="ride-keys-set">${cluster(["w", "s", "a", "d"], ["W", "S", "A", "D"])}<p>WASD</p></div>
+      </div>
+      <dl class="ride-keys-more">
+        <div><dt><kbd class="ride-key wide" data-key=" ">Leertaste</kbd></dt><dd>Klingeln</dd></div>
+        <div><dt><kbd class="ride-key" data-key="Escape">Esc</kbd></dt><dd>Absteigen und Beenden</dd></div>
+      </dl>
+      <p class="ride-keys-status" aria-live="polite"></p>
+    </div>`;
+  document.body.append(guide);
+  const $guideStatus = guide.querySelector(".ride-keys-status");
+  function showGuide() {
+    guide.hidden = false; guide.classList.remove("is-ready", "is-leaving");
+    $guideStatus.textContent = "Gleich geht’s los …";
+  }
+  function guideReady() {
+    if (guide.hidden) return;
+    guide.classList.add("is-ready");
+    $guideStatus.textContent = "Los geht’s: ↑ oder W drücken";
+  }
+  function hideGuide({ fade = true } = {}) {
+    if (guide.hidden || guide.classList.contains("is-leaving")) return;
+    if (!fade) { guide.hidden = true; return; }
+    guide.classList.add("is-leaving");
+    setTimeout(() => { if (guide.classList.contains("is-leaving")) guide.hidden = true; }, 450);
+  }
+  function flashKey(key, on) {
+    const k = key.length === 1 ? key.toLowerCase() : key;
+    guide.querySelectorAll(`.ride-key[data-key="${CSS.escape(k)}"]`).forEach((el) => el.classList.toggle("is-down", on));
+  }
+  guide.addEventListener("click", () => { if (state.phase === "ride") hideGuide(); });
+
   const pad = stick.querySelector(".ride-stick-pad"), knob = stick.querySelector(".ride-stick-knob");
   const joy = { x: 0, y: 0, id: null };   // x: rechts +, y: vor +, je -1..1
   function moveStick(event) {
@@ -249,6 +296,7 @@ export function initRide(ctx) {
     state.phase = "intro"; state.t = 0;
     hud.hidden = false;
     stick.hidden = !touch;
+    if (!touch) showGuide();
     stick.classList.remove("is-ready", "is-learned", "is-active");
     hud.classList.toggle("is-touch", touch);
     hud.classList.add("is-intro");
@@ -276,6 +324,7 @@ export function initRide(ctx) {
     scene3d.groundAt = groundBefore;
     hud.hidden = true;
     stick.hidden = true;
+    hideGuide({ fade: false });
     releaseStick();
     clearTimeout(helpTimer);
     button?.setAttribute("aria-pressed", "false");
@@ -314,7 +363,7 @@ export function initRide(ctx) {
         stick.classList.add("is-ready");
         clearTimeout(helpTimer);
         helpTimer = setTimeout(() => stick.classList.add("is-learned"), 5000);   // Anleitung ausblenden, Kompass halbtransparent
-      } else setNote("Pfeiltasten oder WASD · Leertaste klingelt");
+      } else { setNote("Pfeiltasten oder WASD · Leertaste klingelt"); guideReady(); }
       camPos.copy(camera.position); lookSmooth.copy(controls.target);
     }
   }
@@ -416,11 +465,15 @@ export function initRide(ctx) {
       return;
     }
     if (event.key === "Escape") { stop(); return; }
+    flashKey(event.key, true);
     if (event.key === " ") { event.preventDefault(); ring(); return; }
     const key = KEYS[event.key];
-    if (key) { event.preventDefault(); if (state.phase === "ride") keys.add(key); }
+    if (key) {
+      event.preventDefault();
+      if (state.phase === "ride") { keys.add(key); setTimeout(hideGuide, 350); }   // Taste kurz aufleuchten lassen, dann ausblenden
+    }
   });
-  window.addEventListener("keyup", (event) => { const key = KEYS[event.key]; if (key) keys.delete(key); });
+  window.addEventListener("keyup", (event) => { flashKey(event.key, false); const key = KEYS[event.key]; if (key) keys.delete(key); });
   window.addEventListener("blur", () => keys.clear());
   hud.querySelector("#ride-exit").addEventListener("click", stop);
   button?.addEventListener("click", () => (state.active ? stop() : start()));
