@@ -634,6 +634,10 @@ async function setupUi(ctx) {
     }
     buildings.select(index);
     const record = ctx.records[index];
+    // Adresse oben links eintragen (für Orientierung und Teilen-Link); eine gesuchte Zweitadresse bleibt stehen.
+    const buildingAddresses = addressesByBuilding.get(index) ?? [];
+    const currentLabel = $("#search-input").value.trim();
+    if (!buildingAddresses.includes(currentLabel)) ctx.setSearchLabel?.(buildingAddresses[0] ?? (record.egid ? `EGID ${record.egid}` : ""));
     if (ctx.history?.state.active) {
       const date = buildYear(record);
       const shown = date && date.year <= ctx.history.state.year;

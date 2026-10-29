@@ -73,6 +73,7 @@ export async function initSearch(ctx) {
     if (ctx.ride?.active) ctx.ride.stop({ flyBack: false });
     list.hidden = true;
     input.value = entry.label;
+    syncShare();
     let target;
     if (entry.e !== undefined) { const p = frame.toLocal(entry.e, entry.n); target = new THREE.Vector3(p.x, 0, p.z); } else target = new THREE.Vector3(entry.x, 0, entry.z);
     if (entry.building !== undefined && entry.building >= 0 && buildings) {
@@ -86,7 +87,50 @@ export async function initSearch(ctx) {
   }
   ctx.searchChoose = choose;
 
+  // Teilen: Deeplink (?adresse=…) zur aktuell gezeigten Adresse per E-Mail, WhatsApp oder Zwischenablage
+  const box = input.closest(".search"), shareButton = $("#search-share"), shareMenu = $("#share-menu");
+  const shareUrl = () => {
+    const url = new URL(location.pathname, location.origin);
+    url.searchParams.set("adresse", input.value.trim());
+    return url.toString();
+  };
+  const closeShareMenu = () => { shareMenu.hidden = true; shareButton.setAttribute("aria-expanded", "false"); };
+  const syncShare = () => {
+    const visible = input.value.trim().length >= 2;
+    shareButton.hidden = !visible;
+    box.classList.toggle("can-share", visible);
+    if (!visible) closeShareMenu();
+  };
+  ctx.setSearchLabel = (label) => { input.value = label ?? ""; list.hidden = true; syncShare(); };
+  if (navigator.share) shareMenu.querySelector('[data-share="native"]').hidden = false;
+  shareButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const open = shareMenu.hidden;
+    shareMenu.hidden = !open;
+    shareButton.setAttribute("aria-expanded", String(open));
+    if (open) shareMenu.querySelector("button:not([hidden])")?.focus();
+  });
+  shareMenu.addEventListener("click", async (event) => {
+    const kind = event.target.closest("button[data-share]")?.dataset.share;
+    if (!kind) return;
+    const label = input.value.trim(), url = shareUrl(), text = `${label} in Brunnen 3D`;
+    if (kind === "native") { try { await navigator.share({ title: text, url }); } catch {} }
+    else if (kind === "mail") location.href = `mailto:?subject=${encodeURIComponent(text)}&body=${encodeURIComponent(`${text}:\n${url}`)}`;
+    else if (kind === "whatsapp") window.open(`https://wa.me/?text=${encodeURIComponent(`${text}: ${url}`)}`, "_blank", "noopener");
+    else if (kind === "copy") {
+      const button = event.target.closest("button");
+      try { await navigator.clipboard.writeText(url); button.textContent = "Link kopiert ✓"; }
+      catch { window.prompt("Link kopieren:", url); }
+      setTimeout(() => { button.textContent = "Link kopieren"; closeShareMenu(); }, 1200);
+      return;
+    }
+    closeShareMenu();
+  });
+  document.addEventListener("click", (event) => { if (!shareMenu.hidden && !event.target.closest("#share-menu, #search-share")) closeShareMenu(); });
+  shareMenu.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeShareMenu(); shareButton.focus(); } });
+
   input.addEventListener("input", () => {
+    syncShare();
     const coordinates = coordinatesQuery(input.value);
     results = coordinates
       ? [{ type: "Koordinate", label: `LV95 ${formatLv95(coordinates.e, coordinates.n)}`, e: coordinates.e, n: coordinates.n }]
