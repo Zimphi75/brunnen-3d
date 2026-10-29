@@ -88,7 +88,22 @@ export async function initSearch(ctx) {
   ctx.searchChoose = choose;
 
   // Teilen: Deeplink (?adresse=…) zur aktuell gezeigten Adresse per E-Mail, WhatsApp oder Zwischenablage
-  const box = input.closest(".search"), shareButton = $("#search-share"), shareMenu = $("#share-menu");
+  // Knopf und Menü werden hier erzeugt: So passt das Markup immer zum Skript, auch wenn der Browser noch eine
+  // ältere index.html im Cache hat (GitHub Pages cacht 10 Minuten).
+  const box = input.closest(".search");
+  box.querySelector("#search-share")?.remove();
+  box.querySelector("#share-menu")?.remove();
+  box.insertAdjacentHTML("beforeend", `
+    <button type="button" class="icon-btn" id="search-share" aria-label="Link zu dieser Adresse teilen" title="Teilen" aria-haspopup="menu" aria-expanded="false" aria-controls="share-menu" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="m8.3 10.8 7.4-4.4M8.3 13.2l7.4 4.4"/></svg>
+    </button>
+    <div id="share-menu" role="menu" hidden>
+      <button type="button" role="menuitem" data-share="native" hidden>Teilen …</button>
+      <button type="button" role="menuitem" data-share="mail">Per E-Mail</button>
+      <button type="button" role="menuitem" data-share="whatsapp">Per WhatsApp</button>
+      <button type="button" role="menuitem" data-share="copy">Link kopieren</button>
+    </div>`);
+  const shareButton = box.querySelector("#search-share"), shareMenu = box.querySelector("#share-menu");
   const shareUrl = () => {
     const url = new URL(location.pathname, location.origin);
     url.searchParams.set("adresse", input.value.trim());
