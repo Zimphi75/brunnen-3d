@@ -5,6 +5,16 @@ import { wgs84ToLv95, formatLv95 } from "./geo.js";
 
 const normalize = (text) => String(text).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replaceAll("ß", "ss").replace(/[^a-z0-9., ]/g, " ").replace(/\s+/g, " ").trim();
 
+function editDistance(a, b) {
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    previous = current;
+  }
+  return previous[b.length];
+}
+
 export async function initSearch(ctx) {
   const { $, frame, buildings, rig } = ctx;
   const roads = (await loadOptionalJson("roads.json"))?.roads ?? [];
@@ -53,9 +63,16 @@ export async function initSearch(ctx) {
     return null;
   }
 
-  function render() {
-    list.hidden = results.length === 0;
+  function render(notice = "") {
+    list.hidden = results.length === 0 && !notice;
     list.innerHTML = "";
+    if (notice) {
+      const item = document.createElement("li");
+      item.className = "search-notice";
+      item.setAttribute("role", "presentation");
+      item.textContent = notice;
+      list.append(item);
+    }
     results.forEach((entry, i) => {
       const item = document.createElement("li");
       item.setAttribute("role", "option");
@@ -86,6 +103,29 @@ export async function initSearch(ctx) {
     }
   }
   ctx.searchChoose = choose;
+
+  // Deeplink (?adresse=…): nur bei eindeutigem Treffer direkt hinfliegen. Sonst nicht raten, sondern den Text
+  // ins Suchfeld setzen und ähnliche Treffer zur Auswahl anbieten (z. B. Tippfehler oder veraltete Adresse).
+  ctx.openDeeplink = (query) => {
+    const text = normalize(query);
+    const withoutPlace = index.filter((entry) => entry.type === "Adresse" && entry.key.split(",")[0] === text);
+    const exact = index.find((entry) => entry.key === text) ?? (withoutPlace.length === 1 ? withoutPlace[0] : null);
+    if (exact) { choose(exact); return true; }
+    input.value = query;
+    syncShare();
+    // Ähnliche Treffer: zuerst mit der ganzen Eingabe, sonst nur mit dem Strassen- bzw. Ortsnamen (ohne Hausnummer)
+    results = search(query);
+    const street = text.split(",")[0].replace(/\s+\d+\s*[a-z]?$/, "");
+    if (!results.length) results = search(street);
+    // Tippfehler im Strassennamen (z. B. «Parkstrase»): Strassen mit höchstens 2 Zeichen Abweichung vorschlagen
+    if (!results.length && street.length >= 4) {
+      results = index.filter((entry) => entry.type === "Strasse" && editDistance(entry.key, street) <= 2)
+        .sort((a, b) => editDistance(a.key, street) - editDistance(b.key, street)).slice(0, 5);
+    }
+    active = -1;
+    render(results.length ? `«${query}» nicht gefunden. Meinten Sie:` : `«${query}» ist im Modell nicht bekannt.`);
+    return false;
+  };
 
   // Teilen: Deeplink (?adresse=…) zur aktuell gezeigten Adresse per E-Mail, WhatsApp oder Zwischenablage
   // Knopf und Menü werden hier erzeugt: So passt das Markup immer zum Skript, auch wenn der Browser noch eine
@@ -141,6 +181,7 @@ export async function initSearch(ctx) {
     }
     closeShareMenu();
   });
+  document.addEventListener("pointerdown", (event) => { if (!list.hidden && !event.target.closest(".search")) list.hidden = true; });
   document.addEventListener("click", (event) => { if (!shareMenu.hidden && !event.target.closest("#share-menu, #search-share")) closeShareMenu(); });
   shareMenu.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeShareMenu(); shareButton.focus(); } });
 

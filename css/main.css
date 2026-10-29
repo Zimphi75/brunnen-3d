@@ -123,6 +123,8 @@ select.wide { width: 100%; }
   background: var(--panel-solid); border: 1px solid var(--rule); border-radius: var(--r-ctl); box-shadow: var(--shadow); z-index: 8; }
 #search-results li { padding: 6px 8px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
 #search-results li:hover, #search-results li.active { background: var(--accent-soft); }
+#search-results li.search-notice { cursor: default; display: block; color: var(--ink-2); font-size: 13px; }
+#search-results li.search-notice:hover { background: none; }
 #search-results small { color: var(--ink-3); white-space: nowrap; }
 
 #clock-btn { top: 14px; left: calc(50% - 18px); transform: translateX(-50%); width: 340px; padding: 7px 10px; display: grid; grid-template-columns: 136px minmax(0, 1fr) 24px; align-items: center; gap: 8px; z-index: 5; cursor: pointer; }

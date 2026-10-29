@@ -350,15 +350,9 @@ async function start() {
   window.brunnen = ctx; // Debug- und Testzugriff
   ctx.navigationHint = initNavigationHint({ root: $("#navigation-hint"), canvas: $("#scene") });
   Promise.all([ctx.initialCameraReady, timeTransitionReady]).then(() => ctx.navigationHint.show());
-  // Deeplink: ?adresse=Parkstrasse%2029 (oder kurz ?a=…) fliegt nach dem Start direkt zum ersten Suchtreffer.
+  // Deeplink: ?adresse=Parkstrasse%2029 (oder kurz ?a=…) fliegt nach dem Start zur Adresse; unbekannte Adressen landen mit Vorschlägen im Suchfeld.
   const deeplink = (urlParams.get("adresse") ?? urlParams.get("a") ?? "").trim();
-  if (deeplink && ctx.search && ctx.searchChoose) {
-    void ctx.initialCameraReady.then(() => {
-      const [hit] = ctx.search(deeplink);
-      if (hit) ctx.searchChoose(hit);
-      else console.warn(`Deeplink: keine Adresse gefunden für «${deeplink}»`);
-    });
-  }
+  if (deeplink && ctx.openDeeplink) void ctx.initialCameraReady.then(() => ctx.openDeeplink(deeplink));
   ctx.enableLightMode = (reason = "manuell") => enableLightMode(ctx, reason);
   void timeTransitionReady.then(() => watchFrameRate(ctx));
 }
