@@ -172,27 +172,15 @@ export function createBikeModel() {
   const hitchCup = box(0.05, 0.05, 0.06, 0x111214); rig.add(hitchCup);
   // Fahne
   const pole = tube([-TW / 2 + 0.02, TB + TH, -TL / 2 + 0.05], [-TW / 2 + 0.02, 1.75, -TL / 2 + 0.05], 0.006, 0xe6e6e6); trailer.add(pole);
-  // Rechteckige Fahne mit Logo (Bote der Urschweiz); Vorder- und Rückseite teilen die Form, die Rückseite
-  // hat gespiegelte Texturkoordinaten, damit das Logo von beiden Seiten lesbar ist.
+  // Rechteckige, neutrale weisse Fahne (beidseitig sichtbar)
   const FLAG_L = 0.42, FLAG_H = 0.13, FLAG_SEG = 14;
   const flagGeo = new THREE.PlaneGeometry(FLAG_L, FLAG_H, FLAG_SEG, 1);
   flagGeo.translate(FLAG_L / 2, -FLAG_H / 2, 0);
   const flagPos = flagGeo.attributes.position.array;
   const flagRest = Float32Array.from(flagPos);               // x = Abstand vom Mast, y = Höhe
-  const flagBackGeo = new THREE.BufferGeometry();
-  flagBackGeo.setIndex(flagGeo.index);
-  flagBackGeo.setAttribute("position", flagGeo.attributes.position);
-  const uvBack = Float32Array.from(flagGeo.attributes.uv.array);
-  for (let i = 0; i < uvBack.length; i += 2) uvBack[i] = 1 - uvBack[i];
-  flagBackGeo.setAttribute("uv", new THREE.BufferAttribute(uvBack, 2));
-  flagBackGeo.setAttribute("normal", flagGeo.attributes.normal);
-  const flagTex = new THREE.TextureLoader().load("public/images/flag-bdu.png");
-  flagTex.colorSpace = THREE.SRGBColorSpace; flagTex.anisotropy = 4;
-  const flagMat = (side) => new THREE.MeshStandardMaterial({ map: flagTex, side, roughness: 0.85, metalness: 0, emissive: 0xffffff, emissiveMap: flagTex, emissiveIntensity: 0.12 });
   const flag = new THREE.Group(); flag.position.set(-TW / 2 + 0.02, 1.75, -TL / 2 + 0.05); trailer.add(flag);
-  for (const [geo, side] of [[flagGeo, THREE.FrontSide], [flagBackGeo, THREE.BackSide]]) {
-    const m = new THREE.Mesh(geo, flagMat(side)); m.castShadow = true; flag.add(m);
-  }
+  const flagMesh = new THREE.Mesh(flagGeo, new THREE.MeshStandardMaterial({ color: 0xf7f7f5, side: THREE.DoubleSide, roughness: 0.85, metalness: 0, emissive: 0xffffff, emissiveIntensity: 0.06 }));
+  flagMesh.castShadow = true; flag.add(flagMesh);
 
   // ---------- Hund: Australian Shepherd, braun mit weiss (red tri) ----------
   const FUR = 0x6b3a1f, FUR_DARK = 0x4e2914, WHITE = 0xf3efe6, COPPER = 0xb8662e, NOSE = 0x161210;
