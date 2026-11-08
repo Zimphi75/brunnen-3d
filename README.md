@@ -98,6 +98,12 @@ tests/         pytest und Browser-Tests
 docs/          Architektur, Datenquellen, Pipeline, Deployment
 ```
 
+## Lizenz und Credits
+
+Der Quellcode steht unter der [MIT-Lizenz](LICENSE). Sie gilt nicht für Daten, Bilder und Videos; für die Datensätze gelten die Lizenzen im nächsten Abschnitt.
+
+Mit Claude (Anthropic) entwickelt. Die 3D-Darstellung basiert auf [Three.js](https://threejs.org/) (MIT-Lizenz, © three.js authors).
+
 ## Datenquellen und Lizenzen
 
 Alle Datensätze mit Herkunft, Lizenz, Stand und Abdeckung stehen in [docs/data-sources.md](docs/data-sources.md) und maschinenlesbar in `public/data/sources.json`. Kurz:
