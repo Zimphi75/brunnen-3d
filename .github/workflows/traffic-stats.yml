@@ -2,7 +2,7 @@ name: Traffic-Statistik sichern
 
 # GitHub zeigt Traffic nur 14 Tage lang. Diese Action sichert die Zahlen täglich als CSV
 # auf dem Branch «traffic-stats» (nicht auf main, damit kein Deployment ausgelöst wird).
-# Benötigt das Secret TRAFFIC_TOKEN: Fine-grained PAT, nur dieses Repo,
+# Benötigt das Secret TRAFFIC_3D_BRUNNEN_ANAYSE: Fine-grained PAT, nur dieses Repo,
 # Berechtigung «Administration: Read-only».
 on:
   schedule:
@@ -34,11 +34,11 @@ jobs:
 
       - name: Traffic abfragen und speichern
         env:
-          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+          GH_TOKEN: ${{ secrets.TRAFFIC_3D_BRUNNEN_ANAYSE }}
           REPO: ${{ github.repository }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::Secret TRAFFIC_TOKEN fehlt (Fine-grained PAT mit Administration: Read-only)."
+            echo "::error::Secret TRAFFIC_3D_BRUNNEN_ANAYSE fehlt (Fine-grained PAT mit Administration: Read-only)."
             exit 1
           fi
           python src/.github/scripts/traffic_snapshot.py data
