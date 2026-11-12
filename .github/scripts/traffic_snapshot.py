@@ -16,11 +16,13 @@ REPO = os.environ.get("REPO", "Zimphi75/brunnen-3d")
 
 
 def api(endpoint):
-    out = subprocess.run(
+    res = subprocess.run(
         ["gh", "api", f"repos/{REPO}/traffic/{endpoint}"],
-        check=True, capture_output=True, text=True,
-    ).stdout
-    return json.loads(out)
+        capture_output=True, text=True,
+    )
+    if res.returncode != 0:
+        sys.exit(f"Traffic-API ({endpoint}) fehlgeschlagen: {res.stderr.strip() or res.stdout.strip()}")
+    return json.loads(res.stdout)
 
 
 def upsert(path, header, key_len, rows):
