@@ -1,0 +1,54 @@
+name: Traffic-Statistik sichern
+
+# GitHub zeigt Traffic nur 14 Tage lang. Diese Action sichert die Zahlen täglich als CSV
+# auf dem Branch «traffic-stats» (nicht auf main, damit kein Deployment ausgelöst wird).
+# Benötigt das Secret TRAFFIC_TOKEN: Fine-grained PAT, nur dieses Repo,
+# Berechtigung «Administration: Read-only».
+on:
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: traffic-stats
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skript holen
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+          path: src
+
+      - name: Statistik-Branch holen
+        uses: actions/checkout@v4
+        with:
+          ref: traffic-stats
+          path: data
+
+      - name: Traffic abfragen und speichern
+        env:
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Secret TRAFFIC_TOKEN fehlt (Fine-grained PAT mit Administration: Read-only)."
+            exit 1
+          fi
+          python src/.github/scripts/traffic_snapshot.py data
+
+      - name: Änderungen committen
+        working-directory: data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "Keine Änderungen."; exit 0; }
+          git commit -m "Traffic-Schnappschuss $(date -u +%F)"
+          git push
