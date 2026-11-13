@@ -97,6 +97,8 @@ export async function initAlmanac(ctx) {
       <h4>Haftung und Datenquellen</h4>
       <p>Die dargestellten geografischen Daten, Gebäudeinformationen und Simulationen können Ungenauigkeiten enthalten. Es besteht kein Anspruch auf Vollständigkeit oder Richtigkeit.</p>
       <p>Die verwendeten Datenquellen und entsprechenden Quellenhinweise werden separat ausgewiesen.</p>
+      <h4>Quellcode</h4>
+      <p class="imprint-source">Gebaut mit <a href="https://github.com/Zimphi75/brunnen-3d" target="_blank" rel="noopener">brunnen-3d</a> (Open Source, MIT-Lizenz). Eigene Gemeinde damit gebaut? <a href="https://github.com/Zimphi75/brunnen-3d/issues/3" target="_blank" rel="noopener">Zeig deine Welt</a>.</p>
     </section>`;
   }
   function buildingsTab() {

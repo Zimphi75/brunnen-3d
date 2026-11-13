@@ -4,6 +4,8 @@ Interaktiver digitaler Zwilling der Gemeinde **Ingenbohl SZ** (BFS-Nr. 1364) mit
 
 **Website:** [brunnen.multikanal.ch](https://brunnen.multikanal.ch/) (GitHub Pages: [zimphi75.github.io/brunnen-3d](https://zimphi75.github.io/brunnen-3d/)). Private, nichtkommerzielle Visualisierung ohne offizielle Verbindung zur Gemeinde oder zu den Datenanbietern.
 
+> 🌍 **Eigene Gemeinde damit gebaut?** Zeig sie im [Showcase: Zeig deine Welt](https://github.com/Zimphi75/brunnen-3d/issues/3). Ich freue mich über jeden Link und Screenshot. Wenn du den Code weiterverwendest, lass bitte den Hinweis «Gebaut mit brunnen-3d» im Impressum und den Lizenzhinweis (MIT) stehen.
+
 ## Funktionen
 
 - Gelände (swissALTI3D) mit **simuliertem Boden** (Vorgabe: Wiese, Waldboden, Fels und befestigte Flächen aus der Luftbildfarbe klassiert, mit prozeduralem Detail); Kartentypen Simulation, Luftbild (SWISSIMAGE) und Topo (swisstopo Pixelkarte) sind über Bildkacheln unten links wählbar, beide Kartenquellen werden in Blicknähe schärfer nachgeladen; 2316 Gebäude (swissBUILDINGS3D 3.0 beta, mit GWR-Attributen), Strassen, Wege, Bahn, Gewässer, 54'000 **Bäume** (Laub- und Nadelbäume mit unregelmässigen Kronen, Kronenfarbe aus dem Luftbild, leichter Windbewegung, zwei Detailstufen, Schattenwurf in der Nähe), Gemeindegrenze, Points of Interest, Ortsnamen
@@ -76,7 +78,7 @@ Jeder statische Webserver genügt (siehe [docs/deployment.md](docs/deployment.md
 
 ## Veröffentlichung
 
-Pushes auf `main` starten den Workflow **Build and deploy website**: Daten und Three.js erzeugen, Pipeline-Tests ausführen und anschliessend auf [GitHub Pages](https://zimphi75.github.io/brunnen-3d/) veröffentlichen. Das Repository bleibt privat; die Website und ihre ausgelieferten Daten sind öffentlich. Der optionale Hoststar-Upload ist derzeit deaktiviert. Einrichtung und eigene Domain: [docs/deployment.md](docs/deployment.md).
+Pushes auf `main` starten den Workflow **Build and deploy website**: Daten und Three.js erzeugen, Pipeline-Tests ausführen und anschliessend auf [GitHub Pages](https://zimphi75.github.io/brunnen-3d/) veröffentlichen. Repository, Website und ausgelieferte Daten sind öffentlich. Der optionale Hoststar-Upload ist derzeit deaktiviert. Einrichtung und eigene Domain: [docs/deployment.md](docs/deployment.md).
 
 ## Tests
 
